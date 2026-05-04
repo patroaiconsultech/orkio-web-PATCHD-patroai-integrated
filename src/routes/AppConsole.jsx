@@ -1736,6 +1736,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
       let newThreadId = threadId;
       let streamDonePayload = null;
       let streamDraftText = "";
+      let streamMeta = null;
 
       if (ORKIO_CHAT_STREAM_PRIMARY) {
         try {
@@ -1749,7 +1750,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             client_message_id: clientMessageId,
             signal: ctl.signal,
           });
-          const streamMeta = await consumeChatStream(streamResp, {
+          streamMeta = await consumeChatStream(streamResp, {
             onStatus: (payload) => {
               if (payload?.status) setUploadStatus(`⌛ ${payload.status}`);
               if (payload?.agent_name) setActiveRuntimeAgent(payload.agent_name);
