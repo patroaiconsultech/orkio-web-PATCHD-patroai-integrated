@@ -1444,8 +1444,6 @@ useEffect(() => {
       return;
     }
     const epochAtEffect = activeThreadEpochRef.current;
-    clearTmpAssistantDrafts();
-    setMessages([]);
     void loadMessages(currentThreadId, { force: true, expectedEpoch: epochAtEffect });
   }, [threadId]);
 
@@ -1605,63 +1603,56 @@ useEffect(() => {
     });
   }
 
-  function commitLocalAssistantTurn({
-    draftAssistantId,
-    finalText,
-    agentName,
-    agentId,
-    voiceId,
-    avatarUrl,
-  } = {}) {
+  function materializeAssistantTurnLocally(finalText, draftAssistantId, meta = {}) {
     const normalizedFinal = String(finalText || "").trim();
-    if (!normalizedFinal) return false;
-
+    if (!normalizedFinal) return;
     setMessages((prev) => {
-      const base = Array.isArray(prev) ? prev : [];
+      const list = Array.isArray(prev) ? [...prev] : [];
       let replaced = false;
-      const next = base.map((m) => {
-        if (String(m?.id || "") !== String(draftAssistantId || "")) return m;
-        replaced = true;
-        return {
-          ...m,
-          content: normalizedFinal,
-          agent_name: agentName || m.agent_name || "Orkio",
-          agent_id: agentId || m.agent_id || null,
-          voice_id: voiceId || m.voice_id || null,
-          avatar_url: avatarUrl || m.avatar_url || null,
-        };
-      });
-
-      if (replaced) return next;
-
-      return [
-        ...next,
-        {
-          id: `local-final-${Date.now()}`,
-          role: "assistant",
-          content: normalizedFinal,
-          agent_name: agentName || "Orkio",
-          agent_id: agentId || null,
-          voice_id: voiceId || null,
-          avatar_url: avatarUrl || null,
-          created_at: Math.floor(Date.now() / 1000),
-        },
-      ];
+      for (let i = list.length - 1; i >= 0; i--) {
+        const m = list[i];
+        const mid = String(m?.id || "");
+        if (mid === String(draftAssistantId || "") || (m?.role === "assistant" && mid.startsWith("tmp-ass-"))) {
+          list[i] = {
+            ...m,
+            content: normalizedFinal,
+            agent_name: meta?.agent_name || m?.agent_name || "Orkio",
+            agent_id: meta?.agent_id || m?.agent_id || null,
+            voice_id: meta?.voice_id || m?.voice_id || null,
+            avatar_url: meta?.avatar_url || m?.avatar_url || null,
+          };
+          replaced = true;
+          break;
+        }
+      }
+      if (!replaced) {
+        const alreadyExists = list.some((m) => (
+          m?.role === "assistant" &&
+          String(m?.content || "").trim() === normalizedFinal
+        ));
+        if (!alreadyExists) {
+          list.push({
+            id: `local-final-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            role: "assistant",
+            content: normalizedFinal,
+            agent_name: meta?.agent_name || "Orkio",
+            agent_id: meta?.agent_id || null,
+            voice_id: meta?.voice_id || null,
+            avatar_url: meta?.avatar_url || null,
+            created_at: Math.floor(Date.now() / 1000),
+          });
+        }
+      }
+      return list;
     });
-
-    return true;
   }
 
-  async function reconcileMessagesAfterTurn(tid, turnStartedAt, expectedEpoch) {
-    const targetId = String(tid || "");
-    if (!targetId) return [];
-    const attempts = [0, 250, 700, 1400];
+  async function retryLoadMessagesUntilPersisted(tid, turnStartedAt, expectedEpoch) {
+    const waits = [250, 700, 1400];
     let latest = [];
-    for (const delayMs of attempts) {
-      if (delayMs > 0) {
-        await new Promise((resolve) => window.setTimeout(resolve, delayMs));
-      }
-      latest = await loadMessages(targetId, { force: true, expectedEpoch });
+    for (const waitMs of waits) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      latest = await loadMessages(tid, { force: true, expectedEpoch });
       if (hasPersistedAssistantForTurn(latest, turnStartedAt)) {
         return latest;
       }
@@ -1670,6 +1661,7 @@ useEffect(() => {
   }
 
 
+  
   function fillPremiumPrompt(promptText) {
     const next = String(promptText || "").trim();
     if (!next) return;
@@ -1943,57 +1935,40 @@ async function sendMessage(presetMsg = null, opts = {}) {
         }
         await loadThreads({ preserveThreadId: effectiveTidForLoad, keepMessages: true });
       }
-      const responseAnswer = String(
+      const expectedEpochForTurn = activeThreadEpochRef.current;
+      let freshMessages = effectiveTidForLoad
+        ? await loadMessages(effectiveTidForLoad, { force: true, expectedEpoch: expectedEpochForTurn })
+        : [];
+      void refreshWalletSummary({ silent: true });
+
+      const normalizedFinalText = String(
         streamDonePayload?.final_text
         || resp?.data?.answer
         || ""
       ).trim();
-      const responseAgentName =
-        streamDonePayload?.agent_name
-        || resp?.data?.agent_name
-        || "Orkio";
-      const responseAgentId =
-        streamDonePayload?.agent_id
-        || resp?.data?.agent_id
-        || null;
-      const responseVoiceId =
-        streamDonePayload?.voice_id
-        || resp?.data?.voice_id
-        || null;
-      const responseAvatarUrl =
-        streamDonePayload?.avatar_url
-        || resp?.data?.avatar_url
-        || null;
 
-      let freshMessages = effectiveTidForLoad
-        ? await loadMessages(effectiveTidForLoad, { force: true, expectedEpoch: activeThreadEpochRef.current })
-        : [];
-      const hasPersistedAssistant = hasPersistedAssistantForTurn(freshMessages, turnStartedAt);
-
-      if (!hasPersistedAssistant && responseAnswer) {
-        commitLocalAssistantTurn({
-          draftAssistantId,
-          finalText: responseAnswer,
-          agentName: responseAgentName,
-          agentId: responseAgentId,
-          voiceId: responseVoiceId,
-          avatarUrl: responseAvatarUrl,
+      if (normalizedFinalText) {
+        materializeAssistantTurnLocally(normalizedFinalText, draftAssistantId, {
+          agent_name: streamDonePayload?.agent_name || resp?.data?.agent_name || "Orkio",
+          agent_id: streamDonePayload?.agent_id || resp?.data?.agent_id || null,
+          voice_id: streamDonePayload?.voice_id || resp?.data?.voice_id || null,
+          avatar_url: streamDonePayload?.avatar_url || resp?.data?.avatar_url || null,
         });
-
-        freshMessages = effectiveTidForLoad
-          ? await reconcileMessagesAfterTurn(
-              effectiveTidForLoad,
-              turnStartedAt,
-              activeThreadEpochRef.current,
-            )
-          : freshMessages;
       }
 
-      if (hasPersistedAssistantForTurn(freshMessages, turnStartedAt)) {
+      let persistedAssistantReady = hasPersistedAssistantForTurn(freshMessages, turnStartedAt);
+      if (!persistedAssistantReady && effectiveTidForLoad) {
+        freshMessages = await retryLoadMessagesUntilPersisted(
+          effectiveTidForLoad,
+          turnStartedAt,
+          expectedEpochForTurn,
+        );
+        persistedAssistantReady = hasPersistedAssistantForTurn(freshMessages, turnStartedAt);
+      }
+
+      if (persistedAssistantReady) {
         clearTmpAssistantDrafts();
       }
-
-      void refreshWalletSummary({ silent: true });
 
       // PATCH0100_14: store agent info from response
       if (resp?.data) {
