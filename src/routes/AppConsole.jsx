@@ -1389,7 +1389,21 @@ useEffect(() => {
         (force ? sameActiveThread : sameRequest);
 
       if (canApply) {
-        setMessages(normalized);
+        setMessages((prev) => {
+          const prevList = Array.isArray(prev) ? prev : [];
+          const normalizedList = Array.isArray(normalized) ? normalized : [];
+          const prevHasLocalAssistant = prevList.some((m) => {
+            const mid = String(m?.id || "");
+            return mid.startsWith("tmp-ass-") || mid.startsWith("local-final-");
+          });
+          const normalizedHasAssistant = normalizedList.some((m) => (
+            m?.role === "assistant" && !String(m?.id || "").startsWith("tmp-ass-")
+          ));
+          if (prevHasLocalAssistant && !normalizedHasAssistant) {
+            return prevList;
+          }
+          return normalizedList;
+        });
       }
       return normalized;
     } catch (e) {
@@ -1828,6 +1842,8 @@ async function sendMessage(presetMsg = null, opts = {}) {
             data: {
               thread_id: streamMeta?.thread_id || newThreadId,
               used_stream: true,
+              answer: String(streamMeta?.done_payload?.final_text || streamMeta?.draft_text || streamDraftText || "").trim(),
+              final_text: String(streamMeta?.done_payload?.final_text || streamMeta?.draft_text || streamDraftText || "").trim(),
               runtime_hints: streamMeta?.runtime_hints || null,
               trace_id: streamMeta?.trace_id || traceId,
               execution_cursor: streamMeta?.execution_cursor || null,
@@ -1894,18 +1910,14 @@ async function sendMessage(presetMsg = null, opts = {}) {
         await loadThreads({ preserveThreadId: effectiveTidForLoad, keepMessages: true });
       }
       const localDraftText = String(
+        streamMeta?.draft_text ||
         streamDraftText ||
         getLatestTmpAssistantDraftText(draftAssistantId) ||
         ""
       ).trim();
-
-      let freshMessages = [];
-      if (effectiveTidForLoad) {
-        freshMessages = await loadMessages(
-          effectiveTidForLoad,
-          { force: true, expectedEpoch: activeThreadEpochRef.current }
-        );
-      }
+      const freshMessages = effectiveTidForLoad
+        ? await loadMessages(effectiveTidForLoad, { force: true, expectedEpoch: activeThreadEpochRef.current })
+        : [];
       void refreshWalletSummary({ silent: true });
 
       const normalizedFinal = String(
