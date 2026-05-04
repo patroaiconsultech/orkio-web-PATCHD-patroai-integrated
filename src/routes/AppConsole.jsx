@@ -657,6 +657,11 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const [walletSummaryLoading, setWalletSummaryLoading] = useState(false);
   const [walletSummaryError, setWalletSummaryError] = useState("");
   const [executionTrace, setExecutionTrace] = useState([]);
+  const [auditJobs, setAuditJobs] = useState([]);
+  const [auditJobsLoading, setAuditJobsLoading] = useState(false);
+  const [auditJobsError, setAuditJobsError] = useState("");
+  const [selectedAuditJobId, setSelectedAuditJobId] = useState("");
+  const [selectedAuditJob, setSelectedAuditJob] = useState(null);
   const [executionTraceExpanded, setExecutionTraceExpanded] = useState(() => {
     if (typeof window === "undefined") return true;
     return window.localStorage?.getItem("orkio_execution_trace_open") !== "0";
@@ -1086,6 +1091,84 @@ useEffect(() => {
       // fail-open
     }
   }
+
+  async function loadContinuousAuditJobs(options = {}) {
+    if (!token || !canAccessAdmin) {
+      setAuditJobs([]);
+      setSelectedAuditJob(null);
+      return;
+    }
+    const pickFirst = options?.pickFirst === true;
+    setAuditJobsLoading(true);
+    setAuditJobsError("");
+    try {
+      const resp = await apiFetch("/api/admin/audit-jobs", { token, org: tenant });
+      const rows = Array.isArray(resp?.data) ? resp.data : [];
+      setAuditJobs(rows);
+      const nextJobId = String(options?.jobId || selectedAuditJobId || rows?.[0]?.id || "").trim();
+      if (pickFirst && rows?.[0]?.id) {
+        setSelectedAuditJobId(String(rows[0].id));
+      }
+      if (nextJobId) {
+        try {
+          const detail = await apiFetch(`/api/admin/audit-jobs/${encodeURIComponent(nextJobId)}`, { token, org: tenant });
+          const data = detail?.data || null;
+          setSelectedAuditJob(data);
+          if (data?.id) setSelectedAuditJobId(String(data.id));
+        } catch {
+          setSelectedAuditJob(null);
+        }
+      } else {
+        setSelectedAuditJob(null);
+      }
+    } catch (err) {
+      setAuditJobsError(err?.message || "Não foi possível carregar jobs de auditoria contínua.");
+      setAuditJobs([]);
+      setSelectedAuditJob(null);
+    } finally {
+      setAuditJobsLoading(false);
+    }
+  }
+
+  async function selectContinuousAuditJob(jobId) {
+    const safeJobId = String(jobId || "").trim();
+    setSelectedAuditJobId(safeJobId);
+    if (!safeJobId || !token || !canAccessAdmin) {
+      setSelectedAuditJob(null);
+      return;
+    }
+    try {
+      const resp = await apiFetch(`/api/admin/audit-jobs/${encodeURIComponent(safeJobId)}`, { token, org: tenant });
+      setSelectedAuditJob(resp?.data || null);
+    } catch (err) {
+      setAuditJobsError(err?.message || "Não foi possível carregar o job selecionado.");
+      setSelectedAuditJob(null);
+    }
+  }
+
+
+  useEffect(() => {
+    let cancelled = false;
+    async function bootstrapContinuousAuditJobs() {
+      if (!token || !canAccessAdmin) {
+        if (!cancelled) {
+          setAuditJobs([]);
+          setSelectedAuditJob(null);
+          setAuditJobsError("");
+        }
+        return;
+      }
+      try {
+        await loadContinuousAuditJobs({ pickFirst: true });
+      } catch {
+        // fail-open
+      }
+    }
+    void bootstrapContinuousAuditJobs();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, tenant, canAccessAdmin]);
 
   function scrollToBottom() {
     try {
@@ -4089,6 +4172,119 @@ async function stopRealtime(reason = 'client_stop') {
               <span style={{ marginLeft: "auto", color: "rgba(255,255,255,0.68)" }}>
                 GitHub: {formatGithubRuntimeStatus(agentCapabilities)}
               </span>
+            ) : null}
+          </div>
+        ) : null}
+
+
+        {canAccessAdmin ? (
+          <div
+            style={{
+              margin: isMobile ? "10px 12px 0" : "12px 16px 0",
+              padding: isMobile ? "12px" : "14px 16px",
+              borderRadius: 18,
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(255,255,255,0.035)",
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(103,232,249,0.88)" }}>
+                  Continuous audit jobs
+                </div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)", marginTop: 4 }}>
+                  Jobs persistidos de auditoria contínua para acompanhamento operacional.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => loadContinuousAuditJobs({ jobId: selectedAuditJobId || undefined })}
+                style={{ ...styles.btn, padding: "8px 12px", fontSize: 12 }}
+                disabled={auditJobsLoading}
+                title="Recarregar jobs"
+              >
+                {auditJobsLoading ? "Atualizando..." : "Atualizar"}
+              </button>
+            </div>
+
+            {auditJobsError ? (
+              <div style={{ fontSize: 12, color: "#fda4af" }}>{auditJobsError}</div>
+            ) : null}
+
+            <div style={{ display: "grid", gap: 8 }}>
+              {auditJobs.length === 0 ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>
+                  Nenhum job persistido de auditoria contínua ainda.
+                </div>
+              ) : (
+                auditJobs.slice(0, 6).map((job) => {
+                  const active = String(job?.id || "") === String(selectedAuditJobId || "");
+                  const specialists = Array.isArray(job?.selected_specialists) ? job.selected_specialists.join(", ") : "";
+                  return (
+                    <button
+                      key={job.id}
+                      type="button"
+                      onClick={() => selectContinuousAuditJob(job.id)}
+                      style={{
+                        textAlign: "left",
+                        borderRadius: 14,
+                        border: active ? "1px solid rgba(34,197,94,0.45)" : "1px solid rgba(255,255,255,0.08)",
+                        background: active ? "rgba(22,163,74,0.14)" : "rgba(255,255,255,0.03)",
+                        color: "#fff",
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        display: "grid",
+                        gap: 4,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                        <div style={{ fontWeight: 800, fontSize: 13 }}>{job?.title || "Continuous audit job"}</div>
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.62)" }}>{job?.status || "unknown"}</div>
+                      </div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                        {specialists || "Especialistas não informados"}
+                      </div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.54)" }}>
+                        Progresso: {Number(job?.progress_percentage || 0)}%
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            {selectedAuditJob ? (
+              <div
+                style={{
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(2,6,23,0.42)",
+                  padding: "12px 14px",
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ fontWeight: 800 }}>{selectedAuditJob?.title || "Job selecionado"}</div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                    {selectedAuditJob?.job_id || selectedAuditJob?.id || ""}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                  Status: {selectedAuditJob?.status || selectedAuditJob?.execution_state || "-"} • Progresso: {Number(selectedAuditJob?.progress_percentage || 0)}%
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                  Signer: {selectedAuditJob?.requested_signer || selectedAuditJob?.visible_agent || "-"}
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                  Specialists: {Array.isArray(selectedAuditJob?.selected_specialists) ? selectedAuditJob.selected_specialists.join(", ") : "-"}
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.64)" }}>
+                  {selectedAuditJob?.latest_summary || "Sem resumo mais recente."}
+                </div>
+              </div>
             ) : null}
           </div>
         ) : null}
