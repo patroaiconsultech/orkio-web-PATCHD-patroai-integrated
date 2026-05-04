@@ -1605,6 +1605,66 @@ useEffect(() => {
     });
   }
 
+  async function loadMessagesWithRetry(tid, opts = {}) {
+    const first = await loadMessages(tid, opts);
+    if (hasPersistedAssistantForTurn(first, opts?.turnStartedAt)) return first;
+    const shouldRetry =
+      !!opts?.retryOnMissingAssistant &&
+      !!tid &&
+      !opts?.signal?.aborted;
+    if (!shouldRetry) return first;
+    await new Promise((resolve) => setTimeout(resolve, Number(opts?.retryDelayMs || 220)));
+    if (opts?.signal?.aborted) return first;
+    return await loadMessages(tid, {
+      force: true,
+      expectedEpoch: activeThreadEpochRef.current,
+      allowInactive: opts?.allowInactive,
+    });
+  }
+
+  function ensureAssistantVisibleFromResponse({
+    freshMessages,
+    turnStartedAt,
+    answerText,
+    agentName,
+    agentId,
+    voiceId,
+    avatarUrl,
+  }) {
+    const normalizedAnswer = String(answerText || "").trim();
+    if (!normalizedAnswer) return;
+    const fromFresh = Array.isArray(freshMessages) ? freshMessages : [];
+    const hasExactFresh = fromFresh.some((m) =>
+      m?.role === "assistant" &&
+      !String(m?.id || "").startsWith("tmp-ass-") &&
+      String(m?.content || "").trim() === normalizedAnswer
+    );
+    const hasPersistedAssistant = hasPersistedAssistantForTurn(fromFresh, turnStartedAt);
+    if (hasExactFresh || hasPersistedAssistant) return;
+
+    setMessages((prev) => {
+      const base = (Array.isArray(prev) ? prev : []).filter((m) => !String(m?.id || "").startsWith("tmp-ass-"));
+      const alreadyVisible = base.some((m) =>
+        m?.role === "assistant" &&
+        String(m?.content || "").trim() === normalizedAnswer
+      );
+      if (alreadyVisible) return base;
+      return [
+        ...base,
+        {
+          id: `assistant-final-${Date.now()}`,
+          role: "assistant",
+          content: normalizedAnswer,
+          agent_name: agentName || "Orkio",
+          agent_id: agentId || null,
+          voice_id: voiceId || null,
+          avatar_url: avatarUrl || null,
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      ];
+    });
+  }
+
   
   function fillPremiumPrompt(promptText) {
     const next = String(promptText || "").trim();
@@ -1880,10 +1940,24 @@ async function sendMessage(presetMsg = null, opts = {}) {
         await loadThreads({ preserveThreadId: effectiveTidForLoad, keepMessages: true });
       }
       const freshMessages = effectiveTidForLoad
-        ? await loadMessages(effectiveTidForLoad, { force: true, expectedEpoch: activeThreadEpochRef.current })
+        ? await loadMessagesWithRetry(effectiveTidForLoad, {
+            force: true,
+            expectedEpoch: activeThreadEpochRef.current,
+            turnStartedAt,
+            retryOnMissingAssistant: true,
+            retryDelayMs: 260,
+            signal: ctl.signal,
+          })
         : [];
       clearTmpAssistantDrafts();
       void refreshWalletSummary({ silent: true });
+
+      const responseFinalText = String(
+        streamDonePayload?.final_text ||
+        resp?.data?.answer ||
+        resp?.data?.final_text ||
+        ""
+      ).trim();
 
       if (streamDonePayload?.final_text) {
         const normalizedFinal = String(streamDonePayload.final_text || "").trim();
@@ -1921,6 +1995,16 @@ async function sendMessage(presetMsg = null, opts = {}) {
             return replaced;
           });
         }
+      } else if (!resp?.data?.used_stream) {
+        ensureAssistantVisibleFromResponse({
+          freshMessages,
+          turnStartedAt,
+          answerText: responseFinalText,
+          agentName: resp?.data?.agent_name,
+          agentId: resp?.data?.agent_id,
+          voiceId: resolveAgentVoice({ agent_name: resp?.data?.agent_name, voice_id: resp?.data?.voice_id }),
+          avatarUrl: resp?.data?.avatar_url,
+        });
       }
 
       // PATCH0100_14: store agent info from response
