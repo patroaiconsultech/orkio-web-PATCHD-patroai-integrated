@@ -126,6 +126,8 @@ export async function apiFetch(path, options = {}) {
       "Session expired";
     const err = new Error(detail);
     err.status = 401;
+    err.code = "AUTH_SESSION_EXPIRED";
+    err.isAuthError = true;
     err.data = payload;
     throw err;
   }
@@ -369,7 +371,11 @@ export async function chatStream({
     if (typeof window !== "undefined") {
       window.location.href = "/auth?session_expired=1";
     }
-    throw new Error("Session expired");
+    const err = new Error("Session expired");
+    err.status = 401;
+    err.code = "AUTH_SESSION_EXPIRED";
+    err.isAuthError = true;
+    throw err;
   }
 
   if (!response.ok) {
