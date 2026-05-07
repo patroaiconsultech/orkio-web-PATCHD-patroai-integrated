@@ -82,14 +82,27 @@ function normalizeUser(user) {
 
   const role =
     user.role ||
+    (user.is_admin_master === true ? "admin_master" : null) ||
+    (user.write_approval_authority === true ? "admin_master" : null) ||
     (user.is_admin === true ? "admin" : null) ||
     (user.admin === true ? "admin" : null) ||
     "user";
 
+  const isAdminMaster =
+    user.is_admin_master === true ||
+    user.master_admin === true ||
+    user.write_approval_authority === true ||
+    role === "admin_master" ||
+    role === "master_admin";
+
   const adminAccess =
+    user.admin_console_access === true ||
+    isAdminMaster ||
     role === "admin" ||
     role === "owner" ||
     role === "superadmin" ||
+    role === "super_admin" ||
+    role === "creator" ||
     user.is_admin === true ||
     user.admin === true;
 
@@ -98,6 +111,17 @@ function normalizeUser(user) {
     role,
     is_admin: adminAccess,
     admin: adminAccess,
+    admin_console_access: adminAccess,
+    is_admin_master: isAdminMaster,
+    master_admin: isAdminMaster,
+    write_approval_authority: user.write_approval_authority === true || isAdminMaster,
+    authority_source:
+      user.authority_source ||
+      (isAdminMaster
+        ? "admin_master_identity"
+        : adminAccess
+        ? "admin_console_role_without_write_approval"
+        : "none"),
   };
 }
 
@@ -250,16 +274,36 @@ export function isApproved(user) {
  * =========================
  */
 
-export function isAdmin(user) {
+export function hasAdminConsoleAccess(user) {
   if (!user) return false;
 
   return Boolean(
-    user.role === "admin" ||
+    user.admin_console_access === true ||
+      user.role === "admin" ||
       user.role === "owner" ||
       user.role === "superadmin" ||
+      user.role === "super_admin" ||
+      user.role === "creator" ||
       user.is_admin === true ||
-      user.admin === true
+      user.admin === true ||
+      user.is_admin_master === true
   );
+}
+
+export function isMasterAdmin(user) {
+  if (!user) return false;
+
+  return Boolean(
+    user.is_admin_master === true ||
+      user.master_admin === true ||
+      user.write_approval_authority === true ||
+      user.role === "admin_master" ||
+      user.role === "master_admin"
+  );
+}
+
+export function isAdmin(user) {
+  return hasAdminConsoleAccess(user);
 }
 
 /**
