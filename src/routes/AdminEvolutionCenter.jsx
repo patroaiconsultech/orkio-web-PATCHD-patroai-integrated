@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../ui/api.js";
-import { getTenant, getToken, getUser, isAdmin } from "../lib/auth.js";
+import { getTenant, getToken, getUser, hasAdminConsoleAccess, isAdmin, isMasterAdmin } from "../lib/auth.js";
 
 const CARD = "rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-5";
 const INPUT = "w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35";
@@ -237,9 +237,7 @@ function scoreValue(item, key) {
 }
 
 function isMasterAdminUser(user) {
-  if (!user) return false;
-  const role = String(user.role || "").toLowerCase();
-  return role === "owner" || role === "superadmin" || user.master_admin === true;
+  return isMasterAdmin(user);
 }
 
 export default function AdminEvolutionCenter() {
@@ -283,6 +281,8 @@ export default function AdminEvolutionCenter() {
   const workWindow = useMemo(() => (health?.work_window || {}), [health]);
   const dailyAgenda = useMemo(() => (health?.daily_agenda || {}), [health]);
   const domainSlaPolicy = useMemo(() => (health?.domain_sla_policy || {}), [health]);
+  const hasAdminAccess = hasAdminConsoleAccess(user);
+  const canWrite = isMasterAdminUser(user);
 
   async function loadHealth() {
     const data = await apiFetch("/api/internal/evolution/health", { token, org: tenant });
@@ -358,29 +358,29 @@ export default function AdminEvolutionCenter() {
       nav("/auth");
       return;
     }
-    if (!isAdmin(user)) {
+    if (!hasAdminAccess) {
       nav("/app");
       return;
     }
     refreshAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, user, nav]);
+  }, [token, user, nav, hasAdminAccess]);
 
   useEffect(() => {
-    if (token && user && isAdmin(user)) {
+    if (token && user && hasAdminAccess) {
       refreshAll(selectedId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, actionFilter, severityFilter, sortMode]);
+  }, [statusFilter, actionFilter, severityFilter, sortMode, token, user, hasAdminAccess]);
 
   useEffect(() => {
-    if (!token || !user || !isAdmin(user)) return;
+    if (!token || !user || !hasAdminAccess) return;
     const h = setTimeout(() => {
       refreshAll(selectedId);
     }, 250);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryText]);
+  }, [queryText, token, user, hasAdminAccess]);
 
   useEffect(() => {
     if (selectedId) loadDetail(selectedId).catch((e) => setErr(extractError(e)));
@@ -407,6 +407,10 @@ export default function AdminEvolutionCenter() {
 
   async function decide(kind, { executeNow = false } = {}) {
     if (!selectedId) return;
+    if (!canWrite) {
+      setErr("Somente o Admin Master pode aprovar, rejeitar ou executar proposals.");
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
@@ -446,6 +450,10 @@ export default function AdminEvolutionCenter() {
 
   async function executeProposal() {
     if (!selectedId) return;
+    if (!canWrite) {
+      setErr("Somente o Admin Master pode executar proposals aprovadas.");
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
@@ -472,6 +480,10 @@ export default function AdminEvolutionCenter() {
 
   async function retryProposal() {
     if (!selectedId) return;
+    if (!canWrite) {
+      setErr("Somente o Admin Master pode reexecutar proposals.");
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
@@ -498,6 +510,10 @@ export default function AdminEvolutionCenter() {
 
   async function rollbackExecution(executionId) {
     if (!executionId) return;
+    if (!canWrite) {
+      setErr("Somente o Admin Master pode realizar rollback.");
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
@@ -541,6 +557,10 @@ export default function AdminEvolutionCenter() {
   }
 
   async function runBatchExecute() {
+    if (!canWrite) {
+      setErr("Somente o Admin Master pode executar o batch governado.");
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
@@ -689,6 +709,12 @@ export default function AdminEvolutionCenter() {
             </div>
           </div>
         </header>
+
+        {!canWrite ? (
+          <section className="mt-6 rounded-3xl border border-amber-400/25 bg-amber-400/10 px-5 py-4 text-sm text-amber-100">
+            Você está em modo observador governado. Scan, leitura de policy e análise de proposals continuam liberados, mas aprovação e execução exigem Admin Master.
+          </section>
+        ) : null}
 
         <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           {stats.map((item) => (
@@ -1260,42 +1286,42 @@ export default function AdminEvolutionCenter() {
                         <div className="mt-4 grid gap-3">
                           <button
                             onClick={() => decide("approve")}
-                            disabled={busy || !selected}
+                            disabled={busy || !selected || !canWrite}
                             className={`${BTN} border border-emerald-400/30 bg-emerald-400/10 text-emerald-100 hover:bg-emerald-400/20 disabled:opacity-50`}
                           >
                             Aprovar
                           </button>
                           <button
                             onClick={() => decide("approve", { executeNow: true })}
-                            disabled={busy || !selected}
+                            disabled={busy || !selected || !canWrite}
                             className={`${BTN} border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/20 disabled:opacity-50`}
                           >
                             Aprovar + executar
                           </button>
                           <button
                             onClick={executeProposal}
-                            disabled={busy || !selected}
+                            disabled={busy || !selected || !canWrite}
                             className={`${BTN} border border-white/10 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50`}
                           >
                             Executar proposal aprovada
                           </button>
                           <button
                             onClick={retryProposal}
-                            disabled={busy || !selected}
+                            disabled={busy || !selected || !canWrite}
                             className={`${BTN} border border-amber-400/30 bg-amber-400/10 text-amber-100 hover:bg-amber-400/20 disabled:opacity-50`}
                           >
                             Retry execution
                           </button>
                           <button
                             onClick={holdProposal}
-                            disabled={busy || !selected}
+                            disabled={busy || !selected || !canWrite}
                             className={`${BTN} border border-amber-400/30 bg-amber-400/10 text-amber-100 hover:bg-amber-400/20 disabled:opacity-50`}
                           >
                             Segurar em hold
                           </button>
                           <button
                             onClick={() => decide("reject")}
-                            disabled={busy || !selected}
+                            disabled={busy || !selected || !canWrite}
                             className={`${BTN} border border-rose-400/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20 disabled:opacity-50`}
                           >
                             Rejeitar
