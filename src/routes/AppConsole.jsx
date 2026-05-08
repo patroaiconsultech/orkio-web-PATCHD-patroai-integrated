@@ -1449,6 +1449,19 @@ useEffect(() => {
       nav("/auth");
     }
   }
+function formatAgentOptionLabel(agent) {
+  const name = String(agent?.name || "Agent");
+  const model = String(agent?.model || "").trim();
+  const profile = String(agent?.reasoning_profile || "").trim();
+  const provider = String(agent?.provider || "").trim();
+  const parts = [name];
+  if (profile) parts.push(profile);
+  if (model) parts.push(model);
+  else if (provider) parts.push(provider);
+  if (agent?.is_default) parts.push("default");
+  return parts.join(" • ");
+}
+
 
   function buildMessagePrefix() {
     if (destMode === "team") return "@Team ";
@@ -4048,7 +4061,7 @@ async function stopRealtime(reason = 'client_stop') {
 
             {destMode === "single" ? (
               <select style={styles.select} value={destSingle} onChange={(e) => setDestSingle(e.target.value)}>
-                {agents.map(a => <option key={a.id} value={a.id}>{a.name}{a.is_default ? " (default)" : ""}</option>)}
+                {agents.map(a => <option key={a.id} value={a.id}>{formatAgentOptionLabel(a)}</option>)}
               </select>
             ) : null}
 
