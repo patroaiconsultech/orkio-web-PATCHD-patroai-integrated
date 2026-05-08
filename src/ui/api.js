@@ -820,3 +820,17 @@ export const setWalletAutoRecharge = ({ enabled, pack_code = null, threshold_usd
     org: org || tenant,
     body: { enabled, pack_code, threshold_usd },
   });
+
+/* =========================
+ * ADMIN AGENTS
+ * ========================= */
+
+export const getAdminAgents = (opts = {}) => apiFetch("/api/admin/agents", opts);
+
+export const saveAdminAgent = ({ id = null, payload, token, org, tenant } = {}) =>
+  apiFetch(id ? `/api/admin/agents/${id}` : "/api/admin/agents", {
+    method: id ? "PUT" : "POST",
+    token,
+    org: org || tenant,
+    body: payload,
+  });
