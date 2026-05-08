@@ -115,12 +115,19 @@ export async function apiFetch(path, options = {}) {
   console.log("API_FETCH_RESPONSE", { url, status: response.status, ok: response.ok, payload });
 
   if (response.status === 401) {
-    if (!options.skipAuthRedirect) {
+    const pathText = String(path || "");
+    const nonFatalAuthProbe =
+      options.skipAuthRedirect ||
+      pathText.includes("/api/auth/heartbeat") ||
+      pathText.includes("/api/admin/llm-models");
+
+    if (!nonFatalAuthProbe) {
       clearSession();
       if (typeof window !== "undefined" && window.location?.pathname !== "/auth") {
         window.location.href = "/auth?session_expired=1";
       }
     }
+
     const detail =
       (payload && typeof payload === "object" && (payload.detail || payload.message)) ||
       "Session expired";
@@ -129,6 +136,7 @@ export async function apiFetch(path, options = {}) {
     err.code = "AUTH_SESSION_EXPIRED";
     err.isAuthError = true;
     err.data = payload;
+    err.nonFatalAuthProbe = nonFatalAuthProbe;
     throw err;
   }
 
@@ -830,6 +838,7 @@ export const getAdminAgents = (opts = {}) => apiFetch("/api/admin/agents", opts)
 export const getAdminLlmModels = (opts = {}) =>
   apiFetch("/api/admin/llm-models", {
     method: "GET",
+    skipAuthRedirect: true,
     ...opts,
   });
 
