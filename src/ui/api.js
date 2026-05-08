@@ -827,6 +827,12 @@ export const setWalletAutoRecharge = ({ enabled, pack_code = null, threshold_usd
 
 export const getAdminAgents = (opts = {}) => apiFetch("/api/admin/agents", opts);
 
+export const getAdminLlmModels = (opts = {}) =>
+  apiFetch("/api/admin/llm-models", {
+    method: "GET",
+    ...opts,
+  });
+
 export const saveAdminAgent = ({ id = null, payload, token, org, tenant } = {}) =>
   apiFetch(id ? `/api/admin/agents/${id}` : "/api/admin/agents", {
     method: id ? "PUT" : "POST",
