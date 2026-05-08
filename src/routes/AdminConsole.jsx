@@ -148,9 +148,15 @@ React.useEffect(() => {
     name: "",
     description: "",
     system_prompt: "",
+    provider: "openai",
     model: "",
+    fallback_model: "",
     embedding_model: "",
     temperature: "",
+    reasoning_profile: "",
+    tool_policy: "",
+    max_cost_per_run: "",
+    strict_mode: false,
     rag_enabled: true,
     rag_top_k: 6,
     is_default: false,
@@ -264,9 +270,15 @@ React.useEffect(() => {
       name: "",
       description: "",
       system_prompt: "Você é um assistente útil e objetivo.",
+      provider: "openai",
       model: "gpt-4o-mini",
+      fallback_model: "gpt-4o-mini",
       embedding_model: "",
       temperature: "0.7",
+      reasoning_profile: "",
+      tool_policy: "",
+      max_cost_per_run: "",
+      strict_mode: false,
       rag_enabled: true,
       rag_top_k: 6,
       is_default: false,
@@ -282,9 +294,15 @@ React.useEffect(() => {
       name: agent.name || "",
       description: agent.description || "",
       system_prompt: agent.system_prompt || "",
+      provider: agent.provider || "openai",
       model: agent.model || "",
+      fallback_model: agent.fallback_model || "",
       embedding_model: agent.embedding_model || "",
       temperature: agent.temperature || "",
+      reasoning_profile: agent.reasoning_profile || "",
+      tool_policy: agent.tool_policy || "",
+      max_cost_per_run: agent.max_cost_per_run || "",
+      strict_mode: agent.strict_mode === true,
       rag_enabled: agent.rag_enabled !== false,
       rag_top_k: agent.rag_top_k || 6,
       is_default: agent.is_default || false,
@@ -302,9 +320,15 @@ React.useEffect(() => {
         name: agentForm.name,
         description: agentForm.description || null,
         system_prompt: agentForm.system_prompt,
+        provider: agentForm.provider || null,
         model: agentForm.model || null,
+        fallback_model: agentForm.fallback_model || null,
         embedding_model: agentForm.embedding_model || null,
         temperature: agentForm.temperature ? parseFloat(agentForm.temperature) : null,
+        reasoning_profile: agentForm.reasoning_profile || null,
+        tool_policy: agentForm.tool_policy || null,
+        max_cost_per_run: agentForm.max_cost_per_run ? parseFloat(agentForm.max_cost_per_run) : null,
+        strict_mode: !!agentForm.strict_mode,
         rag_enabled: agentForm.rag_enabled,
         rag_top_k: parseInt(agentForm.rag_top_k) || 6,
         is_default: agentForm.is_default,
@@ -312,7 +336,7 @@ React.useEffect(() => {
         avatar_url: agentForm.avatar_url || null
       };
 
-      if (editingAgent) {
+      if (editingAgent && editingAgent.persisted !== false) {
         await apiFetch(`/api/admin/agents/${editingAgent.id}`, {
           method: "PUT",
           org: tenant,
@@ -777,6 +801,8 @@ async function openKnowledgeModal(agent) {
                         <div className="flex items-center gap-2">
                           <h3 className="font-bold text-lg">{a.name}</h3>
                           {a.is_default && <Pill tone="good">default</Pill>}
+                          {a.persisted === false ? <Pill tone="warn">roster</Pill> : <Pill tone="good">persisted</Pill>}
+                          {a.role ? <Pill>{a.role}</Pill> : null}
                         </div>
                         <p className="mt-1 text-sm text-white/60 line-clamp-2">{a.description || "Sem descrição"}</p>
                       </div>
@@ -785,6 +811,11 @@ async function openKnowledgeModal(agent) {
                   
                   <div className="mt-4 flex flex-wrap gap-2 text-xs">
                     <Pill>{a.model || "gpt-4o-mini"}</Pill>
+                    {a.provider && <Pill>{a.provider}</Pill>}
+                    {a.fallback_model && <Pill tone="muted">fallback: {a.fallback_model}</Pill>}
+                    {a.reasoning_profile && <Pill>{a.reasoning_profile}</Pill>}
+                    {a.tool_policy && <Pill tone="muted">{a.tool_policy}</Pill>}
+                    {a.max_cost_per_run && <Pill tone="muted">max: {a.max_cost_per_run}</Pill>}
                     <Pill tone={a.rag_enabled ? "good" : "muted"}>RAG {a.rag_enabled ? "ON" : "OFF"}</Pill>
                     {a.temperature && <Pill>temp: {a.temperature}</Pill>}
                     <Pill>🔊 {a.voice_id || "nova"}</Pill>
@@ -797,34 +828,38 @@ async function openKnowledgeModal(agent) {
                     >
                       Edit
                     </button>
-                    <button
-                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10"
-                      onClick={() => openKnowledgeModal(a)}
-                    >
-                      Knowledge
-                    </button>
-                    <button
-                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10"
-                      onClick={() => openLinksModal(a)}
-                    >
-                      Links
-                    </button>
-                    <button
-                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10"
-                      onClick={() => openDelegateModal(a)}
-                    >
-                      Send
-                    </button>
-                    <button
-                      className="rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-1.5 text-xs text-rose-200 hover:bg-rose-400/20"
-                      onClick={() => deleteAgent(a.id)}
-                    >
-                      Delete
-                    </button>
+                    {a.persisted !== false ? (
+                      <>
+                        <button
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10"
+                          onClick={() => openKnowledgeModal(a)}
+                        >
+                          Knowledge
+                        </button>
+                        <button
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10"
+                          onClick={() => openLinksModal(a)}
+                        >
+                          Links
+                        </button>
+                        <button
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10"
+                          onClick={() => openDelegateModal(a)}
+                        >
+                          Send
+                        </button>
+                        <button
+                          className="rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-1.5 text-xs text-rose-200 hover:bg-rose-400/20"
+                          onClick={() => deleteAgent(a.id)}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                   
                   <div className="mt-3 text-xs text-white/40">
-                    Updated: {fmt(a.updated_at)}
+                    Updated: {fmt(a.updated_at)}{a.persisted === false ? " • roster only" : ""}
                   </div>
                 </div>
               ))}
@@ -1102,6 +1137,16 @@ async function openKnowledgeModal(agent) {
                   className="rounded"
                 />
                 <span className="text-sm">Default Agent</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={agentForm.strict_mode}
+                  onChange={e => setAgentForm({ ...agentForm, strict_mode: e.target.checked })}
+                  className="rounded"
+                />
+                <span className="text-sm">Strict Mode</span>
               </label>
             </div>
           </div>
