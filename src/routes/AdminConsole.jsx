@@ -80,13 +80,18 @@ function providerUnavailableReason(provider) {
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-zinc-900 p-6" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3" onClick={onClose}>
+      <div
+        className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-zinc-900"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-6 py-4">
           <h3 className="text-lg font-bold">{title}</h3>
           <button onClick={onClose} className="text-white/60 hover:text-white text-xl">&times;</button>
         </div>
-        {children}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -96,11 +101,24 @@ export default function AdminConsole() {
   const nav = useNavigate();
 
 
-// Summit presence heartbeat (keeps online status accurate)
+// Summit presence heartbeat (keeps online status accurate).
+// EFATA777 v7: heartbeat is non-fatal for Admin. A transient 401 must not clear
+// the whole browser session while /api/me and admin endpoints may still be valid.
 React.useEffect(() => {
   let alive = true;
   const tick = async () => {
-    try { await apiFetch("/api/auth/heartbeat", { method: "POST" }); } catch (_e) {}
+    const t = getToken();
+    if (!t) return;
+    try {
+      await apiFetch("/api/auth/heartbeat", {
+        method: "POST",
+        token: t,
+        org: getTenant() || "public",
+        skipAuthRedirect: true,
+      });
+    } catch (_e) {
+      // Non-fatal. Auth bootstrap/API calls decide whether a real logout is needed.
+    }
   };
   tick();
   const id = setInterval(() => { if (alive) tick(); }, 20000);
@@ -269,7 +287,7 @@ React.useEffect(() => {
       } else if (which === "agents") {
         const [agentsRes, catalogRes] = await Promise.allSettled([
           apiFetch("/api/admin/agents", { org: tenant, token }),
-          getAdminLlmModels({ org: tenant, token }),
+          getAdminLlmModels({ org: tenant, token, skipAuthRedirect: true }),
         ]);
         if (agentsRes.status === "fulfilled") {
           const res = agentsRes.value;
@@ -1353,7 +1371,7 @@ async function openKnowledgeModal(agent) {
             </div>
           </div>
           
-          <div className="flex justify-end gap-3 pt-4">
+          <div className="sticky bottom-0 z-20 -mx-6 mt-4 flex justify-end gap-3 border-t border-white/10 bg-zinc-900/95 px-6 py-4 backdrop-blur">
             <button
               className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
               onClick={() => setAgentModalOpen(false)}
