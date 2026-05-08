@@ -563,12 +563,28 @@ export default function AppConsole() {
   const nav = useNavigate();
 
 
-// Summit presence heartbeat (keeps online status accurate)
-// P0 HOTFIX: não enviar heartbeat sem token válido e parar em 401.
+// Summit presence heartbeat (keeps online status accurate).
+// EFATA777 v7: heartbeat is non-fatal. Refresh/login state must be decided by
+// the /api/me bootstrap, not by a transient heartbeat 401.
 React.useEffect(() => {
-  return startSessionHeartbeat({
-    intervalMs: 20000,
-  });
+  let alive = true;
+  const tick = async () => {
+    const t = getToken();
+    if (!t) return;
+    try {
+      await apiFetch("/api/auth/heartbeat", {
+        method: "POST",
+        token: t,
+        org: getTenant() || "public",
+        skipAuthRedirect: true,
+      });
+    } catch (_e) {
+      // Non-fatal by design. Do not clear session here.
+    }
+  };
+  tick();
+  const id = setInterval(() => { if (alive) tick(); }, 20000);
+  return () => { alive = false; clearInterval(id); };
 }, []);
   const [tenant, setTenant] = useState(getTenant() || "public");
   const [token, setToken] = useState(getToken());
