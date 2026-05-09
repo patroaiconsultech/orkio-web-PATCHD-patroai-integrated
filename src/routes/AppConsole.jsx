@@ -563,6 +563,45 @@ export default function AppConsole() {
   const nav = useNavigate();
 
 
+  async function confirmSessionExpired(reason = "unknown") {
+    const t = getToken();
+    const org = getTenant() || tenant || "public";
+
+    if (!t) return true;
+
+    try {
+      await apiFetch("/api/me", {
+        method: "GET",
+        token: t,
+        org,
+        skipAuthRedirect: true,
+      });
+      return false;
+    } catch (err) {
+      if (err?.status === 401) {
+        console.warn("session confirmed expired", { reason, code: err?.code });
+        return true;
+      }
+      console.warn("session probe failed without confirmed expiry", {
+        reason,
+        status: err?.status,
+        message: err?.message,
+      });
+      return false;
+    }
+  }
+
+  async function logoutIfSessionReallyExpired(reason = "unknown") {
+    const expired = await confirmSessionExpired(reason);
+    if (expired) {
+      clearSession();
+      nav("/auth?session_expired=1");
+      return true;
+    }
+    return false;
+  }
+
+
 // Summit presence heartbeat (keeps online status accurate).
 // EFATA777 v7: heartbeat is non-fatal. Refresh/login state must be decided by
 // the /api/me bootstrap, not by a transient heartbeat 401.
@@ -1009,6 +1048,11 @@ useEffect(() => {
       }
     } catch (err) {
       console.warn("bootstrapUser failed", err);
+      if (err?.status === 401) {
+        clearSession();
+        nav("/auth?session_expired=1");
+        return;
+      }
     } finally {
       if (alive) setOnboardingChecked(true);
     }
@@ -1269,9 +1313,10 @@ useEffect(() => {
 
       return list;
     } catch (e) {
-      console.error("loadThreads error:", e);
-      clearSession();
-      nav("/auth");
+      console.warn("loadThreads non-fatal error:", e);
+      if (e?.status === 401) {
+        await logoutIfSessionReallyExpired("loadThreads");
+      }
       return [];
     }
   }
@@ -1326,7 +1371,10 @@ useEffect(() => {
       return normalized;
     } catch (e) {
       if (e?.name !== "AbortError") {
-        console.error("loadMessages error:", e);
+        console.warn("loadMessages non-fatal error:", e);
+        if (e?.status === 401) {
+          await logoutIfSessionReallyExpired("loadMessages");
+        }
       }
       return [];
     } finally {
@@ -1654,6 +1702,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
       let resp = null;
       let newThreadId = threadId;
       let streamDonePayload = null;
+      let streamMeta = null;
 
       if (ORKIO_CHAT_STREAM_PRIMARY) {
         try {
@@ -1667,7 +1716,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             client_message_id: clientMessageId,
             signal: ctl.signal,
           });
-          const streamMeta = await consumeChatStream(streamResp, {
+          streamMeta = await consumeChatStream(streamResp, {
             onStatus: (payload) => {
               if (payload?.status) setUploadStatus(`⌛ ${payload.status}`);
               if (payload?.agent_name) setActiveRuntimeAgent(payload.agent_name);
@@ -1827,46 +1876,65 @@ async function sendMessage(presetMsg = null, opts = {}) {
       const freshMessages = effectiveTidForLoad
         ? await loadMessages(effectiveTidForLoad, { force: true, expectedEpoch: activeThreadEpochRef.current })
         : [];
-      clearTmpAssistantDrafts();
-      void refreshWalletSummary({ silent: true });
 
-      if (streamDonePayload?.final_text) {
-        const normalizedFinal = String(streamDonePayload.final_text || "").trim();
-        const hasFinalAssistant = (freshMessages || []).some((m) =>
-          m?.role === "assistant" &&
-          String(m?.content || "").trim() === normalizedFinal
-        );
-        const hasPersistedAssistant = hasPersistedAssistantForTurn(freshMessages, turnStartedAt);
-        if (!hasFinalAssistant && !hasPersistedAssistant && normalizedFinal) {
-          setMessages((prev) => {
-            const replaced = (Array.isArray(prev) ? prev : [])
-              .filter((m) => !String(m?.id || "").startsWith("tmp-ass-"))
-              .map((m) => (
-                m.id === draftAssistantId
-                  ? {
-                      ...m,
-                      content: normalizedFinal,
-                      agent_name: streamDonePayload?.agent_name || m.agent_name || "Orkio",
-                      agent_id: streamDonePayload?.agent_id || m.agent_id || null,
-                      voice_id: streamDonePayload?.voice_id || m.voice_id || null,
-                      avatar_url: streamDonePayload?.avatar_url || m.avatar_url || null,
-                    }
-                  : m
-              ));
-            replaced.push({
+      const finalTextCandidate = String(
+        streamDonePayload?.final_text ||
+        streamMeta?.done_payload?.final_text ||
+        streamMeta?.draft_text ||
+        ""
+      ).trim();
+
+      const finalAgentName =
+        streamDonePayload?.agent_name ||
+        streamMeta?.done_payload?.agent_name ||
+        "Orkio";
+      const finalAgentId =
+        streamDonePayload?.agent_id ||
+        streamMeta?.done_payload?.agent_id ||
+        null;
+      const finalVoiceId =
+        streamDonePayload?.voice_id ||
+        streamMeta?.done_payload?.voice_id ||
+        null;
+      const finalAvatarUrl =
+        streamDonePayload?.avatar_url ||
+        streamMeta?.done_payload?.avatar_url ||
+        null;
+
+      // EFATA777 v8:
+      // Never require a refresh to see the answer. The backend may already have
+      // persisted the assistant message, but a thread epoch/abort race can stop
+      // loadMessages() from applying it to state. Always materialize the final
+      // SSE text locally, guarded against duplicates already visible in state.
+      if (finalTextCandidate) {
+        setMessages((prev) => {
+          const list = Array.isArray(prev) ? prev : [];
+          const cleaned = list.filter((m) => !String(m?.id || "").startsWith("tmp-ass-"));
+          const alreadyVisible = cleaned.some((m) =>
+            m?.role === "assistant" &&
+            String(m?.content || "").trim() === finalTextCandidate
+          );
+          if (alreadyVisible) return cleaned;
+
+          return [
+            ...cleaned,
+            {
               id: `stream-final-${Date.now()}`,
               role: "assistant",
-              content: normalizedFinal,
-              agent_name: streamDonePayload?.agent_name || "Orkio",
-              agent_id: streamDonePayload?.agent_id || null,
-              voice_id: streamDonePayload?.voice_id || null,
-              avatar_url: streamDonePayload?.avatar_url || null,
+              content: finalTextCandidate,
+              agent_name: finalAgentName,
+              agent_id: finalAgentId,
+              voice_id: finalVoiceId,
+              avatar_url: finalAvatarUrl,
               created_at: Math.floor(Date.now() / 1000),
-            });
-            return replaced;
-          });
-        }
+            },
+          ];
+        });
+      } else {
+        clearTmpAssistantDrafts();
       }
+
+      void refreshWalletSummary({ silent: true });
 
       // PATCH0100_14: store agent info from response
       if (resp?.data) {
@@ -1948,6 +2016,13 @@ async function sendMessage(presetMsg = null, opts = {}) {
 
     } catch (e) {
       console.error("[V2V] sendMessage error:", e);
+      if (e?.status === 401) {
+        const expired = await logoutIfSessionReallyExpired("sendMessage");
+        if (expired) {
+          setSending(false);
+          return;
+        }
+      }
       setV2vPhase('error');
       const walletDetail = normalizeWalletErrorPayload(e);
       if (walletDetail || isWalletBlockedError(e)) {
