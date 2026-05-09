@@ -1,5 +1,4 @@
 import {
-  clearSession,
   getTenant as readTenant,
   getToken as readToken,
 } from "../lib/auth.js";
@@ -121,13 +120,6 @@ export async function apiFetch(path, options = {}) {
       pathText.includes("/api/auth/heartbeat") ||
       pathText.includes("/api/admin/llm-models");
 
-    if (!nonFatalAuthProbe) {
-      clearSession();
-      if (typeof window !== "undefined" && window.location?.pathname !== "/auth") {
-        window.location.href = "/auth?session_expired=1";
-      }
-    }
-
     const detail =
       (payload && typeof payload === "object" && (payload.detail || payload.message)) ||
       "Session expired";
@@ -137,6 +129,8 @@ export async function apiFetch(path, options = {}) {
     err.isAuthError = true;
     err.data = payload;
     err.nonFatalAuthProbe = nonFatalAuthProbe;
+    // EFATA777 v8: apiFetch never clears session or redirects by itself.
+    // Screens must confirm /api/me before deciding that the session expired.
     throw err;
   }
 
@@ -375,14 +369,13 @@ export async function chatStream({
   });
 
   if (response.status === 401) {
-    clearSession();
-    if (typeof window !== "undefined") {
-      window.location.href = "/auth?session_expired=1";
-    }
-    const err = new Error("Session expired");
+    const err = new Error("Stream unauthorized");
     err.status = 401;
-    err.code = "AUTH_SESSION_EXPIRED";
+    err.code = "CHAT_STREAM_UNAUTHORIZED";
     err.isAuthError = true;
+    err.nonFatalAuthProbe = false;
+    // EFATA777 v8: chatStream never clears session or redirects by itself.
+    // AppConsole must confirm /api/me before logout.
     throw err;
   }
 
