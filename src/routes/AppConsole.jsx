@@ -1535,6 +1535,31 @@ useEffect(() => {
     return fresh;
   }
 
+  function scheduleFinalTurnReconcile({ threadId: reconcileThreadId, turnStartedAt = 0, delayMs = 1200 } = {}) {
+    const tid = String(reconcileThreadId || "").trim();
+    if (!tid) return;
+    window.setTimeout(() => {
+      try {
+        if (String(activeThreadIdRef.current || "") !== tid) return;
+        void loadMessages(tid, {
+          force: true,
+          allowInactive: true,
+          finalizeTurn: true,
+          preserveExistingRequest: true,
+          expectedEpoch: activeThreadEpochRef.current,
+        }).then((fresh) => {
+          if (hasPersistedAssistantForTurn(fresh, turnStartedAt)) {
+            appendExecutionTrace({
+              kind: "done",
+              label: "Histórico reconciliado",
+              detail: "A resposta persistida foi sincronizada no App Console sem exigir refresh manual.",
+            });
+          }
+        });
+      } catch {}
+    }, Math.max(300, Number(delayMs || 1200)));
+  }
+
 
   async function loadAgents() {
     try {
@@ -2087,7 +2112,11 @@ async function sendMessage(presetMsg = null, opts = {}) {
 
       const finalTextCandidate = String(
         streamDonePayload?.final_text ||
+        streamDonePayload?.message ||
+        streamDonePayload?.content ||
         streamMeta?.done_payload?.final_text ||
+        streamMeta?.done_payload?.message ||
+        streamMeta?.done_payload?.content ||
         streamMeta?.draft_text ||
         ""
       ).trim();
@@ -2145,6 +2174,15 @@ async function sendMessage(presetMsg = null, opts = {}) {
             finalAvatarUrl,
             turnStartedAt,
           });
+
+      const freshHasAssistant = hasPersistedAssistantForTurn(freshMessages, turnStartedAt);
+      if (!freshHasAssistant && effectiveTidForLoad) {
+        scheduleFinalTurnReconcile({
+          threadId: effectiveTidForLoad,
+          turnStartedAt,
+          delayMs: 1200,
+        });
+      }
 
       if (effectiveTidForLoad) {
         void loadThreads({ preserveThreadId: effectiveTidForLoad, keepMessages: true });
