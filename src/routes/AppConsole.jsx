@@ -86,10 +86,21 @@ async function consumeChatStream(
     onAgentDone,
     onKeepalive,
     onExecution,
+    signal,
+    isStale,
   } = {}
 ) {
   const reader = response?.body?.getReader?.();
   if (!reader) return { thread_id: null, trace_id: null, event_count: 0, used_stream: false };
+
+  const abortStream = () => {
+    try { reader.cancel?.(); } catch {}
+    const err = new Error("CHAT_STREAM_ABORTED");
+    err.name = "AbortError";
+    err.code = "CHAT_STREAM_ABORTED";
+    throw err;
+  };
+
   const decoder = new TextDecoder();
   let buf = "";
   let lastThreadId = null;
@@ -111,6 +122,7 @@ async function consumeChatStream(
     if (dataLines.length) {
       try { payload = JSON.parse(dataLines.join("\n")); } catch { payload = { raw: dataLines.join("\n") }; }
     }
+    if (signal?.aborted || isStale?.()) abortStream();
     if (payload?.thread_id) lastThreadId = payload.thread_id;
     if (payload?.trace_id) lastTraceId = payload.trace_id;
     eventCount += 1;
@@ -137,7 +149,9 @@ async function consumeChatStream(
   };
 
   while (true) {
+    if (signal?.aborted || isStale?.()) abortStream();
     const { value, done } = await reader.read();
+    if (signal?.aborted || isStale?.()) abortStream();
     if (done) break;
     buf += decoder.decode(value, { stream: true });
     const parts = buf.split(/\r?\n\r?\n/);
@@ -1253,6 +1267,8 @@ useEffect(() => {
     const nextId = String(nextThreadId || "");
     const { clearMessages = true, persist = true, lockMs = 15000 } = opts || {};
     activeThreadEpochRef.current += 1;
+    streamRunRef.current += 1;
+    try { streamCtlRef.current?.abort(); } catch {}
     activeThreadIdRef.current = nextId;
     requestedThreadIdRef.current = nextId;
     messagesLoadRequestRef.current += 1;
@@ -1895,12 +1911,16 @@ async function sendMessage(presetMsg = null, opts = {}) {
             signal: ctl.signal,
           });
           streamMeta = await withTimeout(consumeChatStream(streamResp, {
+            signal: ctl.signal,
+            isStale,
             onStatus: (payload) => {
+              if (isStale()) return;
               if (payload?.status) setUploadStatus(`⌛ ${payload.status}`);
               if (payload?.agent_name) setActiveRuntimeAgent(payload.agent_name);
               appendExecutionTrace(describeExecutionStatus(payload));
             },
             onError: (payload) => {
+              if (isStale()) return;
               appendExecutionTrace(describeExecutionError(payload));
               if (payload?.code === "WALLET_INSUFFICIENT_BALANCE") {
                 setWalletBlockedDetail(payload);
@@ -1911,6 +1931,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
               if (payload?.message) setV2vError(String(payload.message));
             },
             onExecution: (payload) => {
+              if (isStale()) return;
               if (payload?.step === "agent_handoff") {
                 const handoff = `${payload?.from_agent_name || payload?.from_agent_id || "Agente"} → ${payload?.to_agent_name || payload?.agent_name || payload?.to_agent_id || "Agente"}`;
                 setRuntimeHandoffLabel(handoff);
@@ -1921,6 +1942,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
               appendExecutionTrace(describeExecutionEvent(payload));
             },
             onChunk: (payload, draftText) => {
+              if (isStale()) return;
               setMessages((prev) => prev.map((m) => (
                 m.id === draftAssistantId
                   ? {
@@ -1935,6 +1957,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
               )));
             },
             onAgentDone: (payload) => {
+              if (isStale()) return;
               if (payload?.agent_name) setActiveRuntimeAgent(payload.agent_name);
               appendExecutionTrace({
                 kind: "agent",
@@ -1957,6 +1980,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             },
             onKeepalive: () => {},
             onDone: (payload) => {
+              if (isStale()) return;
               streamDonePayload = payload || null;
               appendExecutionTrace(describeExecutionDone(payload));
               if (payload?.thread_id) newThreadId = payload.thread_id;
@@ -1982,6 +2006,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
               }
             },
           }), CHAT_STREAM_TIMEOUT_MS, "CHAT_STREAM_TIMEOUT");
+          if (isStale()) return;
           resp = {
             data: {
               thread_id: streamMeta?.thread_id || newThreadId,
@@ -2269,6 +2294,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
       }
 
     } catch (e) {
+      if (isStale()) return;
       console.error("[V2V] sendMessage error:", e);
       if (e?.status === 401) {
         const expired = await logoutIfSessionReallyExpired("sendMessage");
@@ -2353,12 +2379,14 @@ async function sendMessage(presetMsg = null, opts = {}) {
         setV2vError(e?.message || "Falha ao enviar mensagem");
       }
     } finally {
-      sendingRef.current = false;
-      setSending(false);
+      if (!isStale()) {
+        sendingRef.current = false;
+        setSending(false);
+        try { if (!ttsPlaying) setUploadStatus(''); } catch {}
+      }
       if (streamCtlRef.current === ctl) {
         streamCtlRef.current = null;
       }
-      try { if (!ttsPlaying) setUploadStatus(''); } catch {}
     }
   }
 
