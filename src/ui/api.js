@@ -141,6 +141,11 @@ export async function apiFetch(path, options = {}) {
     const err = new Error(detail);
     err.status = response.status;
     err.data = payload;
+    if (response.status === 429) {
+      err.code = "RATE_LIMITED";
+      err.isRateLimited = true;
+      err.retryAfter = response.headers?.get?.("retry-after") || null;
+    }
     throw err;
   }
 
@@ -408,6 +413,11 @@ export async function chatStream({
     const err = new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
     err.status = response.status;
     err.data = payload;
+    if (response.status === 429) {
+      err.code = "RATE_LIMITED";
+      err.isRateLimited = true;
+      err.retryAfter = response.headers?.get?.("retry-after") || null;
+    }
     throw err;
   }
 
