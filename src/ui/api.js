@@ -348,25 +348,33 @@ export async function chatStream({
   client_message_id,
   signal,
 } = {}) {
-  const response = await fetch(joinApi("/api/chat/stream"), {
-    method: "POST",
-    headers: headers({
-      token,
-      org: org || tenant,
-      json: true,
-    }),
-    credentials: "include",
-    signal,
-    body: JSON.stringify({
-      thread_id,
-      message,
-      agent_id,
-      top_k,
-      trace_id,
-      client_message_id,
-      tenant: tenant || org || readTenant(),
-    }),
-  });
+  let response;
+  try {
+    response = await fetch(joinApi("/api/chat/stream"), {
+      method: "POST",
+      headers: headers({
+        token,
+        org: org || tenant,
+        json: true,
+      }),
+      credentials: "include",
+      signal,
+      body: JSON.stringify({
+        thread_id,
+        message,
+        agent_id,
+        top_k,
+        trace_id,
+        client_message_id,
+        tenant: tenant || org || readTenant(),
+      }),
+    });
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      err.code = "CHAT_STREAM_ABORTED";
+    }
+    throw err;
+  }
 
   if (response.status === 401) {
     const err = new Error("Stream unauthorized");
