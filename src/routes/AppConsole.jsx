@@ -18,6 +18,14 @@ const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || impo
 
 
 const ORKIO_CHAT_STREAM_PRIMARY = ((ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import.meta.env.VITE_CHAT_STREAM_PRIMARY || "true").toString().trim().toLowerCase() !== "false");
+const CHAT_STREAM_TIMEOUT_MS = Math.max(
+  15000,
+  Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 45000) || 45000
+);
+const CHAT_TURN_RECONCILE_ATTEMPTS = Math.max(
+  1,
+  Number(ORKIO_ENV.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || import.meta.env.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || 3) || 3
+);
 
 const WALLET_UI_ENABLED = false;
 
@@ -42,6 +50,28 @@ class StreamSemanticError extends Error {
     this.payload = payload || {};
     this.status = payload?.code || "STREAM_ERROR";
   }
+}
+
+function withTimeout(promise, ms, label = "timeout") {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(label);
+      err.code = "STREAM_TIMEOUT";
+      reject(err);
+    }, Math.max(1000, Number(ms || 0)));
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function isAbortLikeError(err) {
+  return err?.name === "AbortError" ||
+    err?.code === "CHAT_STREAM_ABORTED" ||
+    err?.code === "STREAM_TIMEOUT" ||
+    err?.code === "CHAT_STREAM_TIMEOUT";
 }
 
 
@@ -698,6 +728,7 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const [runtimeHints, setRuntimeHints] = useState(null);
   const showRuntimeHints = Boolean(user?.role === "admin" && typeof window !== "undefined" && window.localStorage?.getItem("orkio_show_runtime_hints") === "1");
   const showOrionSquad = Boolean(user?.role === "admin" && typeof window !== "undefined" && window.localStorage?.getItem("orkio_show_orion_squad") === "1");
@@ -1339,7 +1370,9 @@ useEffect(() => {
 
     let controller = null;
     try {
-      try { messagesAbortRef.current?.abort?.(); } catch {}
+      if (!opts?.finalizeTurn && !opts?.preserveExistingRequest) {
+        try { messagesAbortRef.current?.abort?.(); } catch {}
+      }
       controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
       messagesAbortRef.current = controller;
 
@@ -1358,12 +1391,18 @@ useEffect(() => {
         String(activeThreadIdRef.current || "") === targetId;
       const sameEpoch = expectedEpoch === activeThreadEpochRef.current;
       const wasAborted = !!controller?.signal?.aborted;
+      const finalizeTurn = !!opts?.finalizeTurn;
       const canApply =
         sameActiveThread &&
         sameRequestedThread &&
-        sameEpoch &&
         !wasAborted &&
-        (force ? sameActiveThread : sameRequest);
+        (
+          finalizeTurn ||
+          (
+            sameEpoch &&
+            (force ? sameActiveThread : sameRequest)
+          )
+        );
 
       if (canApply) {
         setMessages(normalized);
@@ -1383,6 +1422,116 @@ useEffect(() => {
       }
     }
   }
+
+  async function finalizeChatTurn({
+    threadId: turnThreadId,
+    draftAssistantId,
+    finalTextCandidate = "",
+    finalAgentName = "Orion",
+    finalAgentId = null,
+    finalVoiceId = null,
+    finalAvatarUrl = null,
+    turnStartedAt = 0,
+  } = {}) {
+    const tid = String(turnThreadId || "").trim();
+    const finalText = String(finalTextCandidate || "").trim();
+    if (!tid) {
+      if (finalText) {
+        setMessages((prev) => {
+          const list = Array.isArray(prev) ? prev : [];
+          const cleaned = list.filter((m) => String(m?.id || "") !== String(draftAssistantId || ""));
+          const alreadyVisible = cleaned.some((m) =>
+            m?.role === "assistant" &&
+            String(m?.content || "").trim() === finalText
+          );
+          if (alreadyVisible) return cleaned;
+          return [
+            ...cleaned,
+            {
+              id: `stream-final-${Date.now()}`,
+              role: "assistant",
+              content: finalText,
+              agent_name: finalAgentName || "Orion",
+              agent_id: finalAgentId || null,
+              voice_id: finalVoiceId || null,
+              avatar_url: finalAvatarUrl || null,
+              created_at: Math.floor(Date.now() / 1000),
+            },
+          ];
+        });
+      }
+      return [];
+    }
+
+    let fresh = [];
+    const startedAt = Number(turnStartedAt || 0);
+    for (let attempt = 0; attempt < CHAT_TURN_RECONCILE_ATTEMPTS; attempt += 1) {
+      fresh = await loadMessages(tid, {
+        force: true,
+        allowInactive: true,
+        finalizeTurn: true,
+        preserveExistingRequest: true,
+        expectedEpoch: activeThreadEpochRef.current,
+      });
+
+      const hasFreshAssistant = Array.isArray(fresh) && fresh.some((m) => {
+        if (m?.role !== "assistant") return false;
+        if (String(m?.id || "").startsWith("tmp-ass-")) return false;
+        const createdAt = Number(m?.created_at || 0);
+        if (!Number.isFinite(createdAt) || !startedAt) return true;
+        return createdAt >= Math.max(0, startedAt - 2);
+      });
+
+      if (hasFreshAssistant) {
+        return fresh;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 450 + attempt * 450));
+    }
+
+    if (finalText) {
+      setMessages((prev) => {
+        const list = Array.isArray(prev) ? prev : [];
+        const cleaned = list.filter((m) => String(m?.id || "") !== String(draftAssistantId || ""));
+
+        const alreadyVisible = cleaned.some((m) =>
+          m?.role === "assistant" &&
+          String(m?.content || "").trim() === finalText
+        );
+
+        if (alreadyVisible) return cleaned;
+
+        return [
+          ...cleaned,
+          {
+            id: `stream-final-${Date.now()}`,
+            role: "assistant",
+            content: finalText,
+            agent_name: finalAgentName || "Orion",
+            agent_id: finalAgentId || null,
+            voice_id: finalVoiceId || null,
+            avatar_url: finalAvatarUrl || null,
+            created_at: Math.floor(Date.now() / 1000),
+          },
+        ];
+      });
+    } else {
+      setMessages((prev) =>
+        (Array.isArray(prev) ? prev : []).map((m) =>
+          String(m?.id || "") === String(draftAssistantId || "")
+            ? {
+                ...m,
+                content: "Resposta processada. Sincronizando histórico...",
+                agent_name: m.agent_name || finalAgentName || "Orion",
+              }
+            : m
+        )
+      );
+    }
+
+    return fresh;
+  }
+
 
   async function loadAgents() {
     try {
@@ -1622,8 +1771,9 @@ async function sendMessage(presetMsg = null, opts = {}) {
     const isRetry = !!opts?.isRetry;
     clearRealtimeIdleFollowup();
     const msg = ((presetMsg ?? text) || "").trim();
-    if (!msg || sending) return;
+    if (!msg || sendingRef.current) return;
     const turnStartedAt = Math.floor(Date.now() / 1000);
+    sendingRef.current = true;
     setSending(true);
 
     // STREAM-STAB: start new run and abort any previous stream
@@ -1716,7 +1866,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             client_message_id: clientMessageId,
             signal: ctl.signal,
           });
-          streamMeta = await consumeChatStream(streamResp, {
+          streamMeta = await withTimeout(consumeChatStream(streamResp, {
             onStatus: (payload) => {
               if (payload?.status) setUploadStatus(`⌛ ${payload.status}`);
               if (payload?.agent_name) setActiveRuntimeAgent(payload.agent_name);
@@ -1803,7 +1953,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
                 )));
               }
             },
-          });
+          }), CHAT_STREAM_TIMEOUT_MS, "CHAT_STREAM_TIMEOUT");
           resp = {
             data: {
               thread_id: streamMeta?.thread_id || newThreadId,
@@ -1821,22 +1971,43 @@ async function sendMessage(presetMsg = null, opts = {}) {
           if (streamErr instanceof StreamSemanticError) {
             throw streamErr;
           }
-          appendExecutionTrace({
-            kind: "system",
-            label: "Alternando para resposta direta",
-            detail: "O stream foi degradado e o Orkio seguiu pelo fallback seguro.",
-          });
-          resp = await chat({
-            token,
-            org: tenant,
-            thread_id: threadId,
-            message: finalMsg,
-            agent_id: agentIdToSend,
-            trace_id: traceId,
-            client_message_id: clientMessageId,
-            signal: ctl.signal,
-          });
+
+          if (isAbortLikeError(streamErr)) {
+            try { ctl.abort(); } catch {}
+            appendExecutionTrace({
+              kind: "system",
+              label: streamErr?.code === "CHAT_STREAM_TIMEOUT" || streamErr?.code === "STREAM_TIMEOUT"
+                ? "Stream demorou demais"
+                : "Stream interrompido",
+              detail: "Tentando sincronizar a resposta persistida no histórico.",
+            });
+            resp = {
+              data: {
+                thread_id: newThreadId || threadId,
+                used_stream: true,
+                degraded_stream: true,
+                trace_id: traceId,
+              },
+            };
+          } else {
+            appendExecutionTrace({
+              kind: "system",
+              label: "Alternando para resposta direta",
+              detail: "O stream foi degradado e o Orkio seguiu pelo fallback seguro.",
+            });
+            resp = await chat({
+              token,
+              org: tenant,
+              thread_id: threadId,
+              message: finalMsg,
+              agent_id: agentIdToSend,
+              trace_id: traceId,
+              client_message_id: clientMessageId,
+              signal: ctl.signal,
+            });
+          }
         }
+
       } else {
         resp = await chat({
           token,
@@ -1861,21 +2032,6 @@ async function sendMessage(presetMsg = null, opts = {}) {
       // F-03 FIX: usar newThreadId (var local) em vez de threadId (closure stale do React)
       // Se a conversa foi criada durante o SSE stream, threadId ainda aponta para a thread antiga
       const effectiveTidForLoad = String(newThreadId || threadId || "");
-      if (effectiveTidForLoad) {
-        consumeStoredThreadBootstrap(effectiveTidForLoad);
-        if (effectiveTidForLoad !== String(activeThreadIdRef.current || "")) {
-          activateThread(effectiveTidForLoad, { clearMessages: true, persist: true, lockMs: 20000 });
-        } else {
-          activeThreadIdRef.current = effectiveTidForLoad;
-          requestedThreadIdRef.current = effectiveTidForLoad;
-          persistActiveThreadId(effectiveTidForLoad);
-          lockThreadSelection(effectiveTidForLoad, 20000);
-        }
-        await loadThreads({ preserveThreadId: effectiveTidForLoad, keepMessages: true });
-      }
-      const freshMessages = effectiveTidForLoad
-        ? await loadMessages(effectiveTidForLoad, { force: true, expectedEpoch: activeThreadEpochRef.current })
-        : [];
 
       const finalTextCandidate = String(
         streamDonePayload?.final_text ||
@@ -1887,7 +2043,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
       const finalAgentName =
         streamDonePayload?.agent_name ||
         streamMeta?.done_payload?.agent_name ||
-        "Orkio";
+        "Orion";
       const finalAgentId =
         streamDonePayload?.agent_id ||
         streamMeta?.done_payload?.agent_id ||
@@ -1901,37 +2057,45 @@ async function sendMessage(presetMsg = null, opts = {}) {
         streamMeta?.done_payload?.avatar_url ||
         null;
 
-      // EFATA777 v8:
-      // Never require a refresh to see the answer. The backend may already have
-      // persisted the assistant message, but a thread epoch/abort race can stop
-      // loadMessages() from applying it to state. Always materialize the final
-      // SSE text locally, guarded against duplicates already visible in state.
-      if (finalTextCandidate) {
-        setMessages((prev) => {
-          const list = Array.isArray(prev) ? prev : [];
-          const cleaned = list.filter((m) => !String(m?.id || "").startsWith("tmp-ass-"));
-          const alreadyVisible = cleaned.some((m) =>
-            m?.role === "assistant" &&
-            String(m?.content || "").trim() === finalTextCandidate
-          );
-          if (alreadyVisible) return cleaned;
+      if (effectiveTidForLoad) {
+        consumeStoredThreadBootstrap(effectiveTidForLoad);
+        if (effectiveTidForLoad !== String(activeThreadIdRef.current || "")) {
+          activateThread(effectiveTidForLoad, { clearMessages: false, persist: true, lockMs: 20000 });
+        } else {
+          activeThreadIdRef.current = effectiveTidForLoad;
+          requestedThreadIdRef.current = effectiveTidForLoad;
+          persistActiveThreadId(effectiveTidForLoad);
+          lockThreadSelection(effectiveTidForLoad, 20000);
+        }
+      }
 
-          return [
-            ...cleaned,
-            {
-              id: `stream-final-${Date.now()}`,
-              role: "assistant",
-              content: finalTextCandidate,
-              agent_name: finalAgentName,
-              agent_id: finalAgentId,
-              voice_id: finalVoiceId,
-              avatar_url: finalAvatarUrl,
-              created_at: Math.floor(Date.now() / 1000),
-            },
-          ];
-        });
-      } else {
-        clearTmpAssistantDrafts();
+      // EFATA777 v9:
+      // Finalize the visible turn before refreshing the thread sidebar. A slow
+      // /api/threads or an epoch/abort race cannot block the assistant answer.
+      const freshMessages = effectiveTidForLoad
+        ? await finalizeChatTurn({
+            threadId: effectiveTidForLoad,
+            draftAssistantId,
+            finalTextCandidate,
+            finalAgentName,
+            finalAgentId,
+            finalVoiceId,
+            finalAvatarUrl,
+            turnStartedAt,
+          })
+        : await finalizeChatTurn({
+            threadId: "",
+            draftAssistantId,
+            finalTextCandidate,
+            finalAgentName,
+            finalAgentId,
+            finalVoiceId,
+            finalAvatarUrl,
+            turnStartedAt,
+          });
+
+      if (effectiveTidForLoad) {
+        void loadThreads({ preserveThreadId: effectiveTidForLoad, keepMessages: true });
       }
 
       void refreshWalletSummary({ silent: true });
@@ -2023,6 +2187,26 @@ async function sendMessage(presetMsg = null, opts = {}) {
           return;
         }
       }
+      if (isAbortLikeError(e)) {
+        appendExecutionTrace({
+          kind: "system",
+          label: "Stream interrompido",
+          detail: "Tentando sincronizar a resposta persistida.",
+        });
+        const effectiveTidForLoad = String(threadId || activeThreadIdRef.current || "");
+        if (effectiveTidForLoad) {
+          await finalizeChatTurn({
+            threadId: effectiveTidForLoad,
+            draftAssistantId,
+            finalTextCandidate: "",
+            finalAgentName: activeRuntimeAgent || "Orion",
+            turnStartedAt,
+          });
+        }
+        setV2vPhase(null);
+        setV2vError(null);
+        return;
+      }
       setV2vPhase('error');
       const walletDetail = normalizeWalletErrorPayload(e);
       if (walletDetail || isWalletBlockedError(e)) {
@@ -2056,7 +2240,11 @@ async function sendMessage(presetMsg = null, opts = {}) {
         setV2vError(e?.message || "Falha ao enviar mensagem");
       }
     } finally {
+      sendingRef.current = false;
       setSending(false);
+      if (streamCtlRef.current === ctl) {
+        streamCtlRef.current = null;
+      }
       try { if (!ttsPlaying) setUploadStatus(''); } catch {}
     }
   }
