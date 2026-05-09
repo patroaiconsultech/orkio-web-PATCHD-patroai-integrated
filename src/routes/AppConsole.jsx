@@ -966,10 +966,18 @@ const [capacitySeconds, setCapacitySeconds] = React.useState(30);
 const capacityTimerRef = React.useRef(null);
 const capacityPendingRef = React.useRef(null); // { msg }
 
-const openCapacityModal = (msg) => {
+const openCapacityModal = (msg, retryAfter = null) => {
+  const parsedRetryAfter = Number.parseInt(String(retryAfter || ""), 10);
+  const waitSeconds = Number.isFinite(parsedRetryAfter) && parsedRetryAfter > 0
+    ? Math.min(300, parsedRetryAfter)
+    : 30;
+
   setCapacityOpen(true);
-  setCapacitySeconds(30);
+  setCapacitySeconds(waitSeconds);
   capacityPendingRef.current = { msg: msg || "" };
+
+  // EFATA777 v10.1: countdown is informational only.
+  // Never auto-retry silently after 429; the user must trigger a retry explicitly.
   try { if (capacityTimerRef.current) clearInterval(capacityTimerRef.current); } catch {}
   capacityTimerRef.current = setInterval(() => {
     setCapacitySeconds((s) => {
@@ -977,11 +985,6 @@ const openCapacityModal = (msg) => {
       if (next === 0) {
         try { if (capacityTimerRef.current) clearInterval(capacityTimerRef.current); } catch {}
         capacityTimerRef.current = null;
-        // auto retry (Summit)
-        const pending = capacityPendingRef.current;
-        if (pending?.msg) {
-          try { sendMessage(pending.msg, { isRetry: true }); } catch {}
-        }
       }
       return next;
     });
@@ -1989,22 +1992,53 @@ async function sendMessage(presetMsg = null, opts = {}) {
                 trace_id: traceId,
               },
             };
+          } else if (streamErr?.status === 429 || streamErr?.code === "RATE_LIMITED" || streamErr?.isRateLimited) {
+            appendExecutionTrace({
+              kind: "warning",
+              label: "Capacidade temporariamente atingida",
+              detail: "O stream retornou 429. O Orkio não acionou fallback duplicado; tente novamente em alguns instantes.",
+            });
+            setMessages((prev) =>
+              (Array.isArray(prev) ? prev : []).map((m) =>
+                m.id === draftAssistantId
+                  ? {
+                      ...m,
+                      content: "Capacidade temporariamente atingida. Tente novamente em instantes.",
+                      agent_name: "Orkio",
+                    }
+                  : m
+              )
+            );
+            setV2vPhase(null);
+            setV2vError(null);
+            closeCapacityModal();
+            openCapacityModal(msg, streamErr?.retryAfter || null);
+            return;
           } else {
             appendExecutionTrace({
               kind: "system",
               label: "Alternando para resposta direta",
               detail: "O stream foi degradado e o Orkio seguiu pelo fallback seguro.",
             });
-            resp = await chat({
-              token,
-              org: tenant,
-              thread_id: threadId,
-              message: finalMsg,
-              agent_id: agentIdToSend,
-              trace_id: traceId,
-              client_message_id: clientMessageId,
-              signal: ctl.signal,
-            });
+            try {
+              resp = await chat({
+                token,
+                org: tenant,
+                thread_id: threadId,
+                message: finalMsg,
+                agent_id: agentIdToSend,
+                trace_id: traceId,
+                client_message_id: clientMessageId,
+                signal: ctl.signal,
+              });
+            } catch (fallbackErr) {
+              appendExecutionTrace({
+                kind: "error",
+                label: "Fallback direto falhou",
+                detail: fallbackErr?.message || "Não foi possível concluir o fallback direto.",
+              });
+              throw fallbackErr;
+            }
           }
         }
 
@@ -2022,8 +2056,26 @@ async function sendMessage(presetMsg = null, opts = {}) {
       }
 
       if (resp?.status === 429) {
+        appendExecutionTrace({
+          kind: "warning",
+          label: "Capacidade temporariamente atingida",
+          detail: "A resposta direta retornou 429. O usuário pode tentar novamente em instantes.",
+        });
+        setMessages((prev) =>
+          (Array.isArray(prev) ? prev : []).map((m) =>
+            m.id === draftAssistantId
+              ? {
+                  ...m,
+                  content: "Capacidade temporariamente atingida. Tente novamente em instantes.",
+                  agent_name: "Orkio",
+                }
+              : m
+          )
+        );
+        setV2vPhase(null);
+        setV2vError(null);
         closeCapacityModal();
-        openCapacityModal(msg);
+        openCapacityModal(msg, resp?.headers?.get?.("retry-after") || null);
         return;
       }
 
@@ -2203,6 +2255,29 @@ async function sendMessage(presetMsg = null, opts = {}) {
             turnStartedAt,
           });
         }
+        setV2vPhase(null);
+        setV2vError(null);
+        return;
+      }
+      if (e?.status === 429 || e?.code === "RATE_LIMITED" || e?.isRateLimited) {
+        appendExecutionTrace({
+          kind: "warning",
+          label: "Capacidade temporariamente atingida",
+          detail: "A execução foi limitada temporariamente. Nenhum fallback duplicado foi acionado.",
+        });
+        setMessages((prev) =>
+          (Array.isArray(prev) ? prev : []).map((m) =>
+            m.id === draftAssistantId
+              ? {
+                  ...m,
+                  content: "Capacidade temporariamente atingida. Tente novamente em instantes.",
+                  agent_name: "Orkio",
+                }
+              : m
+          )
+        );
+        closeCapacityModal();
+        openCapacityModal(msg, e?.retryAfter || null);
         setV2vPhase(null);
         setV2vError(null);
         return;
@@ -5131,13 +5206,13 @@ async function stopRealtime(reason = 'client_stop') {
         alguns acessos estão temporariamente limitados.
       </div>
       <div style={{ opacity: 0.9, marginBottom: 16 }}>
-        Tentaremos novamente em <b>{capacitySeconds}s</b>.
+        Você poderá tentar novamente em <b>{capacitySeconds}s</b>, ou manualmente quando desejar.
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
         <button style={{ padding: "10px 14px", borderRadius: 10 }} onClick={() => {
           const pending = capacityPendingRef.current;
           closeCapacityModal();
-          if (pending?.msg) sendMessage(pending.msg, { isRetry: true });
+          if (pending?.msg) sendMessage(pending.msg);
         }}>
           Tentar agora
         </button>
