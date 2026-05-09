@@ -7,6 +7,7 @@ export function startSessionHeartbeat({
 } = {}) {
   let alive = true;
   let timer = null;
+  let consecutiveFailures = 0;
 
   async function tick() {
     const token = getToken();
@@ -16,18 +17,24 @@ export function startSessionHeartbeat({
 
     try {
       await heartbeat({ token, org });
+      consecutiveFailures = 0;
     } catch (err) {
+      consecutiveFailures += 1;
+      // EFATA777 v8:
+      // heartbeat is an online-presence probe, not the canonical auth decision.
+      // Do not clear session from here. App bootstrap must confirm /api/me first.
       if (err?.status === 401) {
-        alive = false;
-        if (timer) {
-          clearInterval(timer);
-          timer = null;
-        }
-        if (typeof onUnauthorized === "function") {
-          try {
-            onUnauthorized(err);
-          } catch {}
-        }
+        console.warn("sessionHeartbeat non-fatal 401", {
+          consecutiveFailures,
+          code: err?.code,
+        });
+        return;
+      }
+
+      if (consecutiveFailures >= 3 && typeof onUnauthorized === "function") {
+        try {
+          onUnauthorized(err);
+        } catch {}
       }
     }
   }
