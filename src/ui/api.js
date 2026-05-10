@@ -141,6 +141,10 @@ export async function apiFetch(path, options = {}) {
     const err = new Error(detail);
     err.status = response.status;
     err.data = payload;
+    if (response.status === 403) {
+      err.code = "AUTH_FORBIDDEN";
+      err.isAuthError = true;
+    }
     if (response.status === 429) {
       err.code = "RATE_LIMITED";
       err.isRateLimited = true;
@@ -392,6 +396,14 @@ export async function chatStream({
     throw err;
   }
 
+  if (response.status === 403) {
+    const err = new Error("Stream forbidden");
+    err.status = 403;
+    err.code = "AUTH_FORBIDDEN";
+    err.isAuthError = true;
+    throw err;
+  }
+
   if (!response.ok) {
     const contentType = response.headers.get("content-type") || "";
     let payload = null;
@@ -413,6 +425,10 @@ export async function chatStream({
     const err = new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
     err.status = response.status;
     err.data = payload;
+    if (response.status === 403) {
+      err.code = "AUTH_FORBIDDEN";
+      err.isAuthError = true;
+    }
     if (response.status === 429) {
       err.code = "RATE_LIMITED";
       err.isRateLimited = true;
