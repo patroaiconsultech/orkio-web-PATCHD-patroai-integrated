@@ -4,6 +4,7 @@ const TOKEN_KEY = "orkio_token";
 const USER_KEY = "orkio_user";
 const TENANT_KEY = "orkio_tenant";
 const OTP_CTX_KEY = "orkio_pending_otp_context";
+const SESSION_VERSION_KEY = "orkio_session_version";
 
 const TERMS_PENDING_KEY = "orkio_terms_pending_acceptance";
 const TERMS_VERSION_KEY = "orkio_terms_version";
@@ -152,12 +153,40 @@ export function clearPendingOtpContext() {
 
 /**
  * =========================
+ * SESSION VERSION
+ * =========================
+ */
+
+export function getSessionVersion() {
+  try {
+    const raw = localStorage.getItem(SESSION_VERSION_KEY);
+    const parsed = Number(raw || 0);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  } catch {
+    return 1;
+  }
+}
+
+export function bumpSessionVersion() {
+  const next = getSessionVersion() + 1;
+  try {
+    localStorage.setItem(SESSION_VERSION_KEY, String(next));
+  } catch {}
+  return next;
+}
+
+/**
+ * =========================
  * SESSION STORAGE
  * =========================
  */
 
 export function setSession({ token, user, tenant }) {
+  const previousToken = getToken();
   if (token) setToken(token);
+  if (token && token !== previousToken) {
+    bumpSessionVersion();
+  }
 
   const existingUser = getUser();
   const mergedUser = user
@@ -378,6 +407,7 @@ export function getAcceptedTermsVersion() {
  */
 
 export function clearSession() {
+  bumpSessionVersion();
   clearToken();
   clearUser();
   clearTenant();
