@@ -646,33 +646,29 @@ export default function AppConsole() {
   }
 
 
-// Summit presence heartbeat (keeps online status accurate).
-// EFATA777 v7: heartbeat is non-fatal. Refresh/login state must be decided by
-// the /api/me bootstrap, not by a transient heartbeat 401.
-React.useEffect(() => {
-  let alive = true;
-  const tick = async () => {
-    const t = getToken();
-    if (!t) return;
-    try {
-      await apiFetch("/api/auth/heartbeat", {
-        method: "POST",
-        token: t,
-        org: getTenant() || "public",
-        skipAuthRedirect: true,
-      });
-    } catch (_e) {
-      // Non-fatal by design. Do not clear session here.
-    }
-  };
-  tick();
-  const id = setInterval(() => { if (alive) tick(); }, 20000);
-  return () => { alive = false; clearInterval(id); };
-}, []);
   const [tenant, setTenant] = useState(getTenant() || "public");
   const [token, setToken] = useState(getToken());
   const [user, setUser] = useState(getUser());
   const canAccessAdmin = hasAdminAccess(user);
+
+  // Summit presence heartbeat (single source of truth).
+  // EFATA777 v12: the app must not keep an inline heartbeat loop in parallel with
+  // startSessionHeartbeat(). A duplicated loop can keep sending stale tokens and
+  // create noisy 401 races while another tab/session is already valid.
+  React.useEffect(() => {
+    if (!token) return undefined;
+
+    const stopHeartbeat = startSessionHeartbeat({
+      intervalMs: 20000,
+      onUnauthorized: () => {
+        void logoutIfSessionReallyExpired("heartbeat");
+      },
+    });
+
+    return () => {
+      try { stopHeartbeat?.(); } catch {}
+    };
+  }, [token, tenant]);
 
   useEffect(() => {
     try {
@@ -2063,6 +2059,45 @@ async function sendMessage(presetMsg = null, opts = {}) {
             setV2vError(null);
             closeCapacityModal();
             openCapacityModal(msg, streamErr?.retryAfter || null);
+            return;
+          } else if (
+            streamErr?.status === 401 ||
+            streamErr?.status === 403 ||
+            streamErr?.isAuthError ||
+            streamErr?.code === "CHAT_STREAM_UNAUTHORIZED" ||
+            streamErr?.code === "AUTH_SESSION_EXPIRED" ||
+            streamErr?.code === "AUTH_FORBIDDEN"
+          ) {
+            appendExecutionTrace({
+              kind: "warning",
+              label: streamErr?.status === 403 ? "Acesso negado neste fluxo" : "Sessão expirada ou inconsistente",
+              detail: streamErr?.status === 403
+                ? "O Orkio não acionou fallback duplicado após 403."
+                : "O Orkio não acionou fallback duplicado após 401. Validando a sessão atual.",
+            });
+            setMessages((prev) =>
+              (Array.isArray(prev) ? prev : []).map((m) =>
+                m.id === draftAssistantId
+                  ? {
+                      ...m,
+                      content: streamErr?.status === 403
+                        ? "Seu acesso foi negado para esta execução. Revise a sessão e tente novamente."
+                        : "Sessão expirada ou inconsistente. Entre novamente para continuar.",
+                      agent_name: "Orkio",
+                    }
+                  : m
+              )
+            );
+            if (streamErr?.status === 403) {
+              setV2vPhase("error");
+              setV2vError("Acesso negado para esta execução.");
+              return;
+            }
+            const expired = await logoutIfSessionReallyExpired("chatStream401");
+            if (!expired) {
+              setV2vPhase(null);
+              setV2vError("Sessão oscilou. Tente enviar novamente.");
+            }
             return;
           } else {
             appendExecutionTrace({
