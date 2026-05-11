@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, createPublicCheckout } from "../ui/api.js";
 import OrkioSphereMark from "../ui/OrkioSphereMark.jsx";
@@ -138,6 +138,46 @@ const planPill = {
 };
 
 
+const AUTH_REQUEST_TIMEOUT_MS = 15000;
+const POST_LOGIN_REDIRECT_FALLBACK_MS = 900;
+
+function normalizeAuthErrorMessage(err, fallbackMessage) {
+  if (!err) return fallbackMessage;
+  if (err?.name === "AbortError" || err?.code === "AUTH_REQUEST_TIMEOUT") {
+    return "The request took too long. Please try again.";
+  }
+  return err?.message || fallbackMessage;
+}
+
+async function apiFetchWithTimeout(path, options = {}, timeoutMs = AUTH_REQUEST_TIMEOUT_MS) {
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = controller
+    ? window.setTimeout(() => {
+        try {
+          controller.abort();
+        } catch {}
+      }, Math.max(1000, Number(timeoutMs || AUTH_REQUEST_TIMEOUT_MS)))
+    : null;
+
+  try {
+    return await apiFetch(path, {
+      ...options,
+      signal: controller?.signal,
+    });
+  } catch (err) {
+    if (controller?.signal?.aborted) {
+      const timeoutErr = new Error("Authentication request timed out.");
+      timeoutErr.name = "AbortError";
+      timeoutErr.code = "AUTH_REQUEST_TIMEOUT";
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+
+
 function PasswordField({ labelText, placeholder, value, onChange, show, onToggle }) {
   return (
     <div>
@@ -185,6 +225,8 @@ export default function AuthPage() {
 
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const loginWatchdogRef = useRef(null);
+  const redirectedAfterLoginRef = useRef(false);
 
   const token = getToken();
   const currentUser = getUser();
@@ -204,6 +246,15 @@ export default function AuthPage() {
       nav(next, { replace: true });
     }
   }, [nav]);
+
+
+  useEffect(() => {
+    return () => {
+      try {
+        if (loginWatchdogRef.current) window.clearTimeout(loginWatchdogRef.current);
+      } catch {}
+    };
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -250,11 +301,11 @@ export default function AuthPage() {
       setSelectedPlan(pendingCheckout.selectedPlan || "founder_access");
       setAcceptTerms(!!pendingCheckout.acceptTerms);
 
-      apiFetch(`/api/billing/public/checkout-status?checkout_id=${encodeURIComponent(checkoutId)}&email=${encodeURIComponent(pendingCheckout.email)}`, {
+      apiFetchWithTimeout(`/api/billing/public/checkout-status?checkout_id=${encodeURIComponent(checkoutId)}&email=${encodeURIComponent(pendingCheckout.email)}`, {
         method: "GET",
         org: pendingCheckout.tenant || tenant,
         skipAuthRedirect: true,
-      })
+      }, 12000)
         .then(async ({ data }) => {
           if (data?.entitlement_active) {
             setStatus("Payment confirmed. Creating your account...");
@@ -371,7 +422,7 @@ export default function AuthPage() {
     if (pendingTerms?.accepted) {
       try {
         const currentTermsVersion = await fetchCurrentTermsVersion();
-        await apiFetch("/api/me/accept-terms", {
+        await apiFetchWithTimeout("/api/me/accept-terms", {
           method: "POST",
           token: getToken(),
           org: nextTenant,
@@ -380,7 +431,7 @@ export default function AuthPage() {
             accepted: true,
             terms_version: pendingTerms.terms_version || currentTermsVersion || getAcceptedTermsVersion(),
           },
-        });
+        }, 12000);
         clearPendingTermsAccepted();
       } catch (err) {
         console.warn("terms acceptance sync failed", err);
@@ -392,6 +443,21 @@ export default function AuthPage() {
     const next = isAdmin(storedUser) ? "/admin" : (redirect || "/app");
 
     sessionStorage.removeItem("post_auth_redirect");
+    redirectedAfterLoginRef.current = true;
+    setStatus("Redirecting...");
+
+    try {
+      if (loginWatchdogRef.current) window.clearTimeout(loginWatchdogRef.current);
+    } catch {}
+
+    loginWatchdogRef.current = window.setTimeout(() => {
+      try {
+        if (window.location.pathname !== next) {
+          window.location.assign(next);
+        }
+      } catch {}
+    }, POST_LOGIN_REDIRECT_FALLBACK_MS);
+
     nav(next, { replace: true });
   }
 
@@ -423,11 +489,12 @@ export default function AuthPage() {
     setPendingEmail(emailValue);
     setOtpMode(true);
 
-    const { data: loginData } = await apiFetch("/api/auth/login", {
+    const { data: loginData } = await apiFetchWithTimeout("/api/auth/login", {
       method: "POST",
       org: tenant,
+      skipAuthRedirect: true,
       body: { tenant, email: emailValue, password: passwordValue },
-    });
+    }, AUTH_REQUEST_TIMEOUT_MS);
 
     if (loginData?.pending_otp) {
       savePendingOtpContext({
@@ -548,15 +615,16 @@ export default function AuthPage() {
     setStatus("Signing you in...");
 
     try {
-      const { data } = await apiFetch("/api/auth/login", {
+      const { data } = await apiFetchWithTimeout("/api/auth/login", {
         method: "POST",
         org: tenant,
+        skipAuthRedirect: true,
         body: {
           tenant,
           email: emailNormalized,
           password,
         },
-      });
+      }, AUTH_REQUEST_TIMEOUT_MS);
 
       if (data?.pending_otp) {
         savePendingOtpContext({
@@ -576,7 +644,7 @@ export default function AuthPage() {
 
       setStatus(data?.message || "Unable to complete sign in.");
     } catch (err) {
-      setStatus(err?.message || "Sign in failed.");
+      setStatus(normalizeAuthErrorMessage(err, "Sign in failed."));
     } finally {
       setBusy(false);
     }
@@ -592,17 +660,18 @@ export default function AuthPage() {
     setBusy(true);
     setStatus("Sending reset link...");
     try {
-      const { data } = await apiFetch("/api/auth/forgot-password", {
+      const { data } = await apiFetchWithTimeout("/api/auth/forgot-password", {
         method: "POST",
         org: tenant,
+        skipAuthRedirect: true,
         body: {
           tenant,
           email: emailNormalized,
         },
-      });
+      }, 12000);
       setStatus(data?.message || "If the account exists, a reset link has been sent.");
     } catch (err) {
-      setStatus(err?.message || "Unable to request password reset.");
+      setStatus(normalizeAuthErrorMessage(err, "Unable to request password reset."));
     } finally {
       setBusy(false);
     }
@@ -627,22 +696,23 @@ export default function AuthPage() {
     setBusy(true);
     setStatus("Updating your password...");
     try {
-      const { data } = await apiFetch("/api/auth/reset-password", {
+      const { data } = await apiFetchWithTimeout("/api/auth/reset-password", {
         method: "POST",
         org: tenant,
+        skipAuthRedirect: true,
         body: {
           tenant,
           token: resetToken,
           password,
           password_confirm: passwordConfirm,
         },
-      });
+      }, 12000);
       setStatus(data?.message || "Password updated. You can sign in now.");
       setPassword("");
       setPasswordConfirm("");
       setAuthMode("login");
     } catch (err) {
-      setStatus(err?.message || "Unable to reset password.");
+      setStatus(normalizeAuthErrorMessage(err, "Unable to reset password."));
     } finally {
       setBusy(false);
     }
@@ -665,15 +735,16 @@ export default function AuthPage() {
     setStatus("Verifying code...");
 
     try {
-      const { data } = await apiFetch("/api/auth/login/verify-otp", {
+      const { data } = await apiFetchWithTimeout("/api/auth/login/verify-otp", {
         method: "POST",
         org: resolvedTenant,
+        skipAuthRedirect: true,
         body: {
           tenant: resolvedTenant,
           email: emailNormalized,
           code,
         },
-      });
+      }, AUTH_REQUEST_TIMEOUT_MS);
 
       if (!data?.access_token || !data?.user) {
         setStatus(data?.message || "Invalid code or session not finalized.");
@@ -682,7 +753,7 @@ export default function AuthPage() {
 
       await finalizeSession(data, resolvedTenant);
     } catch (err) {
-      setStatus(err?.message || "OTP validation failed.");
+      setStatus(normalizeAuthErrorMessage(err, "OTP validation failed."));
     } finally {
       setBusy(false);
     }
