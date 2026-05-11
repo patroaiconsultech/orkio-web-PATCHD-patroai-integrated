@@ -138,7 +138,7 @@ const planPill = {
 };
 
 
-const AUTH_REQUEST_TIMEOUT_MS = 15000;
+const AUTH_REQUEST_TIMEOUT_MS = 45000;
 const POST_LOGIN_REDIRECT_FALLBACK_MS = 900;
 
 function normalizeAuthErrorMessage(err, fallbackMessage) {
@@ -431,7 +431,7 @@ export default function AuthPage() {
             accepted: true,
             terms_version: pendingTerms.terms_version || currentTermsVersion || getAcceptedTermsVersion(),
           },
-        }, 12000);
+        }, 20000);
         clearPendingTermsAccepted();
       } catch (err) {
         console.warn("terms acceptance sync failed", err);
@@ -668,7 +668,7 @@ export default function AuthPage() {
           tenant,
           email: emailNormalized,
         },
-      }, 12000);
+      }, 20000);
       setStatus(data?.message || "If the account exists, a reset link has been sent.");
     } catch (err) {
       setStatus(normalizeAuthErrorMessage(err, "Unable to request password reset."));
@@ -706,7 +706,7 @@ export default function AuthPage() {
           password,
           password_confirm: passwordConfirm,
         },
-      }, 12000);
+      }, 20000);
       setStatus(data?.message || "Password updated. You can sign in now.");
       setPassword("");
       setPasswordConfirm("");
