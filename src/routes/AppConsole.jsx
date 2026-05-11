@@ -758,12 +758,25 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   });
 
   // Destination selector (Team / single / multi)
-  const [destMode, setDestMode] = useState("single"); // team|single|multi
+  const [destMode, setDestMode] = useState(() => {
+    if (typeof window === "undefined") return "team";
+    const stored = String(window.localStorage?.getItem("orkio_last_dest_mode") || "").trim().toLowerCase();
+    return ["team", "single", "multi"].includes(stored) ? stored : "team";
+  }); // team|single|multi
   const [destSingle, setDestSingle] = useState(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage?.getItem("orkio_last_dest_single") || "";
   }); // agent id
-  const [destMulti, setDestMulti] = useState([]);   // agent ids
+  const [destMulti, setDestMulti] = useState(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage?.getItem("orkio_last_dest_multi") || "[]";
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.map((v) => String(v || "").trim()).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  });   // agent ids
 
   // Upload modal
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -872,6 +885,23 @@ useEffect(() => {
     if (destSingle) window.localStorage?.setItem("orkio_last_dest_single", String(destSingle));
   } catch {}
 }, [destSingle]);
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage?.setItem("orkio_last_dest_mode", String(destMode || "team"));
+  } catch {}
+}, [destMode]);
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  try {
+    const clean = Array.isArray(destMulti)
+      ? Array.from(new Set(destMulti.map((v) => String(v || "").trim()).filter(Boolean)))
+      : [];
+    window.localStorage?.setItem("orkio_last_dest_multi", JSON.stringify(clean));
+  } catch {}
+}, [destMulti]);
 
 useEffect(() => {
   let cancelled = false;
@@ -1584,16 +1614,42 @@ useEffect(() => {
       } catch {}
 
       // Preserve the last manually selected agent when it still exists.
-      // Only fall back to Orkio/default when there is no valid remembered selection.
+      // Do not force the console back to single-agent mode during agent reloads.
       if (Array.isArray(data) && data.length) {
+        const orkio = data.find(a => (a.name || "").toLowerCase() === "orkio") || data.find(a => a.is_default) || data[0] || null;
+
         const currentExists = destSingle && data.some((a) => String(a.id) === String(destSingle));
         if (!currentExists) {
           const remembered = (typeof window !== "undefined" && window.localStorage?.getItem("orkio_last_dest_single")) || "";
           const rememberedAgent = remembered ? data.find((a) => String(a.id) === String(remembered)) : null;
-          const orkio = data.find(a => (a.name || "").toLowerCase() === "orkio") || data.find(a => a.is_default) || data[0];
           const nextAgent = rememberedAgent || orkio || null;
           if (nextAgent) setDestSingle(nextAgent.id);
         }
+
+        setDestMulti((prev) => {
+          const cleanPrev = Array.isArray(prev) ? prev.map((v) => String(v || "").trim()).filter(Boolean) : [];
+          const valid = cleanPrev.filter((id) => data.some((a) => String(a.id) === String(id)));
+          if (valid.length) return Array.from(new Set(valid));
+          try {
+            const raw = (typeof window !== "undefined" && window.localStorage?.getItem("orkio_last_dest_multi")) || "[]";
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              const restored = parsed
+                .map((v) => String(v || "").trim())
+                .filter((id) => id && data.some((a) => String(a.id) === String(id)));
+              if (restored.length) return Array.from(new Set(restored));
+            }
+          } catch {}
+          return valid;
+        });
+
+        setDestMode((prev) => {
+          const normalized = ["team", "single", "multi"].includes(String(prev || "").trim().toLowerCase())
+            ? String(prev || "").trim().toLowerCase()
+            : "team";
+          if (normalized === "single" && !currentExists && !orkio) return "team";
+          return normalized;
+        });
       }
     } catch (e) {
       console.error("loadAgents error:", e);
@@ -1719,16 +1775,37 @@ function formatAgentOptionLabel(agent) {
   function buildMessagePrefix() {
     if (destMode === "team") return "@Team ";
     if (destMode === "single") {
-      const ag = agents.find(a => a.id === destSingle);
+      const ag = agents.find((a) => String(a.id) === String(destSingle));
       return ag ? `@${ag.name} ` : "";
     }
     if (destMode === "multi") {
-      const names = agents.filter(a => destMulti.includes(a.id)).map(a => a.name);
+      const names = agents
+        .filter((a) => destMulti.includes(String(a.id)))
+        .map((a) => a.name)
+        .filter(Boolean);
       if (!names.length) return "@Team ";
-      // backend parser supports @Name tokens; join them
-      return names.map(n => `@${n}`).join(" ") + " ";
+      return names.map((n) => `@${n}`).join(" ") + " ";
     }
     return "";
+  }
+
+  function resolveHostAgentId(modeOverride = null) {
+    const mode = String(modeOverride || destMode || "team").trim().toLowerCase();
+    const orkio = agents.find((a) => (a?.name || "").toLowerCase() === "orkio") || agents.find((a) => a?.is_default) || agents[0] || null;
+
+    if (mode === "single") {
+      return destSingle || orkio?.id || null;
+    }
+
+    if (mode === "multi") {
+      const selected = agents.filter((a) => destMulti.includes(String(a?.id || "")));
+      if (selected.length === 1) {
+        return selected[0]?.id || orkio?.id || null;
+      }
+      return orkio?.id || null;
+    }
+
+    return orkio?.id || null;
   }
 
 
@@ -1832,7 +1909,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
       const finalMsg = pref + msg;
       void refreshOrionSquadPreview(finalMsg);
 
-      const agentIdToSend = destSingle || null; // host agent for both single + team (team uses host voice)
+      const agentIdToSend = resolveHostAgentId(); // host agent depends on current routing mode
 
       const optimisticUserId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const draftAssistantId = `tmp-ass-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1904,6 +1981,11 @@ async function sendMessage(presetMsg = null, opts = {}) {
             agent_id: agentIdToSend,
             trace_id: traceId,
             client_message_id: clientMessageId,
+            agent_ids: destMode === "multi" ? destMulti : null,
+            dest_mode: destMode,
+            visible_agent: destMode === "single"
+              ? (agents.find((a) => String(a.id) === String(destSingle))?.name || "")
+              : "",
             signal: ctl.signal,
           });
           streamMeta = await withTimeout(consumeChatStream(streamResp, {
@@ -2114,6 +2196,11 @@ async function sendMessage(presetMsg = null, opts = {}) {
                 agent_id: agentIdToSend,
                 trace_id: traceId,
                 client_message_id: clientMessageId,
+                agent_ids: destMode === "multi" ? destMulti : null,
+                dest_mode: destMode,
+                visible_agent: destMode === "single"
+                  ? (agents.find((a) => String(a.id) === String(destSingle))?.name || "")
+                  : "",
                 signal: ctl.signal,
               });
             } catch (fallbackErr) {
@@ -2136,6 +2223,11 @@ async function sendMessage(presetMsg = null, opts = {}) {
           agent_id: agentIdToSend,
           trace_id: traceId,
           client_message_id: clientMessageId,
+          agent_ids: destMode === "multi" ? destMulti : null,
+          dest_mode: destMode,
+          visible_agent: destMode === "single"
+            ? (agents.find((a) => String(a.id) === String(destSingle))?.name || "")
+            : "",
           signal: ctl.signal,
         });
       }
@@ -2977,7 +3069,7 @@ function scheduleRealtimeIdleFollowup() {
       try { setSummitSessionScore(null); } catch {}
 
 
-      const agentIdToSend = destSingle || null; // host agent for both single + team (team uses host voice)
+      const agentIdToSend = resolveHostAgentId(); // host agent depends on current routing mode
       const ORKIO_ENV = (typeof window !== "undefined" && window.__ORKIO_ENV__) ? window.__ORKIO_ENV__ : {};
       const envVoice = (ORKIO_ENV.VITE_REALTIME_VOICE || import.meta.env.VITE_REALTIME_VOICE || "").trim();
       const rtModel = (ORKIO_ENV.VITE_REALTIME_MODEL || import.meta.env.VITE_REALTIME_MODEL || "gpt-realtime-mini").trim();
@@ -4508,10 +4600,17 @@ async function stopRealtime(reason = 'client_stop') {
                 Sair
               </button>
             ) : null}
-            <select style={styles.select} value={destMode} onChange={(e) => setDestMode(e.target.value)}>
+            <select
+              style={styles.select}
+              value={destMode}
+              onChange={(e) => {
+                const nextMode = String(e.target.value || "team").trim().toLowerCase();
+                setDestMode(["team", "single", "multi"].includes(nextMode) ? nextMode : "team");
+              }}
+            >
               <option value="team">Team</option>
               <option value="single">1 agente</option>
-              <option value="multi">multi</option>
+              <option value="multi">Multi Agentes</option>
             </select>
 
             {destMode === "single" ? (
@@ -4521,8 +4620,10 @@ async function stopRealtime(reason = 'client_stop') {
             ) : null}
 
             {destMode === "multi" && !isMobile ? (
-              <select style={styles.select} value="choose" onChange={() => {}}>
-                <option value="choose">Selecionar no envio...</option>
+              <select style={styles.select} value={String(destMulti.length || 0)} onChange={() => {}}>
+                <option value={String(destMulti.length || 0)}>
+                  {destMulti.length ? `${destMulti.length} agentes selecionados` : "Selecionar no envio..."}
+                </option>
               </select>
             ) : null}
           </div>
@@ -5197,7 +5298,11 @@ async function stopRealtime(reason = 'client_stop') {
                       type="checkbox"
                       checked={destMulti.includes(a.id)}
                       onChange={(e) => {
-                        setDestMulti(prev => e.target.checked ? [...prev, a.id] : prev.filter(x => x !== a.id));
+                        setDestMulti((prev) => {
+                          const base = Array.isArray(prev) ? prev.map((x) => String(x || "")) : [];
+                          if (e.target.checked) return Array.from(new Set([...base, String(a.id)]));
+                          return base.filter((x) => String(x) !== String(a.id));
+                        });
                       }}
                     />
                     <span>{a.name}</span>
