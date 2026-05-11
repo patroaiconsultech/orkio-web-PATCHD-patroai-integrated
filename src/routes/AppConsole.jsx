@@ -2257,14 +2257,14 @@ async function sendMessage(presetMsg = null, opts = {}) {
                 org: tenant,
                 thread_id: threadId,
                 message: finalMsg,
-                agent_id: agentIdToSend,
+                agent_id: destinationContract.agent_id,
                 trace_id: traceId,
                 client_message_id: clientMessageId,
-                agent_ids: destMode === "multi" ? destMulti : null,
-                dest_mode: destMode,
-                visible_agent: destMode === "single"
-                  ? (agents.find((a) => String(a.id) === String(destSingle))?.name || "")
-                  : "",
+                agent_ids: destinationContract.agent_ids,
+                dest_mode: destinationContract.dest_mode,
+                visible_agent: destinationContract.visible_agent,
+                target_agent_slug: destinationContract.target_agent_slug,
+                requested_agent_names: destinationContract.requested_agent_names,
                 signal: ctl.signal,
               });
             } catch (fallbackErr) {
