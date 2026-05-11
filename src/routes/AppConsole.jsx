@@ -1792,8 +1792,32 @@ function formatAgentOptionLabel(agent) {
 }
 
 
-  function buildMessagePrefix() {
-    if (destMode === "team") return "@Team ";
+  function extractMentionNamesFromText(raw) {
+    try {
+      const text = String(raw || "");
+      const matches = text.matchAll(/@([A-Za-z0-9_\-/]+(?:\s+[A-Za-z0-9_\-/]+){0,2})(?=(?:\s*[,.:;!?])|(?:\s+@)|$)/gi);
+      const out = [];
+      const seen = new Set();
+      for (const match of matches) {
+        const name = String(match?.[1] || "").trim();
+        const key = name.toLowerCase();
+        if (!name || seen.has(key)) continue;
+        seen.add(key);
+        out.push(name);
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  function buildMessagePrefix(rawMessage = "") {
+    const userMentions = extractMentionNamesFromText(rawMessage);
+    // EFATA777_DESTINATION_CONTRACT_V1:
+    // If the user typed an explicit mention, do not add a synthetic @Team/@Agent
+    // prefix. The canonical payload below is now the source of truth.
+    if (userMentions.length) return "";
+    if (destMode === "team") return "";
     if (destMode === "single") {
       const ag = agents.find((a) => String(a.id) === String(destSingle));
       return ag ? `@${ag.name} ` : "";
@@ -1803,10 +1827,29 @@ function formatAgentOptionLabel(agent) {
         .filter((a) => destMulti.includes(String(a.id)))
         .map((a) => a.name)
         .filter(Boolean);
-      if (!names.length) return "@Team ";
+      if (!names.length) return "";
       return names.map((n) => `@${n}`).join(" ") + " ";
     }
     return "";
+  }
+
+  function buildDestinationContract(rawMessage = "", hostAgentId = null) {
+    const mode = ["team", "single", "multi"].includes(String(destMode || "").toLowerCase())
+      ? String(destMode || "team").toLowerCase()
+      : "team";
+    const singleAgent = agents.find((a) => String(a.id) === String(destSingle)) || null;
+    const multiIds = Array.isArray(destMulti)
+      ? Array.from(new Set(destMulti.map((id) => String(id || "").trim()).filter(Boolean)))
+      : [];
+    const mentionedNames = extractMentionNamesFromText(rawMessage);
+    return {
+      dest_mode: mode,
+      agent_id: hostAgentId || null,
+      agent_ids: mode === "multi" ? multiIds : [],
+      target_agent_slug: mode === "single" ? String(destSingle || "") : null,
+      visible_agent: mode === "single" ? String(singleAgent?.name || "") : "",
+      requested_agent_names: mentionedNames,
+    };
   }
 
   function resolveHostAgentId(modeOverride = null) {
@@ -1925,11 +1968,12 @@ async function sendMessage(presetMsg = null, opts = {}) {
     try { setUploadStatus('⌛ Gerando resposta...'); } catch {}
 
     try {
-      const pref = buildMessagePrefix();
+      const agentIdToSend = resolveHostAgentId(); // host agent depends on current routing mode
+      const pref = buildMessagePrefix(msg);
       const finalMsg = pref + msg;
+      const destinationContract = buildDestinationContract(msg, agentIdToSend);
       void refreshOrionSquadPreview(finalMsg);
 
-      const agentIdToSend = resolveHostAgentId(); // host agent depends on current routing mode
 
       const optimisticUserId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const draftAssistantId = `tmp-ass-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1998,14 +2042,14 @@ async function sendMessage(presetMsg = null, opts = {}) {
             org: tenant,
             thread_id: threadId,
             message: finalMsg,
-            agent_id: agentIdToSend,
+            agent_id: destinationContract.agent_id,
             trace_id: traceId,
             client_message_id: clientMessageId,
-            agent_ids: destMode === "multi" ? destMulti : null,
-            dest_mode: destMode,
-            visible_agent: destMode === "single"
-              ? (agents.find((a) => String(a.id) === String(destSingle))?.name || "")
-              : "",
+            agent_ids: destinationContract.agent_ids,
+            dest_mode: destinationContract.dest_mode,
+            visible_agent: destinationContract.visible_agent,
+            target_agent_slug: destinationContract.target_agent_slug,
+            requested_agent_names: destinationContract.requested_agent_names,
             signal: ctl.signal,
           });
           streamMeta = await withTimeout(consumeChatStream(streamResp, {
@@ -2240,14 +2284,14 @@ async function sendMessage(presetMsg = null, opts = {}) {
           org: tenant,
           thread_id: threadId,
           message: finalMsg,
-          agent_id: agentIdToSend,
+          agent_id: destinationContract.agent_id,
           trace_id: traceId,
           client_message_id: clientMessageId,
-          agent_ids: destMode === "multi" ? destMulti : null,
-          dest_mode: destMode,
-          visible_agent: destMode === "single"
-            ? (agents.find((a) => String(a.id) === String(destSingle))?.name || "")
-            : "",
+          agent_ids: destinationContract.agent_ids,
+          dest_mode: destinationContract.dest_mode,
+          visible_agent: destinationContract.visible_agent,
+          target_agent_slug: destinationContract.target_agent_slug,
+          requested_agent_names: destinationContract.requested_agent_names,
           signal: ctl.signal,
         });
       }
