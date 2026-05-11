@@ -678,6 +678,7 @@ export default function AppConsole() {
   }, [user, canAccessAdmin]);
 
 const [onboardingChecked, setOnboardingChecked] = useState(false);
+const [bootstrapFailOpen, setBootstrapFailOpen] = useState(false);
 const [onboardingOpen, setOnboardingOpen] = useState(false);
 const [onboardingBusy, setOnboardingBusy] = useState(false);
 const [onboardingStatus, setOnboardingStatus] = useState("");
@@ -1054,6 +1055,25 @@ const closeCapacityModal = () => {
   ));
 
   
+const BOOTSTRAP_FAILOPEN_MS = 3500;
+
+useEffect(() => {
+  if (onboardingChecked) {
+    setBootstrapFailOpen(false);
+    return undefined;
+  }
+  const timer = window.setTimeout(() => {
+    try {
+      console.warn("bootstrap fail-open triggered");
+    } catch {}
+    setBootstrapFailOpen(true);
+    setOnboardingChecked(true);
+  }, BOOTSTRAP_FAILOPEN_MS);
+  return () => {
+    try { window.clearTimeout(timer); } catch {}
+  };
+}, [onboardingChecked]);
+
 useEffect(() => {
   let alive = true;
 
@@ -4430,13 +4450,18 @@ async function stopRealtime(reason = 'client_stop') {
 
   const meName = user?.name || user?.email || "Você";
 
-  if (!onboardingChecked) {
+  if (!onboardingChecked && !bootstrapFailOpen) {
     return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#0f1115", color: "#fff", fontFamily: "system-ui" }}>Carregando sua experiência...</div>;
   }
 
   return (
     <>
     <PWAInstallPrompt />
+    {bootstrapFailOpen && (
+      <div style={{ position: "fixed", top: "12px", left: "50%", transform: "translateX(-50%)", zIndex: 120, padding: "10px 14px", borderRadius: "12px", border: "1px solid rgba(251,191,36,0.35)", background: "rgba(120,53,15,0.92)", color: "#fde68a", fontSize: "12px", fontWeight: 700, boxShadow: "0 12px 28px rgba(0,0,0,0.28)" }}>
+        Console liberado em modo fail-open. O bootstrap inicial demorou mais que o esperado.
+      </div>
+    )}
     {showTermsModal && (
       <TermsModal onAccepted={async () => {
         setShowTermsModal(false);
