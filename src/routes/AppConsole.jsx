@@ -71,7 +71,9 @@ function isAbortLikeError(err) {
   return err?.name === "AbortError" ||
     err?.code === "CHAT_STREAM_ABORTED" ||
     err?.code === "STREAM_TIMEOUT" ||
-    err?.code === "CHAT_STREAM_TIMEOUT";
+    err?.code === "CHAT_STREAM_TIMEOUT" ||
+    err?.code === "FETCH_ABORTED" ||
+    err?.code === "CHAT_DIRECT_TIMEOUT";
 }
 
 
@@ -1961,21 +1963,8 @@ async function sendMessage(presetMsg = null, opts = {}) {
     const myRun = streamRunRef.current;
     try { streamCtlRef.current?.abort(); } catch {}
     const ctl = new AbortController();
-    let activeTurnCtl = ctl;
-    streamCtlRef.current = activeTurnCtl;
+    streamCtlRef.current = ctl;
     const isStale = () => (myRun !== streamRunRef.current || ctl.signal.aborted);
-    const allocDirectRailSignal = () => {
-      if (myRun !== streamRunRef.current) {
-        const staleErr = new Error("CHAT_RUN_STALE");
-        staleErr.name = "AbortError";
-        staleErr.code = "CHAT_RUN_STALE";
-        throw staleErr;
-      }
-      const directCtl = new AbortController();
-      activeTurnCtl = directCtl;
-      streamCtlRef.current = directCtl;
-      return directCtl.signal;
-    };
 
     // UX: show progress while waiting
     try { setUploadStatus('⌛ Gerando resposta...'); } catch {}
@@ -1986,6 +1975,39 @@ async function sendMessage(presetMsg = null, opts = {}) {
       const finalMsg = pref + msg;
       const destinationContract = buildDestinationContract(msg, agentIdToSend);
       void refreshOrionSquadPreview(finalMsg);
+
+      const allocDirectRailSignal = () => {
+        const directCtl = new AbortController();
+        streamCtlRef.current = directCtl;
+        return directCtl.signal;
+      };
+
+      const describeDirectRailError = (err) => {
+        if (err?.code === "CHAT_DIRECT_TIMEOUT") return "O fallback direto excedeu o tempo limite.";
+        if (err?.code === "NETWORK_FETCH_FAILED") return "Falha de rede ao executar a resposta direta.";
+        if (err?.code === "FETCH_ABORTED") return "A resposta direta foi abortada antes da conclusão.";
+        return err?.message || "Não foi possível concluir a resposta direta.";
+      };
+
+      const runDirectChat = async () => withTimeout(
+        chat({
+          token,
+          org: tenant,
+          thread_id: threadId,
+          message: finalMsg,
+          agent_id: destinationContract.agent_id,
+          trace_id: traceId,
+          client_message_id: clientMessageId,
+          agent_ids: destinationContract.agent_ids,
+          dest_mode: destinationContract.dest_mode,
+          visible_agent: destinationContract.visible_agent,
+          target_agent_slug: destinationContract.target_agent_slug,
+          requested_agent_names: destinationContract.requested_agent_names,
+          signal: allocDirectRailSignal(),
+        }),
+        CHAT_STREAM_TIMEOUT_MS,
+        "CHAT_DIRECT_TIMEOUT"
+      );
 
 
       const optimisticUserId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2187,16 +2209,55 @@ async function sendMessage(presetMsg = null, opts = {}) {
               label: streamErr?.code === "CHAT_STREAM_TIMEOUT" || streamErr?.code === "STREAM_TIMEOUT"
                 ? "Stream demorou demais"
                 : "Stream interrompido",
-              detail: "Tentando sincronizar a resposta persistida no histórico.",
+              detail: "Tentando reconciliar a resposta persistida antes de acionar a resposta direta.",
             });
-            resp = {
-              data: {
-                thread_id: newThreadId || threadId,
-                used_stream: true,
-                degraded_stream: true,
-                trace_id: traceId,
-              },
-            };
+
+            const reconcileThreadId = String(newThreadId || threadId || "").trim();
+            let reconciledMessages = [];
+            if (reconcileThreadId) {
+              try {
+                reconciledMessages = await loadMessages(reconcileThreadId, {
+                  force: true,
+                  allowInactive: true,
+                  finalizeTurn: true,
+                  preserveExistingRequest: true,
+                  expectedEpoch: activeThreadEpochRef.current,
+                });
+              } catch {}
+            }
+
+            if (hasPersistedAssistantForTurn(reconciledMessages, turnStartedAt)) {
+              appendExecutionTrace({
+                kind: "done",
+                label: "Histórico reconciliado",
+                detail: "A resposta persistida foi localizada após a degradação do stream.",
+              });
+              resp = {
+                data: {
+                  thread_id: reconcileThreadId || newThreadId || threadId,
+                  used_stream: true,
+                  degraded_stream: true,
+                  reconciled_after_stream_abort: true,
+                  trace_id: traceId,
+                },
+              };
+            } else {
+              appendExecutionTrace({
+                kind: "system",
+                label: "Alternando para resposta direta",
+                detail: "O histórico ainda não tinha resposta persistida. O Orkio vai tentar o rail direto seguro.",
+              });
+              try {
+                resp = await runDirectChat();
+              } catch (fallbackErr) {
+                appendExecutionTrace({
+                  kind: "error",
+                  label: "Fallback direto falhou",
+                  detail: describeDirectRailError(fallbackErr),
+                });
+                throw fallbackErr;
+              }
+            }
           } else if (streamErr?.status === 429 || streamErr?.code === "RATE_LIMITED" || streamErr?.isRateLimited) {
             appendExecutionTrace({
               kind: "warning",
@@ -2265,26 +2326,12 @@ async function sendMessage(presetMsg = null, opts = {}) {
               detail: "O stream foi degradado e o Orkio seguiu pelo fallback seguro.",
             });
             try {
-              resp = await chat({
-                token,
-                org: tenant,
-                thread_id: threadId,
-                message: finalMsg,
-                agent_id: destinationContract.agent_id,
-                trace_id: traceId,
-                client_message_id: clientMessageId,
-                agent_ids: destinationContract.agent_ids,
-                dest_mode: destinationContract.dest_mode,
-                visible_agent: destinationContract.visible_agent,
-                target_agent_slug: destinationContract.target_agent_slug,
-                requested_agent_names: destinationContract.requested_agent_names,
-                signal: allocDirectRailSignal(),
-              });
+              resp = await runDirectChat();
             } catch (fallbackErr) {
               appendExecutionTrace({
                 kind: "error",
                 label: "Fallback direto falhou",
-                detail: fallbackErr?.message || "Não foi possível concluir o fallback direto.",
+                detail: describeDirectRailError(fallbackErr),
               });
               throw fallbackErr;
             }
@@ -2292,21 +2339,16 @@ async function sendMessage(presetMsg = null, opts = {}) {
         }
 
       } else {
-        resp = await chat({
-          token,
-          org: tenant,
-          thread_id: threadId,
-          message: finalMsg,
-          agent_id: destinationContract.agent_id,
-          trace_id: traceId,
-          client_message_id: clientMessageId,
-          agent_ids: destinationContract.agent_ids,
-          dest_mode: destinationContract.dest_mode,
-          visible_agent: destinationContract.visible_agent,
-          target_agent_slug: destinationContract.target_agent_slug,
-          requested_agent_names: destinationContract.requested_agent_names,
-          signal: allocDirectRailSignal(),
-        });
+        try {
+          resp = await runDirectChat();
+        } catch (directErr) {
+          appendExecutionTrace({
+            kind: "error",
+            label: "Execução direta falhou",
+            detail: describeDirectRailError(directErr),
+          });
+          throw directErr;
+        }
       }
 
       if (resp?.status === 429) {
@@ -2588,7 +2630,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
         setSending(false);
         try { if (!ttsPlaying) setUploadStatus(''); } catch {}
       }
-      if (streamCtlRef.current === activeTurnCtl) {
+      if (streamCtlRef.current === ctl) {
         streamCtlRef.current = null;
       }
     }
