@@ -109,7 +109,17 @@ export async function apiFetch(path, options = {}) {
   }
 
   console.log("API_FETCH_REQUEST", { url, method: config.method, hasBody: !!config.body, org: options.org, credentials: config.credentials });
-  const response = await fetch(url, config);
+  let response;
+  try {
+    response = await fetch(url, config);
+  } catch (err) {
+    const wrapped = err instanceof Error ? err : new Error(String(err || "Network request failed"));
+    wrapped.code = wrapped?.name === "AbortError" ? "FETCH_ABORTED" : "NETWORK_FETCH_FAILED";
+    wrapped.url = url;
+    wrapped.method = config.method;
+    wrapped.wasAborted = !!options.signal?.aborted;
+    throw wrapped;
+  }
   const payload = await parseResponseBody(response);
   console.log("API_FETCH_RESPONSE", { url, status: response.status, ok: response.ok, payload });
 
@@ -372,9 +382,10 @@ export async function chatStream({
   client_message_id,
   signal,
 } = {}) {
+  const streamUrl = joinApi("/api/chat/stream");
   let response;
   try {
-    response = await fetch(joinApi("/api/chat/stream"), {
+    response = await fetch(streamUrl, {
       method: "POST",
       headers: headers({
         token,
@@ -402,10 +413,16 @@ export async function chatStream({
       }),
     });
   } catch (err) {
-    if (err?.name === "AbortError") {
-      err.code = "CHAT_STREAM_ABORTED";
+    const wrapped = err instanceof Error ? err : new Error(String(err || "Stream request failed"));
+    if (wrapped?.name === "AbortError") {
+      wrapped.code = "CHAT_STREAM_ABORTED";
+    } else {
+      wrapped.code = wrapped?.code || "NETWORK_FETCH_FAILED";
     }
-    throw err;
+    wrapped.url = streamUrl;
+    wrapped.method = "POST";
+    wrapped.wasAborted = !!signal?.aborted;
+    throw wrapped;
   }
 
   if (response.status === 401) {
