@@ -1961,8 +1961,21 @@ async function sendMessage(presetMsg = null, opts = {}) {
     const myRun = streamRunRef.current;
     try { streamCtlRef.current?.abort(); } catch {}
     const ctl = new AbortController();
-    streamCtlRef.current = ctl;
+    let activeTurnCtl = ctl;
+    streamCtlRef.current = activeTurnCtl;
     const isStale = () => (myRun !== streamRunRef.current || ctl.signal.aborted);
+    const allocDirectRailSignal = () => {
+      if (myRun !== streamRunRef.current) {
+        const staleErr = new Error("CHAT_RUN_STALE");
+        staleErr.name = "AbortError";
+        staleErr.code = "CHAT_RUN_STALE";
+        throw staleErr;
+      }
+      const directCtl = new AbortController();
+      activeTurnCtl = directCtl;
+      streamCtlRef.current = directCtl;
+      return directCtl.signal;
+    };
 
     // UX: show progress while waiting
     try { setUploadStatus('⌛ Gerando resposta...'); } catch {}
@@ -2265,7 +2278,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
                 visible_agent: destinationContract.visible_agent,
                 target_agent_slug: destinationContract.target_agent_slug,
                 requested_agent_names: destinationContract.requested_agent_names,
-                signal: ctl.signal,
+                signal: allocDirectRailSignal(),
               });
             } catch (fallbackErr) {
               appendExecutionTrace({
@@ -2292,7 +2305,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
           visible_agent: destinationContract.visible_agent,
           target_agent_slug: destinationContract.target_agent_slug,
           requested_agent_names: destinationContract.requested_agent_names,
-          signal: ctl.signal,
+          signal: allocDirectRailSignal(),
         });
       }
 
@@ -2575,7 +2588,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
         setSending(false);
         try { if (!ttsPlaying) setUploadStatus(''); } catch {}
       }
-      if (streamCtlRef.current === ctl) {
+      if (streamCtlRef.current === activeTurnCtl) {
         streamCtlRef.current = null;
       }
     }
