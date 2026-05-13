@@ -1461,11 +1461,11 @@ useEffect(() => {
       const finalizeTurn = !!opts?.finalizeTurn;
       const canApply =
         sameActiveThread &&
-        sameRequestedThread &&
         !wasAborted &&
         (
           finalizeTurn ||
           (
+            sameRequestedThread &&
             sameEpoch &&
             (force ? sameActiveThread : sameRequest)
           )
@@ -1502,31 +1502,51 @@ useEffect(() => {
   } = {}) {
     const tid = String(turnThreadId || "").trim();
     const finalText = String(finalTextCandidate || "").trim();
+    const safeFinalText =
+      finalText ||
+      "Resposta concluída no backend. Atualizando histórico...";
+
     if (!tid) {
-      if (finalText) {
-        setMessages((prev) => {
-          const list = Array.isArray(prev) ? prev : [];
-          const cleaned = list.filter((m) => String(m?.id || "") !== String(draftAssistantId || ""));
-          const alreadyVisible = cleaned.some((m) =>
-            m?.role === "assistant" &&
-            String(m?.content || "").trim() === finalText
-          );
-          if (alreadyVisible) return cleaned;
-          return [
-            ...cleaned,
-            {
-              id: `stream-final-${Date.now()}`,
-              role: "assistant",
-              content: finalText,
-              agent_name: finalAgentName || "Orion",
-              agent_id: finalAgentId || null,
-              voice_id: finalVoiceId || null,
-              avatar_url: finalAvatarUrl || null,
-              created_at: Math.floor(Date.now() / 1000),
-            },
-          ];
+      setMessages((prev) => {
+        const list = Array.isArray(prev) ? prev : [];
+        let replaced = false;
+        const next = list.map((m) => {
+          if (String(m?.id || "") !== String(draftAssistantId || "")) return m;
+          replaced = true;
+          return {
+            ...m,
+            content: safeFinalText,
+            agent_name: m.agent_name || finalAgentName || "Orion",
+            agent_id: m.agent_id || finalAgentId || null,
+            voice_id: m.voice_id || finalVoiceId || null,
+            avatar_url: m.avatar_url || finalAvatarUrl || null,
+            finalized_locally: true,
+          };
         });
-      }
+
+        if (replaced) return next;
+
+        const alreadyVisible = next.some((m) =>
+          m?.role === "assistant" &&
+          String(m?.content || "").trim() === safeFinalText
+        );
+        if (alreadyVisible) return next;
+
+        return [
+          ...next,
+          {
+            id: `stream-final-${Date.now()}`,
+            role: "assistant",
+            content: safeFinalText,
+            agent_name: finalAgentName || "Orion",
+            agent_id: finalAgentId || null,
+            voice_id: finalVoiceId || null,
+            avatar_url: finalAvatarUrl || null,
+            finalized_locally: true,
+            created_at: Math.floor(Date.now() / 1000),
+          },
+        ];
+      });
       return [];
     }
 
@@ -1588,8 +1608,12 @@ useEffect(() => {
           String(m?.id || "") === String(draftAssistantId || "")
             ? {
                 ...m,
-                content: "Resposta processada. Sincronizando histórico...",
+                content: safeFinalText,
                 agent_name: m.agent_name || finalAgentName || "Orion",
+                agent_id: m.agent_id || finalAgentId || null,
+                voice_id: m.voice_id || finalVoiceId || null,
+                avatar_url: m.avatar_url || finalAvatarUrl || null,
+                finalized_locally: true,
               }
             : m
         )
@@ -1613,6 +1637,13 @@ useEffect(() => {
           expectedEpoch: activeThreadEpochRef.current,
         }).then((fresh) => {
           if (hasPersistedAssistantForTurn(fresh, turnStartedAt)) {
+            if (String(activeThreadIdRef.current || "") === tid) {
+              setMessages(() => {
+                const persisted = Array.isArray(fresh) ? fresh : [];
+                if (!persisted.length) return persisted;
+                return persisted.filter((m) => !String(m?.id || "").startsWith("tmp-ass-"));
+              });
+            }
             appendExecutionTrace({
               kind: "done",
               label: "Histórico reconciliado",
@@ -2625,7 +2656,11 @@ async function sendMessage(presetMsg = null, opts = {}) {
         setV2vError(e?.message || "Falha ao enviar mensagem");
       }
     } finally {
-      if (!isStale()) {
+      const stillCurrentTurn =
+        streamCtlRef.current === ctl ||
+        myRun === streamRunRef.current;
+
+      if (stillCurrentTurn || sendingRef.current) {
         sendingRef.current = false;
         setSending(false);
         try { if (!ttsPlaying) setUploadStatus(''); } catch {}
