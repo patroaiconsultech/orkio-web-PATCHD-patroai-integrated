@@ -219,6 +219,99 @@ function resolveAgentVoice(agentLike) {
   return normalizeAgentVoiceId(dbVoice || envMap[name] || defaultVoice, defaultVoice);
 }
 
+
+function canonicalizeSpeakerLabel(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  const normalizedKey = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  const map = {
+    ux_frontend: "UX Frontend",
+    auditor: "Auditor",
+    systems_architect: "Systems Architect",
+    backend_engineer: "Backend Engineer",
+    frontend_engineer: "Frontend Engineer",
+    qa_release_engineer: "QA Release Engineer",
+    devops_sre: "DevOps SRE",
+    security_guardian: "Security Guardian",
+    data_db_architect: "Data DB Architect",
+    realtime_voice_engineer: "Realtime Voice Engineer",
+    orkio: "Orkio",
+    chris: "Chris",
+    orion: "Orion",
+    agent: "Agent",
+    agente: "Agent",
+    assistant: "Agent",
+    model: "Agent",
+  };
+
+  return map[normalizedKey] || text;
+}
+
+function inferSpeakerNameFromContent(content) {
+  const text = String(content || "").trim();
+  if (!text) return "";
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => String(line || "").replace(/^[\s#>*-]+/, "").replace(/\s*[:：]\s*$/, "").trim())
+    .filter(Boolean);
+
+  if (!lines.length) return "";
+  const first = lines[0];
+  const inferred = canonicalizeSpeakerLabel(first);
+  const normalizedInferred = String(inferred || "").trim().toLowerCase();
+  const normalizedFirst = String(first || "").trim().toLowerCase();
+  if (!inferred) return "";
+  if (["agent", "assistant", "model", "agente"].includes(normalizedFirst)) return "Agent";
+  if (inferred !== first) return inferred;
+  return "";
+}
+
+function resolveAssistantDisplayName(messageLike, fallback = "Agent") {
+  const rawName =
+    messageLike?.agent_name ||
+    messageLike?.final_speaker ||
+    messageLike?.visible_agent ||
+    messageLike?.speaker_name ||
+    messageLike?.name ||
+    "";
+  const explicitFromContent = inferSpeakerNameFromContent(
+    messageLike?.final_text || messageLike?.content || messageLike?.text || ""
+  );
+
+  const normalizedRaw = canonicalizeSpeakerLabel(rawName);
+  const rawLower = String(normalizedRaw || "").trim().toLowerCase();
+
+  if (explicitFromContent && ["agent", "assistant", "model"].includes(rawLower)) {
+    return explicitFromContent;
+  }
+  if (explicitFromContent && !rawName) {
+    return explicitFromContent;
+  }
+  if (normalizedRaw) {
+    return normalizedRaw;
+  }
+  if (explicitFromContent) {
+    return explicitFromContent;
+  }
+  return fallback;
+}
+
+function normalizeMessageSpeaker(messageLike) {
+  if (!messageLike || String(messageLike?.role || "").toLowerCase() !== "assistant") {
+    return messageLike;
+  }
+  return {
+    ...messageLike,
+    agent_name: resolveAssistantDisplayName(messageLike, "Agent"),
+  };
+}
+
 function logRealtimeStep(step, payload = undefined) {
   try {
     const stamp = new Date().toISOString();
@@ -1451,7 +1544,9 @@ useEffect(() => {
         fetchOpts
       );
 
-      const normalized = data || [];
+      const normalized = Array.isArray(data)
+        ? data.map((item) => normalizeMessageSpeaker(item))
+        : [];
       const sameRequest = requestSeq === messagesLoadRequestRef.current;
       const sameRequestedThread = requestedThreadIdRef.current === targetId;
       const sameActiveThread =
@@ -1516,7 +1611,10 @@ useEffect(() => {
           return {
             ...m,
             content: safeFinalText,
-            agent_name: m.agent_name || finalAgentName || "Orion",
+            agent_name: resolveAssistantDisplayName(
+              { ...(m || {}), agent_name: m?.agent_name || finalAgentName || "Agent", content: safeFinalText },
+              finalAgentName || "Agent"
+            ),
             agent_id: m.agent_id || finalAgentId || null,
             voice_id: m.voice_id || finalVoiceId || null,
             avatar_url: m.avatar_url || finalAvatarUrl || null,
@@ -1538,7 +1636,10 @@ useEffect(() => {
             id: `stream-final-${Date.now()}`,
             role: "assistant",
             content: safeFinalText,
-            agent_name: finalAgentName || "Orion",
+            agent_name: resolveAssistantDisplayName(
+              { agent_name: finalAgentName || "Agent", content: safeFinalText },
+              finalAgentName || "Agent"
+            ),
             agent_id: finalAgentId || null,
             voice_id: finalVoiceId || null,
             avatar_url: finalAvatarUrl || null,
@@ -1594,7 +1695,7 @@ useEffect(() => {
             id: `stream-final-${Date.now()}`,
             role: "assistant",
             content: finalText,
-            agent_name: finalAgentName || "Orion",
+            agent_name: resolveAssistantDisplayName({ agent_name: finalAgentName || "Agent", content: finalText }, finalAgentName || "Agent"),
             agent_id: finalAgentId || null,
             voice_id: finalVoiceId || null,
             avatar_url: finalAvatarUrl || null,
@@ -1609,7 +1710,7 @@ useEffect(() => {
             ? {
                 ...m,
                 content: safeFinalText,
-                agent_name: m.agent_name || finalAgentName || "Orion",
+                agent_name: resolveAssistantDisplayName({ ...(m || {}), agent_name: m?.agent_name || finalAgentName || "Agent", content: safeFinalText }, finalAgentName || "Agent"),
                 agent_id: m.agent_id || finalAgentId || null,
                 voice_id: m.voice_id || finalVoiceId || null,
                 avatar_url: m.avatar_url || finalAvatarUrl || null,
@@ -2044,6 +2145,14 @@ async function sendMessage(presetMsg = null, opts = {}) {
       const optimisticUserId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const draftAssistantId = `tmp-ass-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+      const initialDraftAgentName = resolveAssistantDisplayName(
+        {
+          agent_name: destinationContract.visible_agent || activeRuntimeAgent || (destMode === "team" ? "Orkio" : ""),
+          content: finalMsg,
+        },
+        destMode === "team" ? "Orkio" : "Agent"
+      );
+
       // optimistic message
       if (!isRetry) {
         setMessages((prev) => [
@@ -2059,7 +2168,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             id: draftAssistantId,
             role: "assistant",
             content: "⌛ Preparando resposta...",
-            agent_name: "Orkio",
+            agent_name: initialDraftAgentName,
             created_at: Math.floor(Date.now() / 1000),
           },
         ]);
@@ -2124,7 +2233,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             onStatus: (payload) => {
               if (isStale()) return;
               if (payload?.status) setUploadStatus(`⌛ ${payload.status}`);
-              if (payload?.agent_name) setActiveRuntimeAgent(payload.agent_name);
+              if (payload?.agent_name || payload?.final_speaker || payload?.visible_agent) setActiveRuntimeAgent(resolveAssistantDisplayName(payload, activeRuntimeAgent || "Agent"));
               appendExecutionTrace(describeExecutionStatus(payload));
             },
             onError: (payload) => {
@@ -2156,7 +2265,10 @@ async function sendMessage(presetMsg = null, opts = {}) {
                   ? {
                       ...m,
                       content: draftText || "⌛ Preparando resposta...",
-                      agent_name: payload?.agent_name || m.agent_name || "Orkio",
+                      agent_name: resolveAssistantDisplayName(
+                        { ...(m || {}), ...(payload || {}), content: draftText || payload?.content || m?.content || "" },
+                        m?.agent_name || "Agent"
+                      ),
                       agent_id: payload?.agent_id || m.agent_id || null,
                       voice_id: payload?.voice_id || m.voice_id || null,
                       avatar_url: payload?.avatar_url || m.avatar_url || null,
@@ -2166,10 +2278,10 @@ async function sendMessage(presetMsg = null, opts = {}) {
             },
             onAgentDone: (payload) => {
               if (isStale()) return;
-              if (payload?.agent_name) setActiveRuntimeAgent(payload.agent_name);
+              if (payload?.agent_name || payload?.final_speaker || payload?.visible_agent) setActiveRuntimeAgent(resolveAssistantDisplayName(payload, activeRuntimeAgent || "Agent"));
               appendExecutionTrace({
                 kind: "agent",
-                label: `${payload?.agent_name || payload?.agent_id || "Agente"} concluiu uma etapa`,
+                label: `${resolveAssistantDisplayName(payload, payload?.agent_id || "Agent")} concluiu uma etapa`,
                 detail: payload?.message || payload?.status || "Resposta parcial pronta.",
                 agentName: payload?.agent_name || "",
               });
@@ -2178,7 +2290,10 @@ async function sendMessage(presetMsg = null, opts = {}) {
                   ? {
                       ...m,
                       content: (m.content || "").replace(/^⌛\s*/, "") || "Resposta concluída.",
-                      agent_name: payload?.agent_name || m.agent_name || "Orkio",
+                      agent_name: resolveAssistantDisplayName(
+                        { ...(m || {}), ...(payload || {}), content: m?.content || payload?.content || "" },
+                        m?.agent_name || "Agent"
+                      ),
                       agent_id: payload?.agent_id || m.agent_id || null,
                       voice_id: payload?.voice_id || m.voice_id || null,
                       avatar_url: payload?.avatar_url || m.avatar_url || null,
@@ -2199,14 +2314,17 @@ async function sendMessage(presetMsg = null, opts = {}) {
                 }
               }
               if (payload?.trace_id) setLastTraceId(payload.trace_id);
-              if (payload?.agent_name) setActiveRuntimeAgent(payload.agent_name);
+              if (payload?.agent_name || payload?.final_speaker || payload?.visible_agent) setActiveRuntimeAgent(resolveAssistantDisplayName(payload, activeRuntimeAgent || "Agent"));
               if (payload?.final_text) {
                 setMessages((prev) => prev.map((m) => (
                   m.id === draftAssistantId
                     ? {
                         ...m,
                         content: String(payload.final_text || "").trim() || m.content,
-                        agent_name: payload.agent_name || m.agent_name || "Orkio",
+                        agent_name: resolveAssistantDisplayName(
+                          { ...(m || {}), ...(payload || {}), content: String(payload.final_text || "").trim() || m?.content || "" },
+                          m?.agent_name || "Agent"
+                        ),
                         agent_id: payload.agent_id || m.agent_id || null,
                       }
                     : m
@@ -4982,7 +5100,7 @@ async function stopRealtime(reason = 'client_stop') {
                   <div style={{ marginRight: 8, flexShrink: 0, alignSelf: "flex-start", marginTop: 4 }}>
                     <img
                       src={lastAgentInfo.avatar_url}
-                      alt={m.agent_name || "Agent"}
+                      alt={resolveAssistantDisplayName(m, "Agent")}
                       style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", border: "2px solid rgba(255,255,255,0.15)" }}
                       onError={(e) => { e.target.style.display = 'none'; }}
                     />
@@ -5004,7 +5122,7 @@ async function stopRealtime(reason = 'client_stop') {
                     const isSystem = m.role === "system";
                     const name = isUser
                       ? (m.user_name || meName)
-                      : (m.agent_name || (isSystem ? "Sistema" : "Agente"));
+                      : (isSystem ? "Sistema" : resolveAssistantDisplayName(m, "Agent"));
                     const nameTone = isUser ? styles.nameUser : isSystem ? styles.nameSystem : styles.nameAgent;
                     const created = formatDateTime(m.created_at);
                     const visible = stripEventMarker(m.content);
