@@ -661,7 +661,7 @@ export default function AppConsole() {
     if (!token) return undefined;
 
     const stopHeartbeat = startSessionHeartbeat({
-      intervalMs: 20000,
+      intervalMs: 45000,
       onUnauthorized: () => {
         void logoutIfSessionReallyExpired("heartbeat");
       },
