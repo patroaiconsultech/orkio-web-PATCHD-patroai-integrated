@@ -106,7 +106,10 @@ export default function AdminConsole() {
 // the whole browser session while /api/me and admin endpoints may still be valid.
 React.useEffect(() => {
   let alive = true;
+  let inFlight = false;
   const tick = async () => {
+    if (inFlight) return;
+    inFlight = true;
     const t = getToken();
     if (!t) return;
     try {
@@ -118,10 +121,12 @@ React.useEffect(() => {
       });
     } catch (_e) {
       // Non-fatal. Auth bootstrap/API calls decide whether a real logout is needed.
+    } finally {
+      inFlight = false;
     }
   };
   tick();
-  const id = setInterval(() => { if (alive) tick(); }, 20000);
+  const id = setInterval(() => { if (alive) tick(); }, 45000);
   return () => { alive = false; clearInterval(id); };
 }, []);
   const tenant = getTenant() || "public";
