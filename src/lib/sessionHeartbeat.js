@@ -2,7 +2,7 @@ import { getToken, getTenant, getSessionVersion } from "./auth.js";
 import { heartbeat } from "../ui/api.js";
 
 export function startSessionHeartbeat({
-  intervalMs = 20000,
+  intervalMs = 45000,
   onUnauthorized = null,
 } = {}) {
   let alive = true;
@@ -11,6 +11,7 @@ export function startSessionHeartbeat({
   let auth401Count = 0;
   let pausedByAuth = false;
   let observedSessionVersion = getSessionVersion();
+  let inFlight = false;
 
   function resetState(nextVersion = getSessionVersion()) {
     observedSessionVersion = nextVersion;
@@ -20,6 +21,8 @@ export function startSessionHeartbeat({
   }
 
   async function tick() {
+    if (inFlight) return;
+    inFlight = true;
     const liveVersion = getSessionVersion();
     if (liveVersion !== observedSessionVersion) {
       resetState(liveVersion);
@@ -85,6 +88,8 @@ export function startSessionHeartbeat({
           onUnauthorized(err);
         } catch {}
       }
+    } finally {
+      inFlight = false;
     }
   }
 
