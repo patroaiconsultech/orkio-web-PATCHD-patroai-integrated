@@ -19,8 +19,8 @@ const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || impo
 
 const ORKIO_CHAT_STREAM_PRIMARY = ((ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import.meta.env.VITE_CHAT_STREAM_PRIMARY || "true").toString().trim().toLowerCase() !== "false");
 const CHAT_STREAM_TIMEOUT_MS = Math.max(
-  120000,
-  Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 120000) || 120000
+  15000,
+  Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 45000) || 45000
 );
 const CHAT_TURN_RECONCILE_ATTEMPTS = Math.max(
   1,
@@ -213,6 +213,25 @@ function normalizeAgentVoiceId(raw, fallback = "cedar") {
   const valid = new Set(["alloy","ash","ballad","cedar","coral","echo","fable","marin","nova","onyx","sage","shimmer","verse"]);
   const normalized = aliases[voice] || voice;
   return valid.has(normalized) ? normalized : (String(fallback || "cedar").trim().toLowerCase() || "cedar");
+}
+
+
+function extractPatchGovernanceMeta(content) {
+  const text = String(content || "");
+  if (!/PATCH GOVERNANCE RESPONSE/i.test(text)) return null;
+  const get = (name) => {
+    const m = text.match(new RegExp(`^\\s*${name}\\s*:\\s*([^\\n]+)`, "im"));
+    return m ? String(m[1] || "").trim() : "";
+  };
+  const auditReceiptId = get("audit_receipt_id");
+  const patchMode = get("patch_mode");
+  const writeAllowed = get("write_allowed");
+  return {
+    audit_receipt_id: auditReceiptId,
+    patch_mode: patchMode,
+    write_allowed: writeAllowed,
+    can_approve: Boolean(auditReceiptId && /proposal_only/i.test(patchMode) && /false/i.test(writeAllowed)),
+  };
 }
 
 function resolveAgentVoice(agentLike) {
@@ -856,6 +875,10 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const [walletSummaryLoading, setWalletSummaryLoading] = useState(false);
   const [walletSummaryError, setWalletSummaryError] = useState("");
   const [executionTrace, setExecutionTrace] = useState([]);
+  const [patchApprovalModal, setPatchApprovalModal] = useState(null);
+  const [patchApprovalPassword, setPatchApprovalPassword] = useState("");
+  const [patchApprovalBusy, setPatchApprovalBusy] = useState(false);
+  const [patchApprovalError, setPatchApprovalError] = useState("");
   const [executionTraceExpanded, setExecutionTraceExpanded] = useState(() => {
     if (typeof window === "undefined") return true;
     return window.localStorage?.getItem("orkio_execution_trace_open") !== "0";
@@ -2103,6 +2126,66 @@ function formatAgentOptionLabel(agent) {
 
   function handlePremiumTertiaryAction() {
     fillPremiumPrompt("@Orion organize um plano prático de execução para hoje com foco em impacto real.");
+  }
+
+function openPatchApprovalModal(message) {
+    const meta = extractPatchGovernanceMeta(message?.content || "");
+    if (!meta?.can_approve) return;
+    setPatchApprovalError("");
+    setPatchApprovalPassword("");
+    setPatchApprovalModal({
+      message_id: message?.id || null,
+      thread_id: message?.thread_id || activeThreadIdRef.current || threadId || "",
+      audit_receipt_id: meta.audit_receipt_id,
+    });
+  }
+
+  async function submitPatchApproval() {
+    const modal = patchApprovalModal || {};
+    const approvalThreadId = String(modal.thread_id || activeThreadIdRef.current || threadId || "").trim();
+    const password = String(patchApprovalPassword || "");
+    if (!approvalThreadId) {
+      setPatchApprovalError("Thread não encontrada para aprovação.");
+      return;
+    }
+    if (!password) {
+      setPatchApprovalError("Digite sua senha para confirmar.");
+      return;
+    }
+    setPatchApprovalBusy(true);
+    setPatchApprovalError("");
+    try {
+      const { data } = await apiFetch("/api/governance/approve-patch", {
+        method: "POST",
+        token,
+        org: tenant,
+        body: {
+          thread_id: approvalThreadId,
+          audit_receipt_id: modal.audit_receipt_id || undefined,
+          password,
+          auto_execute: false,
+        },
+      });
+      const responseText = String(data?.message || "PATCH APPROVAL RESPONSE\n\n- status: approval_registered").trim();
+      setMessages((prev) => [
+        ...(Array.isArray(prev) ? prev : []),
+        {
+          id: `patch-approval-${Date.now()}`,
+          role: "assistant",
+          content: responseText,
+          agent_name: "Orion",
+          agent_id: "orion",
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      ]);
+      setPatchApprovalModal(null);
+      setPatchApprovalPassword("");
+      try { await loadMessages(approvalThreadId, { force: true, allowInactive: true, finalizeTurn: true }); } catch {}
+    } catch (err) {
+      setPatchApprovalError(err?.message || "Falha ao aprovar patch.");
+    } finally {
+      setPatchApprovalBusy(false);
+    }
   }
 
 async function sendMessage(presetMsg = null, opts = {}) {
@@ -5200,6 +5283,26 @@ async function stopRealtime(reason = 'client_stop') {
                                 🔊
                               </button>
                             )}
+                            {!isUser && !isSystem && extractPatchGovernanceMeta(visible || m.content)?.can_approve && (
+                              <div style={{ marginTop: 12 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => openPatchApprovalModal(m)}
+                                  style={{
+                                    border: "1px solid rgba(16,185,129,0.45)",
+                                    borderRadius: 999,
+                                    padding: "8px 12px",
+                                    background: "rgba(16,185,129,0.12)",
+                                    color: "#d1fae5",
+                                    cursor: "pointer",
+                                    fontWeight: 900,
+                                  }}
+                                  title="Aprovar este patch com confirmação por senha"
+                                >
+                                  Aprovar patch com senha
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </>
@@ -5258,6 +5361,83 @@ async function stopRealtime(reason = 'client_stop') {
           </div>
         )}
         {uploadStatus ? <div style={styles.uploadStatus}>{uploadStatus}</div> : null}
+
+        {patchApprovalModal && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.55)",
+              zIndex: 9999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+            }}
+            onClick={() => !patchApprovalBusy && setPatchApprovalModal(null)}
+          >
+            <div
+              style={{
+                width: "min(480px, 100%)",
+                borderRadius: 18,
+                border: "1px solid rgba(255,255,255,0.16)",
+                background: "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+                color: "#e5e7eb",
+                boxShadow: "0 24px 80px rgba(0,0,0,0.45)",
+                padding: 18,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 8 }}>Aprovar patch governado</div>
+              <div style={{ fontSize: 13, opacity: 0.82, lineHeight: 1.5, marginBottom: 12 }}>
+                Esta aprovação não passa pelo chat. Sua senha confirma a autorização humana para o pending proposal desta thread.
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+                audit_receipt_id: {patchApprovalModal.audit_receipt_id || "n/d"}
+              </div>
+              <input
+                type="password"
+                autoFocus
+                value={patchApprovalPassword}
+                onChange={(e) => setPatchApprovalPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !patchApprovalBusy) submitPatchApproval(); }}
+                placeholder="Digite sua senha"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  borderRadius: 12,
+                  background: "rgba(255,255,255,0.06)",
+                  color: "#fff",
+                  padding: "12px 14px",
+                  outline: "none",
+                  marginBottom: 10,
+                }}
+              />
+              {patchApprovalError && (
+                <div style={{ color: "#fca5a5", fontSize: 13, marginBottom: 10 }}>{patchApprovalError}</div>
+              )}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  disabled={patchApprovalBusy}
+                  onClick={() => setPatchApprovalModal(null)}
+                  style={{ border: 0, borderRadius: 999, padding: "9px 13px", cursor: "pointer", background: "rgba(255,255,255,0.08)", color: "#e5e7eb" }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={patchApprovalBusy}
+                  onClick={submitPatchApproval}
+                  style={{ border: 0, borderRadius: 999, padding: "9px 14px", cursor: "pointer", background: "linear-gradient(135deg, #10b981, #22c55e)", color: "#052e16", fontWeight: 900 }}
+                >
+                  {patchApprovalBusy ? "Validando..." : "Confirmar aprovação"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Composer */}
         <div style={{ ...styles.composerContainer, padding: isMobile ? "10px 12px calc(10px + env(safe-area-inset-bottom, 0px))" : styles.composerContainer.padding }}>
