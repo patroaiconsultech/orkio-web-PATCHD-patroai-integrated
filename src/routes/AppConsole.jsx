@@ -285,12 +285,17 @@ function findPendingApprovedPatchExecution(items) {
 
 function buildPendingExecutionGuidance() {
   return [
-    "PATCH EXECUTION PENDING",
+    "GOVERNED PATCH EXECUTION RESPONSE",
     "",
-    "Existe uma execução governada aprovada aguardando ação.",
+    "- status: execution_blocked_conversational_channel",
+    "- patch_mode: approved_apply",
+    "- write_allowed: false",
+    "- human_approved: true",
     "",
-    "Use o botão “Executar patch aprovado” na mensagem de aprovação.",
-    "O chat comum está bloqueado para evitar resposta narrativa sem execução real.",
+    "Resultado:",
+    "Existe uma execução governada aprovada aguardando ação, mas o chat comum não executa patches.",
+    "Use exclusivamente o botão “Executar patch aprovado”.",
+    "Nenhuma escrita, branch, commit ou PR foi executado por esta mensagem.",
   ].join("\n");
 }
 
