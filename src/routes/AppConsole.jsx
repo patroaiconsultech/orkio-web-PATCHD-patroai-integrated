@@ -234,6 +234,29 @@ function extractPatchGovernanceMeta(content) {
   };
 }
 
+
+function extractPatchApprovalMeta(content) {
+  const text = String(content || "");
+  if (!/PATCH APPROVAL RESPONSE/i.test(text)) return null;
+  const get = (name) => {
+    const m = text.match(new RegExp(`^\s*-?\s*${name}\s*:\s*([^\n]+)`, "im"));
+    return m ? String(m[1] || "").trim() : "";
+  };
+  const status = get("status");
+  const auditReceiptId = get("audit_receipt_id");
+  const patchMode = get("patch_mode");
+  const writeAllowed = get("write_allowed");
+  const humanApproved = get("human_approved");
+  return {
+    status,
+    audit_receipt_id: auditReceiptId,
+    patch_mode: patchMode,
+    write_allowed: writeAllowed,
+    human_approved: humanApproved,
+    can_execute: /approval_registered/i.test(status) && /approved_apply/i.test(patchMode) && /true/i.test(humanApproved),
+  };
+}
+
 function resolveAgentVoice(agentLike) {
   const name = String(agentLike?.agent_name || agentLike?.name || "").trim().toLowerCase();
   const dbVoice = String(agentLike?.voice_id || "").trim();
@@ -2187,6 +2210,56 @@ function openPatchApprovalModal(message) {
       setPatchApprovalBusy(false);
     }
   }
+
+  async function executeApprovedPatchFromMessage(message) {
+    const approvalMeta = extractPatchApprovalMeta(message?.content || "");
+    const approvalThreadId = String(message?.thread_id || activeThreadIdRef.current || threadId || "").trim();
+    if (!approvalMeta?.can_execute || !approvalThreadId) return;
+    try {
+      setUploadStatus("⌛ Executando fluxo governado aprovado...");
+      const { data } = await apiFetch("/api/governance/execute-approved-patch", {
+        method: "POST",
+        token,
+        org: tenant,
+        body: {
+          thread_id: approvalThreadId,
+          audit_receipt_id: approvalMeta.audit_receipt_id || undefined,
+          dry_run: false,
+        },
+      });
+      const responseText = String(data?.message || "GOVERNED PATCH EXECUTION RESPONSE\n\n- status: execution_request_finished").trim();
+      setMessages((prev) => [
+        ...(Array.isArray(prev) ? prev : []),
+        {
+          id: `patch-exec-${Date.now()}`,
+          role: "assistant",
+          content: responseText,
+          agent_name: "Orion",
+          agent_id: "orion",
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      ]);
+      try { await loadMessages(approvalThreadId, { force: true, allowInactive: true, finalizeTurn: true }); } catch {}
+    } catch (err) {
+      const responseText = `GOVERNED PATCH EXECUTION RESPONSE\n\n- status: execution_request_failed\n- detail: ${String(err?.message || "falha desconhecida")}`;
+      setMessages((prev) => [
+        ...(Array.isArray(prev) ? prev : []),
+        {
+          id: `patch-exec-error-${Date.now()}`,
+          role: "assistant",
+          content: responseText,
+          agent_name: "Orion",
+          agent_id: "orion",
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      ]);
+    } finally {
+      setUploadStatus("");
+      setSending(false);
+      sendingRef.current = false;
+    }
+  }
+
 
 async function sendMessage(presetMsg = null, opts = {}) {
     const isRetry = !!opts?.isRetry;
@@ -5300,6 +5373,26 @@ async function stopRealtime(reason = 'client_stop') {
                                   title="Aprovar este patch com confirmação por senha"
                                 >
                                   Aprovar patch com senha
+                                </button>
+                              </div>
+                            )}
+                            {!isUser && !isSystem && extractPatchApprovalMeta(visible || m.content)?.can_execute && (
+                              <div style={{ marginTop: 12 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => executeApprovedPatchFromMessage(m)}
+                                  style={{
+                                    border: "1px solid rgba(59,130,246,0.55)",
+                                    borderRadius: 999,
+                                    padding: "8px 12px",
+                                    background: "rgba(59,130,246,0.14)",
+                                    color: "#dbeafe",
+                                    cursor: "pointer",
+                                    fontWeight: 900,
+                                  }}
+                                  title="Executar o fluxo governado aprovado sem passar pelo chat"
+                                >
+                                  Executar patch aprovado
                                 </button>
                               </div>
                             )}
