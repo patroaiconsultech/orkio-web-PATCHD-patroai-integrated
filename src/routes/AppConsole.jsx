@@ -237,26 +237,43 @@ function extractPatchGovernanceMeta(content) {
 
 function extractPatchApprovalMeta(content) {
   const text = String(content || "");
-  if (!/PATCH APPROVAL RESPONSE/i.test(text)) return null;
+  const isApprovalResponse = /PATCH APPROVAL RESPONSE/i.test(text);
+  const isGovernedExecutionResponse = /GOVERNED PATCH EXECUTION RESPONSE|PATCH EXECUTION RESPONSE/i.test(text);
+  if (!isApprovalResponse && !isGovernedExecutionResponse) return null;
+
   const get = (name) => {
-    const m = text.match(new RegExp(`^\s*-?\s*${name}\s*:\s*([^\n]+)`, "im"));
+    const m = text.match(new RegExp(`^\\s*-?\\s*${name}\\s*:\\s*([^\\n]+)`, "im"));
     return m ? String(m[1] || "").trim() : "";
   };
+
   const status = get("status");
   const auditReceiptId = get("audit_receipt_id");
   const patchMode = get("patch_mode");
   const writeAllowed = get("write_allowed");
   const humanApproved = get("human_approved");
+  const approvalId = get("approval_id");
+  const patchId = get("patch_id");
+  const executionChannel = get("execution_channel");
+
+  const terminalExecution = /execution_completed|execution_failed|execution_cancelled|execution_blocked_no_executable_artifact|execution_blocked_executor_not_wired|execution_request_failed|execution_blocked_missing_approval|execution_blocked_invalid_context/i.test(status);
+  const approvedPending =
+    /approval_registered/i.test(status) ||
+    /execution_blocked_conversational_channel/i.test(status) ||
+    /side_channel_required/i.test(executionChannel) ||
+    (/approved_apply/i.test(patchMode) && /true/i.test(humanApproved) && !terminalExecution);
+
   return {
     status,
     audit_receipt_id: auditReceiptId,
+    approval_id: approvalId,
+    patch_id: patchId,
     patch_mode: patchMode,
     write_allowed: writeAllowed,
     human_approved: humanApproved,
-    can_execute: /approval_registered/i.test(status) && /approved_apply/i.test(patchMode) && /true/i.test(humanApproved),
+    execution_channel: executionChannel,
+    can_execute: Boolean(approvedPending && /approved_apply/i.test(patchMode) && /true/i.test(humanApproved) && !terminalExecution),
   };
 }
-
 
 function findPendingApprovedPatchExecution(items) {
   const arr = Array.isArray(items) ? items : [];
