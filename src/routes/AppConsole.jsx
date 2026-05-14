@@ -271,10 +271,15 @@ function findPendingApprovedPatchExecution(items) {
     if (approval?.can_execute) {
       latestApproval = { message: m, meta: approval, key };
     }
-    if (/GOVERNED PATCH EXECUTION RESPONSE|PATCH EXECUTION RESPONSE/i.test(content)) {
-      latestTerminal = { message: m, key };
-    }
-    if (/execution_completed|execution_failed|execution_cancelled|execution_blocked/i.test(content)) {
+    // A conversational-channel block is NOT a terminal execution result.
+    // It only tells the user to use the governed side-channel button.
+    // Keep the approved execution pending so the "Executar patch aprovado" button remains visible.
+    const isExecutionResponse = /GOVERNED PATCH EXECUTION RESPONSE|PATCH EXECUTION RESPONSE/i.test(content);
+    const isConversationalBlock = /execution_blocked_conversational_channel/i.test(content);
+    const isRealTerminalExecution =
+      /execution_completed|execution_failed|execution_cancelled|execution_blocked_no_executable_artifact|execution_blocked_executor_not_wired|execution_request_failed|execution_blocked_missing_approval|execution_blocked_invalid_context/i.test(content);
+
+    if (isExecutionResponse && isRealTerminalExecution && !isConversationalBlock) {
       latestTerminal = { message: m, key };
     }
   }
