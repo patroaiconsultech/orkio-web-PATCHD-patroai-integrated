@@ -279,15 +279,34 @@ function findPendingApprovedPatchExecution(items) {
   const arr = Array.isArray(items) ? items : [];
   let latestApproval = null;
   let latestTerminal = null;
+  let latestProposal = null;
+
   for (const m of arr) {
     const content = String(m?.content || "");
     const ts = Number(m?.created_at || 0) || 0;
     const id = String(m?.id || "");
     const key = `${ts}:${id}`;
+
+    // PATCH23: any newer proposal supersedes previous approval/execution state.
+    // Without this, an old approved_apply message can keep rendering an execution
+    // button for a stale patch_id/audit_receipt_id after a new proposal appears.
+    const isProposal =
+      /PATCH GOVERNANCE RESPONSE/i.test(content) &&
+      /patch_mode\s*:\s*proposal_only/i.test(content);
+    if (isProposal) {
+      const auditMatch = content.match(/^\s*audit_receipt_id\s*:\s*([^\n]+)/im);
+      latestProposal = {
+        message: m,
+        key,
+        audit_receipt_id: auditMatch ? String(auditMatch[1] || "").trim() : "",
+      };
+    }
+
     const approval = extractPatchApprovalMeta(content);
     if (approval?.can_execute) {
       latestApproval = { message: m, meta: approval, key };
     }
+
     // A conversational-channel block is NOT a terminal execution result.
     // It only tells the user to use the governed side-channel button.
     // Keep the approved execution pending so the "Executar patch aprovado" button remains visible.
@@ -300,7 +319,14 @@ function findPendingApprovedPatchExecution(items) {
       latestTerminal = { message: m, key };
     }
   }
+
   if (!latestApproval) return null;
+
+  // A newer proposal invalidates old approved-apply UI state.
+  if (latestProposal && String(latestProposal.key) > String(latestApproval.key)) {
+    return null;
+  }
+
   if (latestTerminal && String(latestTerminal.key) > String(latestApproval.key)) return null;
   return latestApproval;
 }
