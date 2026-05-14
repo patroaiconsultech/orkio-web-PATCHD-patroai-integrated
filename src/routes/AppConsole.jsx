@@ -257,6 +257,43 @@ function extractPatchApprovalMeta(content) {
   };
 }
 
+
+function findPendingApprovedPatchExecution(items) {
+  const arr = Array.isArray(items) ? items : [];
+  let latestApproval = null;
+  let latestTerminal = null;
+  for (const m of arr) {
+    const content = String(m?.content || "");
+    const ts = Number(m?.created_at || 0) || 0;
+    const id = String(m?.id || "");
+    const key = `${ts}:${id}`;
+    const approval = extractPatchApprovalMeta(content);
+    if (approval?.can_execute) {
+      latestApproval = { message: m, meta: approval, key };
+    }
+    if (/GOVERNED PATCH EXECUTION RESPONSE|PATCH EXECUTION RESPONSE/i.test(content)) {
+      latestTerminal = { message: m, key };
+    }
+    if (/execution_completed|execution_failed|execution_cancelled|execution_blocked/i.test(content)) {
+      latestTerminal = { message: m, key };
+    }
+  }
+  if (!latestApproval) return null;
+  if (latestTerminal && String(latestTerminal.key) > String(latestApproval.key)) return null;
+  return latestApproval;
+}
+
+function buildPendingExecutionGuidance() {
+  return [
+    "PATCH EXECUTION PENDING",
+    "",
+    "Existe uma execução governada aprovada aguardando ação.",
+    "",
+    "Use o botão “Executar patch aprovado” na mensagem de aprovação.",
+    "O chat comum está bloqueado para evitar resposta narrativa sem execução real.",
+  ].join("\n");
+}
+
 function resolveAgentVoice(agentLike) {
   const name = String(agentLike?.agent_name || agentLike?.name || "").trim().toLowerCase();
   const dbVoice = String(agentLike?.voice_id || "").trim();
@@ -2266,6 +2303,34 @@ async function sendMessage(presetMsg = null, opts = {}) {
     clearRealtimeIdleFollowup();
     const msg = ((presetMsg ?? text) || "").trim();
     if (!msg || sendingRef.current) return;
+
+    const pendingApprovedExecution = findPendingApprovedPatchExecution(messagesRef.current || messages);
+    if (pendingApprovedExecution) {
+      const guidance = buildPendingExecutionGuidance();
+      setText("");
+      setUploadStatus("⚠️ Execução aprovada pendente — use o botão governado.");
+      setMessages((prev) => [
+        ...(Array.isArray(prev) ? prev : []),
+        {
+          id: `patch-execution-pending-${Date.now()}`,
+          role: "assistant",
+          content: guidance,
+          agent_name: "Orion",
+          agent_id: "orion",
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      ]);
+      try {
+        const target = pendingApprovedExecution?.message;
+        if (target) setTimeout(() => {
+          try {
+            document.querySelector('[data-patch-execute-button="true"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+          } catch {}
+        }, 80);
+      } catch {}
+      return;
+    }
+
     const turnStartedAt = Math.floor(Date.now() / 1000);
     sendingRef.current = true;
     setSending(true);
@@ -4904,6 +4969,8 @@ async function stopRealtime(reason = 'client_stop') {
 
   const meName = user?.name || user?.email || "Você";
 
+  const pendingApprovedPatchExecution = findPendingApprovedPatchExecution(messages);
+
   if (!onboardingChecked && !bootstrapFailOpen) {
     return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#0f1115", color: "#fff", fontFamily: "system-ui" }}>Carregando sua experiência...</div>;
   }
@@ -5380,6 +5447,7 @@ async function stopRealtime(reason = 'client_stop') {
                               <div style={{ marginTop: 12 }}>
                                 <button
                                   type="button"
+                                  data-patch-execute-button="true"
                                   onClick={() => executeApprovedPatchFromMessage(m)}
                                   style={{
                                     border: "1px solid rgba(59,130,246,0.55)",
@@ -5680,6 +5748,41 @@ async function stopRealtime(reason = 'client_stop') {
               {lastTraceId ? <div><strong>Trace:</strong> {lastTraceId}</div> : null}
             </div>
           ) : null}
+          {pendingApprovedPatchExecution ? (
+            <div style={{
+              margin: "8px 14px",
+              padding: "12px 14px",
+              borderRadius: 14,
+              border: "1px solid rgba(59,130,246,0.45)",
+              background: "rgba(59,130,246,0.12)",
+              color: "#dbeafe",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}>
+              <div style={{ fontWeight: 800 }}>
+                Execução governada aprovada pendente. O chat comum está bloqueado até executar ou cancelar.
+              </div>
+              <button
+                type="button"
+                data-patch-execute-button="true"
+                onClick={() => executeApprovedPatchFromMessage(pendingApprovedPatchExecution.message)}
+                style={{
+                  border: "1px solid rgba(59,130,246,0.65)",
+                  borderRadius: 999,
+                  padding: "9px 13px",
+                  background: "rgba(59,130,246,0.22)",
+                  color: "#eff6ff",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                }}
+              >
+                Executar patch aprovado
+              </button>
+            </div>
+          ) : null}
           <div style={{ ...styles.composer, gap: isMobile ? "8px" : styles.composer.gap }}>
             <input
               type="file"
@@ -5694,7 +5797,7 @@ async function stopRealtime(reason = 'client_stop') {
                 type="button"
                 style={styles.attachBtn}
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploadProgress}
+                disabled={uploadProgress || !!pendingApprovedPatchExecution}
                 title="Attach file (PDF, DOCX, TXT)"
               >
                 <IconPaperclip />
@@ -5705,10 +5808,10 @@ async function stopRealtime(reason = 'client_stop') {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type your message..."
+              placeholder={pendingApprovedPatchExecution ? "Execução aprovada pendente — use o botão governado acima." : "Type your message..."}
               style={styles.textarea}
               rows={1}
-              disabled={sending}
+              disabled={sending || !!pendingApprovedPatchExecution}
             />
 
             {SUMMIT_VOICE_MODE === "stt_tts" ? (
@@ -5765,7 +5868,7 @@ async function stopRealtime(reason = 'client_stop') {
               🤝
             </button>
 
-            <button type="button" style={styles.sendBtn} onMouseDown={(e) => e.preventDefault()} onClick={() => sendMessage()} disabled={sending} title="Enviar">
+            <button type="button" style={styles.sendBtn} onMouseDown={(e) => e.preventDefault()} onClick={() => sendMessage()} disabled={sending || !!pendingApprovedPatchExecution} title="Enviar">
               <IconSend />
             </button>
           </div>
