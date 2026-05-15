@@ -4,9 +4,43 @@ import {
 } from "../lib/auth.js";
 
 function normalizeBaseUrl(v) {
-  const s = String(v || "").trim();
+  let s = String(v || "").trim();
+
+  // AO-01 hardening:
+  // Some Railway/Vite deployments may inject the API host without protocol
+  // or with a leading slash, causing the browser to call:
+  // https://www.patroai.com/api-patchd-governance-ready-production.up.railway.app/...
+  // instead of:
+  // https://api-patchd-governance-ready-production.up.railway.app/...
   if (!s) return "/api";
+
+  // Remove accidental wrapping quotes from runtime/build env values.
+  s = s.replace(/^["']+|["']+$/g, "").trim();
+
+  // Repair values like /api-patchd-governance-ready-production.up.railway.app
+  // or api-patchd-governance-ready-production.up.railway.app
+  const withoutLeadingSlash = s.replace(/^\/+/, "");
+  if (
+    !/^https?:\/\//i.test(s) &&
+    /(^|\.)railway\.app(\/)?/i.test(withoutLeadingSlash)
+  ) {
+    s = `https://${withoutLeadingSlash}`;
+  }
+
+  // Repair values that accidentally lost only one slash: https:/host
+  s = s.replace(/^https:\/([^/])/i, "https://$1");
+  s = s.replace(/^http:\/([^/])/i, "http://$1");
+
   return s.replace(/\/+$/, "");
+}
+
+function readRuntimeEnvValue(key) {
+  try {
+    if (typeof window !== "undefined" && window.__ORKIO_ENV__) {
+      return window.__ORKIO_ENV__[key];
+    }
+  } catch {}
+  return undefined;
 }
 
 function normalizePath(path) {
@@ -20,13 +54,20 @@ function normalizePath(path) {
 }
 
 const API_BASE = normalizeBaseUrl(
+  readRuntimeEnvValue("VITE_API_BASE_URL") ||
+  readRuntimeEnvValue("API_BASE_URL") ||
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
+  import.meta.env.API_BASE_URL ||
   "/api"
 );
 
 export function joinApi(path = "") {
   const p = normalizePath(path);
+
+  if (/^https?:\/\//i.test(p)) {
+    return p;
+  }
 
   if (API_BASE.endsWith("/api") && p.startsWith("/api/")) {
     return `${API_BASE}${p.slice(4)}`;
@@ -382,14 +423,6 @@ export async function chatStream({
   client_message_id,
   signal,
 } = {}) {
-  // AO-01 FORCE DIRECT RAIL: never open /api/chat/stream from the web bundle.
-  // AppConsole will fall back to /api/chat without triggering CORS preflight/POST stream.
-  const disabledErr = new Error("CHAT_STREAM_DISABLED");
-  disabledErr.code = "CHAT_STREAM_DISABLED";
-  disabledErr.method = "POST";
-  disabledErr.url = joinApi("/api/chat/stream");
-  throw disabledErr;
-
   const streamUrl = joinApi("/api/chat/stream");
   let response;
   try {
