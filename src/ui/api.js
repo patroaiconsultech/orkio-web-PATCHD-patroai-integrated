@@ -280,72 +280,6 @@ export async function publicChat(
   };
 }
 
-
-export const createPublicLead = ({
-  name,
-  email = "",
-  company = "",
-  role = "",
-  segment = "",
-  source = "orkio_prechat",
-  tenant,
-  org,
-} = {}) =>
-  apiFetch("/api/leads", {
-    method: "POST",
-    org: org || tenant,
-    skipAuthRedirect: true,
-    body: {
-      name,
-      email: email || `prechat-${Date.now()}@orkio.local`,
-      company: company || "Pré-chat Orkio",
-      role,
-      segment,
-      source,
-    },
-  });
-
-export const createEnterpriseRequest = ({
-  name = "",
-  email = "",
-  company = "",
-  phone = "",
-  segment = "",
-  challenge = "",
-  integrations = "",
-  plan_interest = "enterprise",
-  urgency = "",
-  source = "orkio_prechat",
-  context = null,
-  tenant,
-  org,
-} = {}) =>
-  apiFetch("/api/public/enterprise-request", {
-    method: "POST",
-    org: org || tenant,
-    skipAuthRedirect: true,
-    body: {
-      name,
-      email,
-      company,
-      phone,
-      segment,
-      challenge,
-      integrations,
-      plan_interest,
-      urgency,
-      source,
-      context,
-    },
-  });
-
-export const getPublicPlans = ({ tenant, org } = {}) =>
-  apiFetch("/api/public/plans", {
-    method: "GET",
-    org: org || tenant,
-    skipAuthRedirect: true,
-  });
-
 /* =========================
  * FILES
  * ========================= */
@@ -982,3 +916,89 @@ export const saveAdminAgent = ({ id = null, payload, token, org, tenant } = {}) 
     org: org || tenant,
     body: payload,
   });
+
+
+/* =========================
+ * PUBLIC PRECHAT / LEADS
+ * ========================= */
+
+export function readPrechatContext() {
+  try {
+    return JSON.parse(localStorage.getItem("orkio_prechat_context") || "null");
+  } catch {
+    return null;
+  }
+}
+
+export function clearPrechatContext() {
+  try {
+    localStorage.removeItem("orkio_prechat_context");
+  } catch {}
+}
+
+export async function savePrechatContext(payload = {}, opts = {}) {
+  const context = {
+    ...payload,
+    updated_at: payload.updated_at || new Date().toISOString(),
+  };
+
+  try {
+    localStorage.setItem("orkio_prechat_context", JSON.stringify(context));
+  } catch {}
+
+  try {
+    const res = await apiFetch("/api/public/prechat", {
+      method: "POST",
+      skipAuthRedirect: true,
+      ...opts,
+      body: context,
+    });
+    const data = res?.data || res;
+    if (data?.prechat_id || data?.session_id) {
+      const enriched = {
+        ...context,
+        prechat_id: data.prechat_id || data.session_id,
+        backend_synced: true,
+      };
+      try {
+        localStorage.setItem("orkio_prechat_context", JSON.stringify(enriched));
+      } catch {}
+      return enriched;
+    }
+  } catch (err) {
+    // Public prechat must never block the landing conversion.
+    console.warn("PUBLIC_PRECHAT_SYNC_SKIPPED", err?.message || err);
+  }
+
+  return context;
+}
+
+export async function submitEnterpriseLead(payload = {}, opts = {}) {
+  const body = {
+    source: "orkio_public_prechat",
+    ...payload,
+    created_at: payload.created_at || new Date().toISOString(),
+  };
+
+  try {
+    return await apiFetch("/api/public/enterprise-lead", {
+      method: "POST",
+      skipAuthRedirect: true,
+      ...opts,
+      body,
+    });
+  } catch (err) {
+    console.warn("ENTERPRISE_LEAD_API_FAILED", err?.message || err);
+    throw err;
+  }
+}
+
+export function buildSignupUrlFromPrechat(base = "/auth") {
+  const context = readPrechatContext();
+  const qs = new URLSearchParams();
+  qs.set("mode", "register");
+  qs.set("trial", "7");
+  qs.set("source", "orkio-prechat");
+  if (context?.prechat_id) qs.set("prechat_id", context.prechat_id);
+  return `${base}?${qs.toString()}`;
+}
