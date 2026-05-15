@@ -17,7 +17,19 @@ const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.
 const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || import.meta.env.VITE_SPEECH_RECOGNITION_LANG || "pt-BR").trim() || "pt-BR");
 
 
-const ORKIO_CHAT_STREAM_PRIMARY = ((ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import.meta.env.VITE_CHAT_STREAM_PRIMARY || "true").toString().trim().toLowerCase() !== "false");
+// AO-01 STABILIZATION:
+// Temporarily make the direct JSON rail the default for production launch.
+// The SSE stream rail has been opening CORS preflight /api/chat/stream but, in
+// the failing flow, the browser does not complete the POST consistently. That
+// leaves the UI stuck in "Gerando resposta..." before the backend receives the
+// actual chat request. To avoid blocking beta users, streaming must now be
+// explicitly forced with VITE_CHAT_STREAM_PRIMARY="force".
+// Values "true"/"1"/"yes" are intentionally treated as direct-safe mode.
+const CHAT_STREAM_PRIMARY_RAW = (ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import.meta.env.VITE_CHAT_STREAM_PRIMARY || "false")
+  .toString()
+  .trim()
+  .toLowerCase();
+const ORKIO_CHAT_STREAM_PRIMARY = CHAT_STREAM_PRIMARY_RAW === "force" || CHAT_STREAM_PRIMARY_RAW === "stream";
 const CHAT_STREAM_TIMEOUT_MS = Math.max(
   15000,
   Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 45000) || 45000
