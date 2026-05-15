@@ -280,6 +280,72 @@ export async function publicChat(
   };
 }
 
+
+export const createPublicLead = ({
+  name,
+  email = "",
+  company = "",
+  role = "",
+  segment = "",
+  source = "orkio_prechat",
+  tenant,
+  org,
+} = {}) =>
+  apiFetch("/api/leads", {
+    method: "POST",
+    org: org || tenant,
+    skipAuthRedirect: true,
+    body: {
+      name,
+      email: email || `prechat-${Date.now()}@orkio.local`,
+      company: company || "Pré-chat Orkio",
+      role,
+      segment,
+      source,
+    },
+  });
+
+export const createEnterpriseRequest = ({
+  name = "",
+  email = "",
+  company = "",
+  phone = "",
+  segment = "",
+  challenge = "",
+  integrations = "",
+  plan_interest = "enterprise",
+  urgency = "",
+  source = "orkio_prechat",
+  context = null,
+  tenant,
+  org,
+} = {}) =>
+  apiFetch("/api/public/enterprise-request", {
+    method: "POST",
+    org: org || tenant,
+    skipAuthRedirect: true,
+    body: {
+      name,
+      email,
+      company,
+      phone,
+      segment,
+      challenge,
+      integrations,
+      plan_interest,
+      urgency,
+      source,
+      context,
+    },
+  });
+
+export const getPublicPlans = ({ tenant, org } = {}) =>
+  apiFetch("/api/public/plans", {
+    method: "GET",
+    org: org || tenant,
+    skipAuthRedirect: true,
+  });
+
 /* =========================
  * FILES
  * ========================= */
