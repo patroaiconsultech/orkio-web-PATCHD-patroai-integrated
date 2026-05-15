@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch, uploadFile, chat, chatStream, transcribeAudio, requestFounderHandoff, getRealtimeClientSecret, startRealtimeSession, startSummitSession, postRealtimeEventsBatch, endRealtimeSession, getRealtimeSession, getSummitSessionScore, submitSummitSessionReview, downloadRealtimeAta as downloadRealtimeAtaFile, guardRealtimeTranscript, getOrionSquadHealth, getOrionSquadPreview, getAgentCapabilities } from "../ui/api.js";
+import { apiFetch, uploadFile, chat, chatStream, transcribeAudio, requestFounderHandoff, getRealtimeClientSecret, startRealtimeSession, startSummitSession, postRealtimeEventsBatch, endRealtimeSession, getRealtimeSession, getSummitSessionScore, submitSummitSessionReview, downloadRealtimeAta as downloadRealtimeAtaFile, guardRealtimeTranscript, getOrionSquadHealth, getOrionSquadPreview, getAgentCapabilities, readPrechatContext, clearPrechatContext } from "../ui/api.js";
 import { clearSession, getTenant, getToken, getUser, isAdmin, isApproved, setSession, logout } from "../lib/auth.js";
 import { ORKIO_VOICES, coerceVoiceId } from "../lib/voices.js";
 import TermsModal from "../ui/TermsModal.jsx";
@@ -924,6 +924,7 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const [threads, setThreads] = useState([]);
   const [threadId, setThreadId] = useState("");
   const [messages, setMessages] = useState([]);
+  const prechatImportDoneRef = useRef(false);
   const [agents, setAgents] = useState([]);
   const agentsByNameRef = useRef(new Map());
   const activeThreadIdRef = useRef("");
@@ -937,68 +938,6 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const storageBootstrapConsumedRef = useRef(false);
   const storageBootstrapInitializedRef = useRef(false);
   const THREAD_STORAGE_KEY = "orkio_active_thread_id";
-
-  const PRECHAT_CONTEXT_KEY = "orkio_prechat_context_v1";
-  const prechatContextConsumedRef = useRef(false);
-
-  useEffect(() => {
-    if (prechatContextConsumedRef.current) return;
-    if (!user || typeof window === "undefined") return;
-
-    let ctx = null;
-    try {
-      const raw = window.localStorage?.getItem(PRECHAT_CONTEXT_KEY);
-      if (raw) ctx = JSON.parse(raw);
-    } catch {}
-
-    if (!ctx || typeof ctx !== "object") return;
-    prechatContextConsumedRef.current = true;
-
-    const userName = String(ctx.name || user?.name || "").trim();
-    const challenge = String(ctx.challenge || "").trim();
-    const segment = String(ctx.segment || "").trim();
-    const systems = String(ctx.systems || "").trim();
-    const goal = String(ctx.goal || "").trim();
-
-    const importedPrompt = [
-      userName ? `Nome do usuário: ${userName}` : "",
-      segment ? `Segmento da empresa: ${segment}` : "",
-      challenge ? `Maior desafio declarado: ${challenge}` : "",
-      systems ? `Sistemas/integrações citados: ${systems}` : "",
-      goal ? `Objetivo dos próximos 90 dias: ${goal}` : "",
-      "",
-      "Continue o diagnóstico iniciado na landing pública do Orkio.",
-      "Gere um mapa inicial de evolução com prioridades, riscos, oportunidades e próximos passos.",
-      "Explique também que o usuário tem 7 dias gratuitos para experimentar a plataforma."
-    ].filter(Boolean).join("\n");
-
-    try {
-      window.localStorage?.setItem("orkio_prechat_context_imported_v1", JSON.stringify({
-        ...ctx,
-        imported_at: new Date().toISOString(),
-      }));
-      window.localStorage?.removeItem(PRECHAT_CONTEXT_KEY);
-    } catch {}
-
-    setText(importedPrompt);
-    setMessages((prev) => {
-      if (Array.isArray(prev) && prev.length) return prev;
-      return [
-        {
-          id: `prechat-imported-${Date.now()}`,
-          role: "assistant",
-          content: userName
-            ? `Bem-vindo, ${userName}. Importeis o contexto da conversa inicial. Clique em enviar para eu continuar o diagnóstico dentro do Orkio OS.`
-            : "Importei o contexto da conversa inicial. Clique em enviar para eu continuar o diagnóstico dentro do Orkio OS.",
-          agent_name: "Orkio",
-          agent_id: "orkio",
-          created_at: Math.floor(Date.now() / 1000),
-        },
-      ];
-    });
-    try { setUploadStatus("✅ Contexto pré-login importado. Clique em enviar para continuar."); } catch {}
-  }, [user]);
-
 
   function readStoredThreadId() {
     if (typeof window === "undefined") return "";
@@ -1640,6 +1579,45 @@ useEffect(() => {
       persistActiveThreadId(safeThreadId);
     }
   }, [threadId]);
+
+
+  useEffect(() => {
+    if (prechatImportDoneRef.current) return;
+    const ctx = typeof readPrechatContext === "function" ? readPrechatContext() : null;
+    if (!ctx || !ctx.answers) return;
+
+    prechatImportDoneRef.current = true;
+
+    const name = ctx.answers?.name || "visitante";
+    const diagnosis = ctx.diagnosis || "Tenho um primeiro diagnóstico gerado a partir da sua conversa pública.";
+    const summary = [
+      `Bem-vindo novamente, ${name}.`,
+      "",
+      "Importei o contexto do seu diagnóstico inicial da landing.",
+      "",
+      diagnosis,
+      "",
+      "Você tem 7 dias gratuitos para continuar explorando o Orkio OS. Posso aprofundar o plano, sugerir prioridades e indicar o melhor caminho entre Essencial, Professional ou Enterprise / White Label."
+    ].join("\n");
+
+    setMessages((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      if (list.length) return list;
+      return [
+        {
+          id: `prechat-import-${Date.now()}`,
+          role: "assistant",
+          content: summary,
+          agent_name: "Orkio",
+          created_at: Math.floor(Date.now() / 1000),
+          meta: {
+            imported_from_prechat: true,
+            prechat_context: ctx,
+          },
+        },
+      ];
+    });
+  }, []);
 
   useEffect(() => {
     if (!threadId) {
