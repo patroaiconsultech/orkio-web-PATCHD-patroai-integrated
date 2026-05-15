@@ -1,722 +1,335 @@
-
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getToken } from "../lib/auth.js";
-import { getPublicPlans } from "../ui/api.js";
 import PublicChatWidget from "../ui/PublicChatWidget.jsx";
 import Footer from "../ui/Footer.jsx";
 import OrkioSphereMark from "../ui/OrkioSphereMark.jsx";
-import PricingCheckoutModal from "../ui/PricingCheckoutModal.jsx";
 
-const fallbackPlans = [
-  {
-    code: "founder_access",
-    name: "Founder Access",
-    price_amount: 20,
-    display_currency: "USD",
-    badge: "Best entry",
-    summary: "Subscription leve com wallet incluída e cobrança adicional por uso real.",
-    included_credit_usd: 20,
-    features: [
-      "US$ 20 em créditos inclusos por mês",
-      "Wallet com saldo acumulativo",
-      "Ideal para founders e consultores",
+const COPY = {
+  "pt-BR": {
+    lang: "PT-BR",
+    altLang: "EN-US",
+    nav: ["Visão", "Integrações", "Governança", "ESG"],
+    eyebrow: "Orkio OS · Tecnologia proprietária PatroAI",
+    title: "O sistema operacional de inteligência empresarial.",
+    subtitle:
+      "O Orkio implanta uma camada de IA governável sobre a operação da empresa, conectando estratégia, dados, sistemas, automação e execução em um ecossistema contínuo.",
+    primary: "Solicitar demonstração",
+    secondary: "Entrar no Orkio",
+    chips: ["IA auditável", "Multiagentes", "White label", "Integrações empresariais"],
+    liveTitle: "Núcleo operacional vivo",
+    liveCopy:
+      "Diagnóstico, planejamento, execução assistida e aprendizado contínuo em uma experiência única para empresas que desejam evoluir com controle.",
+    pillarsTitle: "Como o Orkio transforma a operação",
+    pillars: [
+      ["Diagnóstico inteligente", "Reconhece dores, gargalos e oportunidades a partir do contexto real do negócio."],
+      ["Planejamento sustentável", "Estrutura cenários, metas e rotas de evolução de longo prazo com clareza executiva."],
+      ["Execução assistida", "Coordena agentes, tarefas, fluxos e decisões com trilha de auditoria e controle humano."],
+      ["Aprendizado contínuo", "Evolui com o uso, amadurecendo junto com a operação e os objetivos da empresa."],
     ],
+    integrationTitle: "Conectado ao ecossistema da sua empresa.",
+    integrationCopy:
+      "O Orkio se integra a sistemas operacionais, financeiros, comerciais, dados, comunicação e APIs internas ou externas. Ele não substitui a operação existente: conecta, organiza e transforma tudo em inteligência acionável.",
+    integrationItems: ["ERP", "CRM", "Financeiro", "Comunicação", "Dados & BI", "APIs"],
+    governanceTitle: "IA governável, auditável e preparada para escala.",
+    governanceCopy:
+      "Toda evolução precisa de confiança. O Orkio preserva rastreabilidade, controle humano, histórico operacional, governança por perfil e capacidade de revisão de decisões.",
+    esgTitle: "Inteligência operacional alinhada a ESG.",
+    esgCopy:
+      "A plataforma apoia eficiência, redução de desperdícios, responsabilidade decisória, transparência operacional e planejamento sustentável para empresas que desejam crescer com impacto positivo.",
+    whiteLabelTitle: "Uma plataforma evolutiva e white label.",
+    whiteLabelCopy:
+      "O Orkio pode operar como tecnologia proprietária embarcada em modelos empresariais, consultorias, verticais e ecossistemas corporativos, preservando identidade, controle e governança.",
+    finalTitle: "Sua empresa já possui dados. O Orkio transforma dados em estratégia, execução e crescimento.",
+    finalPrimary: "Agendar demonstração",
+    finalSecondary: "Falar com a PatroAI",
   },
-  {
-    code: "pro_access",
-    name: "Pro Access",
-    price_amount: 49,
-    display_currency: "USD",
-    badge: "Power users",
-    summary: "Mais throughput e créditos maiores para quem usa o Orkio de verdade.",
-    included_credit_usd: 60,
-    features: [
-      "US$ 60 em créditos inclusos por mês",
-      "Mais execuções e documentos",
-      "Melhor economia para uso intensivo",
+  "en-US": {
+    lang: "EN-US",
+    altLang: "PT-BR",
+    nav: ["Vision", "Integrations", "Governance", "ESG"],
+    eyebrow: "Orkio OS · PatroAI proprietary technology",
+    title: "The Enterprise Intelligence Operating System.",
+    subtitle:
+      "Orkio deploys a governable AI layer across the company’s operation, connecting strategy, data, systems, automation and execution into a continuous intelligence ecosystem.",
+    primary: "Request a demo",
+    secondary: "Open Orkio",
+    chips: ["Auditable AI", "Multi-agent", "White label", "Enterprise integrations"],
+    liveTitle: "A living operational core",
+    liveCopy:
+      "Diagnosis, strategic planning, assisted execution and continuous learning in one experience for companies that want to evolve with control.",
+    pillarsTitle: "How Orkio transforms operations",
+    pillars: [
+      ["Intelligent diagnosis", "Identifies pains, bottlenecks and opportunities from the real business context."],
+      ["Sustainable planning", "Structures scenarios, goals and long-term evolution paths with executive clarity."],
+      ["Assisted execution", "Coordinates agents, tasks, workflows and decisions with audit trails and human control."],
+      ["Continuous learning", "Improves with usage, maturing alongside the company’s operation and objectives."],
     ],
+    integrationTitle: "Connected to your company’s ecosystem.",
+    integrationCopy:
+      "Orkio integrates with operational, financial, commercial, data, communication and API layers. It does not replace your existing operation: it connects, organizes and turns everything into actionable intelligence.",
+    integrationItems: ["ERP", "CRM", "Finance", "Communication", "Data & BI", "APIs"],
+    governanceTitle: "Governable, auditable AI built for scale.",
+    governanceCopy:
+      "Every evolution requires trust. Orkio preserves traceability, human control, operational history, role-based governance and decision review.",
+    esgTitle: "Operational intelligence aligned with ESG.",
+    esgCopy:
+      "The platform supports efficiency, waste reduction, responsible decision-making, operational transparency and sustainable planning for companies that want to grow with positive impact.",
+    whiteLabelTitle: "An evolutionary white-label platform.",
+    whiteLabelCopy:
+      "Orkio can operate as proprietary technology embedded into business models, consultancies, verticals and corporate ecosystems while preserving identity, control and governance.",
+    finalTitle: "Your company already has data. Orkio turns it into strategy, execution and growth.",
+    finalPrimary: "Schedule a demo",
+    finalSecondary: "Talk to PatroAI",
   },
-  {
-    code: "team_access",
-    name: "Team Access",
-    price_amount: 149,
-    display_currency: "USD",
-    badge: "Shared wallet",
-    summary: "Base mensal com pool compartilhado de créditos e expansão por seat.",
-    included_credit_usd: 180,
-    features: [
-      "US$ 180 em créditos inclusos por mês",
-      "Pool compartilhado de wallet",
-      "US$ 12 por assento adicional",
-    ],
-  },
-];
+};
 
-
-function normalizePlansPayload(raw) {
-  const payload =
-    raw?.data?.plans ||
-    raw?.plans ||
-    raw?.data ||
-    (Array.isArray(raw) ? raw : null);
-
-  if (!Array.isArray(payload) || !payload.length) return fallbackPlans;
-
-  const normalized = payload.map((item, index) => ({
-    code: String(item.code || item.plan_code || item.slug || `plan_${index + 1}`),
-    name: String(item.name || item.title || item.label || `Plano ${index + 1}`),
-    price_amount: Number(item.price_amount ?? item.price_usd ?? item.amount ?? item.price ?? 0),
-    display_currency: String(item.display_currency || item.currency || "USD"),
-    currency: String(item.currency || item.display_currency || "USD"),
-    period_label: item.period_label || item.period || "/mês",
-    badge:
-      item.badge ||
-      (index === 0 ? "Mais rápido para vender" : index === 1 ? "Mais alavancado" : "Plano"),
-    summary:
-      item.summary ||
-      item.description ||
-      "Subscription + wallet + usage billing para operar sem overselling.",
-    features: Array.isArray(item.features) && item.features.length
-      ? item.features
-      : [
-          "Acesso governado ao Orkio",
-          "Entrada comercial segura",
-          "Ativação por checkout",
-        ],
-  }));
-
-  return normalized.length ? normalized : fallbackPlans;
+function detectLocale() {
+  if (typeof window === "undefined") return "pt-BR";
+  const lang = String(window.navigator?.language || "pt-BR").toLowerCase();
+  return lang.startsWith("en") ? "en-US" : "pt-BR";
 }
 
-function formatMoney(amount, currency = "BRL") {
-  if (!Number(amount)) return "Sob proposta";
-  try {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: Number(amount) % 1 === 0 ? 0 : 2,
-    }).format(Number(amount));
-  } catch {
-    return `${currency} ${amount}`;
-  }
-}
-
-function VoiceOrb() {
-  const speak = () => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(
-      "Bem-vindo ao Orkio. Inteligência executiva, governança e execução com rastreabilidade total."
-    );
-    u.lang = "pt-BR";
-    u.rate = 0.96;
-    u.pitch = 1.02;
-    const voices = window.speechSynthesis.getVoices();
-    const ptVoice = voices.find((v) => String(v.lang || "").toLowerCase().startsWith("pt"));
-    if (ptVoice) u.voice = ptVoice;
-    window.speechSynthesis.speak(u);
-  };
-
+function GlowCard({ children, className = "" }) {
   return (
-    <button
-      type="button"
-      onClick={speak}
-      className="group relative inline-flex items-center justify-center rounded-full p-4 transition hover:scale-[1.02]"
-      title="Ouvir Orkio"
+    <div className={`relative overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.045] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl ${className}`}>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(450px_180px_at_20%_0%,rgba(250,204,21,0.13),transparent_55%),radial-gradient(420px_180px_at_100%_20%,rgba(168,85,247,0.14),transparent_55%)]" />
+      <div className="relative">{children}</div>
+    </div>
+  );
+}
+
+function SignalChip({ children }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white/62">
+      <span className="h-2 w-2 rounded-full bg-[#D4AF37] shadow-[0_0_18px_rgba(212,175,55,0.75)]" />
+      {children}
+    </span>
+  );
+}
+
+function IntegrationNode({ label, delay = 0 }) {
+  return (
+    <div
+      className="orkio-float rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-center text-xs font-black uppercase tracking-[0.16em] text-white/70 shadow-[0_16px_40px_rgba(0,0,0,0.24)]"
+      style={{ animationDelay: `${delay}ms` }}
     >
-      <span className="absolute inset-0 rounded-full bg-cyan-300/10 blur-2xl transition group-hover:bg-cyan-300/20" />
-      <OrkioSphereMark size={170} ring glow />
-      <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
-        toque para ouvir
-      </span>
-    </button>
-  );
-}
-
-function StatCard({ label, value, caption }) {
-  return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 backdrop-blur">
-      <div className="text-[11px] font-black uppercase tracking-[0.24em] text-white/42">{label}</div>
-      <div className="mt-3 text-2xl font-black tracking-tight text-white">{value}</div>
-      <div className="mt-2 text-sm leading-6 text-white/62">{caption}</div>
-    </div>
-  );
-}
-
-function PriceCard({ plan, tone = "subtle", onChoose }) {
-  const toneCls =
-    tone === "featured"
-      ? "border-cyan-300/25 bg-[linear-gradient(135deg,rgba(56,189,248,0.14),rgba(124,58,237,0.18),rgba(255,255,255,0.06))] shadow-[0_24px_70px_rgba(14,165,233,0.16)]"
-      : "border-white/10 bg-white/[0.04]";
-  const price = Number(plan.price_amount) ? formatMoney(plan.price_amount, plan.currency) : "Sob proposta";
-
-  return (
-    <div className={`rounded-[30px] border p-6 backdrop-blur ${toneCls}`}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <OrkioSphereMark size={30} badge={tone === "featured"} />
-          <div>
-            <div className="text-sm font-black">{plan.name}</div>
-            <div className="text-xs uppercase tracking-[0.18em] text-white/48">Platform access</div>
-          </div>
-        </div>
-        <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/58">
-          {plan.badge}
-        </div>
-      </div>
-      <div className="mt-6 text-4xl font-black tracking-tight">{price}</div>
-      <div className="mt-1 text-xs uppercase tracking-[0.18em] text-white/44">{plan.period_label || "custom"}</div>
-      <div className="mt-3 text-sm leading-6 text-white/62">{plan.summary}</div>
-      <div className="mt-6 space-y-3">
-        {(plan.features || []).map((item) => (
-          <div key={item} className="flex items-start gap-3 text-sm text-white/82">
-            <span className="mt-1 h-2.5 w-2.5 rounded-full bg-gradient-to-r from-cyan-300 to-violet-500" />
-            <span>{item}</span>
-          </div>
-        ))}
-      </div>
-      <button
-        type="button"
-        onClick={() => onChoose?.(plan)}
-        className={`mt-7 w-full rounded-2xl px-4 py-3 text-sm font-black transition ${
-          tone === "featured"
-            ? "bg-gradient-to-r from-cyan-300 via-sky-400 to-violet-500 text-slate-950 hover:brightness-110"
-            : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
-        }`}
-      >
-        {plan.code === "enterprise" ? "Solicitar proposta" : "Ativar agora"}
-      </button>
-    </div>
-  );
-}
-
-
-function TrustChip({ title, subtitle }) {
-  return (
-    <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 backdrop-blur">
-      <div className="text-[11px] font-black uppercase tracking-[0.22em] text-white/40">{title}</div>
-      <div className="mt-1 text-sm font-semibold text-white/80">{subtitle}</div>
-    </div>
-  );
-}
-
-function ProofCard({ eyebrow, title, copy, bullets = [] }) {
-  return (
-    <div className="rounded-[30px] border border-white/10 bg-white/[0.04] p-6 backdrop-blur">
-      <div className="text-[11px] font-black uppercase tracking-[0.24em] text-white/42">{eyebrow}</div>
-      <div className="mt-4 text-2xl font-black tracking-tight text-white">{title}</div>
-      <div className="mt-4 text-sm leading-7 text-white/66">{copy}</div>
-      {bullets.length ? (
-        <div className="mt-6 space-y-3">
-          {bullets.map((item) => (
-            <div key={item} className="flex items-start gap-3 rounded-2xl border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/76">
-              <span className="mt-2 h-2.5 w-2.5 rounded-full bg-gradient-to-r from-cyan-300 to-violet-500" />
-              <span>{item}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      {label}
     </div>
   );
 }
 
 export default function Landing() {
   const nav = useNavigate();
-  const token = getToken();
-  const isLogged = !!token;
+  const isLogged = !!getToken();
+  const [locale, setLocale] = useState("pt-BR");
 
-  const [plans, setPlans] = useState(fallbackPlans);
-  const [plansLoaded, setPlansLoaded] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedPlanCode, setSelectedPlanCode] = useState("founder_access");
+  useEffect(() => setLocale(detectLocale()), []);
+  const copy = useMemo(() => COPY[locale] || COPY["pt-BR"], [locale]);
 
-  useEffect(() => {
-    let active = true;
-    getPublicPlans()
-      .then((res) => {
-        if (!active) return;
-        const normalized = normalizePlansPayload(res);
-        setPlans(normalized);
-        const preferred = normalized.find((p) => p.code === "pro_access")
-          ? "pro_access"
-          : normalized[0]?.code || "founder_access";
-        setSelectedPlanCode(preferred);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setPlansLoaded(true);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const pricingPlans = useMemo(() => {
-    const output = plans.slice(0, 3);
-    return output.length ? output : fallbackPlans;
-  }, [plans]);
-
-  function openCheckout(plan) {
-    if (plan?.code === "enterprise_contact") {
-      nav("/contact?topic=enterprise");
-      return;
-    }
-    setSelectedPlanCode(plan?.code || "founder_access");
-    setModalOpen(true);
-  }
+  const goDemo = () => nav("/contact?topic=orkio-demo");
+  const goApp = () => nav(isLogged ? "/app" : "/auth?mode=login");
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#060812] text-white">
+    <main className="min-h-screen overflow-x-hidden bg-[#05040A] text-white">
+      <style>{`
+        @keyframes orkioPulse { 0%,100%{ transform:scale(1); opacity:.78 } 50%{ transform:scale(1.08); opacity:1 } }
+        @keyframes orkioFloat { 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-10px) } }
+        @keyframes orkioSpin { from{ transform:rotate(0deg) } to{ transform:rotate(360deg) } }
+        .orkio-float { animation: orkioFloat 5.8s ease-in-out infinite; }
+        .orkio-spin { animation: orkioSpin 24s linear infinite; }
+        .orkio-pulse { animation: orkioPulse 3.4s ease-in-out infinite; }
+      `}</style>
+
       <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-[radial-gradient(900px_500px_at_14%_8%,rgba(34,211,238,0.14),transparent_60%),radial-gradient(1000px_560px_at_86%_10%,rgba(124,58,237,0.18),transparent_62%),linear-gradient(180deg,#050812,#060812)]" />
-        <div className="absolute inset-0 opacity-30 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:32px_32px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(920px_560px_at_18%_10%,rgba(212,175,55,0.15),transparent_58%),radial-gradient(900px_560px_at_88%_6%,rgba(126,34,206,0.22),transparent_62%),radial-gradient(900px_620px_at_50%_105%,rgba(24,24,27,0.95),transparent_65%),linear-gradient(180deg,#05040A,#080712_55%,#030308)]" />
+        <div className="absolute inset-0 opacity-[0.22] bg-[linear-gradient(rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.055)_1px,transparent_1px)] bg-[size:38px_38px]" />
       </div>
 
-      <header className="sticky top-0 z-30 border-b border-white/8 bg-[#060812]/76 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#05040A]/78 backdrop-blur-2xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
-          <div className="flex items-center gap-3">
-            <OrkioSphereMark size={34} badge />
+          <button onClick={() => nav("/")} className="flex items-center gap-3 text-left">
+            <OrkioSphereMark size={42} glow ring />
             <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/42">Orkio</div>
-              <div className="text-sm font-semibold text-white/88">Execution intelligence for serious operators</div>
+              <div className="text-sm font-black uppercase tracking-[0.28em] text-white">Orkio</div>
+              <div className="text-xs font-semibold text-white/50">Enterprise Intelligence OS</div>
             </div>
-          </div>
+          </button>
 
           <nav className="hidden items-center gap-2 md:flex">
-            <a className="rounded-xl px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" href="#outcomes">
-              Outcomes
-            </a>
-            <a className="rounded-xl px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" href="#architecture">
-              Architecture
-            </a>
-            <a className="rounded-xl px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" href="#pricing">
-              Pricing
-            </a>
-            <a className="rounded-xl px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" href="#proof">
-              Proof
-            </a>
-            <a className="rounded-xl px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" href="#security">
-              Security
-            </a>
+            {copy.nav.map((item, idx) => (
+              <a
+                key={item}
+                href={["#vision", "#integrations", "#governance", "#esg"][idx]}
+                className="rounded-xl px-3 py-2 text-sm text-white/62 transition hover:bg-white/5 hover:text-white"
+              >
+                {item}
+              </a>
+            ))}
           </nav>
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => nav(isLogged ? "/app" : "/auth?mode=login")}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold hover:bg-white/10"
+              type="button"
+              onClick={() => setLocale(locale === "pt-BR" ? "en-US" : "pt-BR")}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-black text-white/75 hover:bg-white/10"
             >
-              {isLogged ? "Open app" : "Sign in"}
+              {copy.altLang}
             </button>
             <button
-              onClick={() => setModalOpen(true)}
-              className="rounded-xl bg-gradient-to-r from-cyan-300 via-sky-400 to-violet-500 px-4 py-2 text-sm font-black text-slate-950 hover:brightness-110"
+              type="button"
+              onClick={goDemo}
+              className="rounded-xl bg-gradient-to-r from-[#D4AF37] via-[#F7D774] to-[#A855F7] px-4 py-2 text-sm font-black text-slate-950 shadow-[0_14px_40px_rgba(212,175,55,0.18)] transition hover:brightness-110"
             >
-              Start now
+              {copy.primary}
             </button>
           </div>
         </div>
       </header>
 
-      <section className="mx-auto grid max-w-7xl gap-12 px-4 pb-16 pt-14 lg:grid-cols-[minmax(0,1.1fr)_minmax(460px,520px)] lg:items-center">
+      <section id="vision" className="mx-auto grid max-w-7xl gap-12 px-4 pb-20 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
         <div>
-          <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-black uppercase tracking-[0.24em] text-white/56">
+          <div className="inline-flex items-center gap-3 rounded-full border border-[#D4AF37]/20 bg-white/[0.04] px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-[#F7D774]">
             <OrkioSphereMark size={18} />
-            PatroAI • Orkio • governed autonomy
+            {copy.eyebrow}
           </div>
 
-          <h1 className="mt-7 max-w-4xl text-5xl font-black leading-[0.96] tracking-tight md:text-7xl">
-            A plataforma que transforma
-            <span className="bg-gradient-to-r from-cyan-300 via-sky-400 to-violet-500 bg-clip-text text-transparent"> estratégia em execução</span>.
+          <h1 className="mt-7 max-w-5xl text-5xl font-black leading-[0.92] tracking-tight md:text-7xl">
+            {copy.title}
           </h1>
 
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-white/68">
-            Orkio organiza intenção, aciona inteligência, coordena agentes e mantém rastreabilidade operacional.
-            É a camada de execução da sua empresa — com design premium, governança e velocidade de produto.
+          <p className="mt-6 max-w-3xl text-lg leading-8 text-white/68">
+            {copy.subtitle}
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
             <button
-              onClick={() => setModalOpen(true)}
-              className="rounded-2xl bg-gradient-to-r from-cyan-300 via-sky-400 to-violet-500 px-6 py-4 text-sm font-black text-slate-950 shadow-[0_20px_60px_rgba(96,165,250,0.22)] hover:brightness-110"
+              onClick={goDemo}
+              className="rounded-2xl bg-gradient-to-r from-[#D4AF37] via-[#F7D774] to-[#A855F7] px-6 py-4 text-sm font-black text-slate-950 shadow-[0_24px_70px_rgba(212,175,55,0.22)] transition hover:brightness-110"
             >
-              Conhecer planos
+              {copy.primary}
             </button>
-            <a
-              href="#pricing"
-              className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm font-semibold text-white hover:bg-white/10"
-            >
-              Ver planos
-            </a>
             <button
-              onClick={() => nav("/auth?mode=register")}
-              className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm font-semibold text-white hover:bg-white/10"
+              onClick={goApp}
+              className="rounded-2xl border border-white/10 bg-white/[0.055] px-6 py-4 text-sm font-semibold text-white transition hover:bg-white/10"
             >
-              Entrar no Orkio
+              {copy.secondary}
             </button>
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">
-            <TrustChip title="ICP" subtitle="Founders, consultores e equipes em crescimento" />
-            <TrustChip title="Go-to-market" subtitle="PWA + checkout + guided entry" />
-            <TrustChip title="Operação" subtitle="Billing, governança e valuation já ligados" />
-          </div>
-
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            <StatCard label="Posicionamento" value="OS de execução" caption="Mais do que chat. Orquestração com propósito, plano e evidência." />
-            <StatCard label="Experiência" value="PWA premium" caption="Distribuição imediata, atualizações contínuas e onboarding controlado." />
-            <StatCard label="Monetização" value="Billing live" caption="Checkout, valuation e governança conectados em tempo real." />
+            {copy.chips.map((chip) => <SignalChip key={chip}>{chip}</SignalChip>)}
           </div>
         </div>
 
-        <div className="rounded-[36px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.48)] backdrop-blur-2xl">
-          <div className="flex items-center justify-between gap-4">
+        <GlowCard className="min-h-[560px]">
+          <div className="absolute left-1/2 top-1/2 h-[460px] w-[460px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#D4AF37]/20 opacity-70 orkio-spin" />
+          <div className="absolute left-1/2 top-1/2 h-[330px] w-[330px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#A855F7]/25 opacity-70 orkio-spin" style={{ animationDirection: "reverse" }} />
+          <div className="relative flex min-h-[500px] flex-col items-center justify-center text-center">
+            <div className="orkio-pulse">
+              <OrkioSphereMark size={188} ring glow />
+            </div>
+            <h2 className="mt-8 text-3xl font-black tracking-tight">{copy.liveTitle}</h2>
+            <p className="mx-auto mt-4 max-w-md text-sm leading-7 text-white/68">{copy.liveCopy}</p>
+
+            <div className="mt-8 grid w-full max-w-lg grid-cols-2 gap-3">
+              {copy.integrationItems.map((item, index) => (
+                <IntegrationNode key={item} label={item} delay={index * 130} />
+              ))}
+            </div>
+          </div>
+        </GlowCard>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-14">
+        <div className="mb-8 max-w-3xl">
+          <div className="text-[11px] font-black uppercase tracking-[0.28em] text-[#F7D774]/70">Operational model</div>
+          <h2 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">{copy.pillarsTitle}</h2>
+        </div>
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+          {copy.pillars.map(([title, body], index) => (
+            <GlowCard key={title} className="min-h-[250px]">
+              <div className="text-sm font-black text-[#F7D774]">0{index + 1}</div>
+              <h3 className="mt-4 text-xl font-black tracking-tight">{title}</h3>
+              <p className="mt-4 text-sm leading-7 text-white/64">{body}</p>
+            </GlowCard>
+          ))}
+        </div>
+      </section>
+
+      <section id="integrations" className="mx-auto max-w-7xl px-4 py-14">
+        <GlowCard className="md:p-10">
+          <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.26em] text-white/45">Live entrance</div>
-              <div className="mt-2 text-2xl font-black">Conheça o Orkio</div>
-              <div className="mt-2 max-w-md text-sm leading-6 text-white/65">
-                Visual mais limpo, marca concentrada na esfera e uma entrada comercial pronta para converter.
-              </div>
+              <div className="text-[11px] font-black uppercase tracking-[0.28em] text-[#F7D774]/70">Connected intelligence</div>
+              <h2 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">{copy.integrationTitle}</h2>
+              <p className="mt-5 text-base leading-8 text-white/66">{copy.integrationCopy}</p>
             </div>
-            <VoiceOrb />
-          </div>
-
-          <div className="mt-8 grid gap-4 md:grid-cols-2">
-            <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
-              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-white/42">Value loop</div>
-              <div className="mt-4 space-y-4">
-                {[
-                  ["Diagnostica o objetivo", "Capta contexto e define o resultado desejado."],
-                  ["Monta o plano", "Estrutura passos, agentes e prioridades."],
-                  ["Executa com governança", "Mantém auditoria, trilha e controle humano."],
-                ].map(([title, desc]) => (
-                  <div key={title} className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
-                    <div className="text-sm font-black">{title}</div>
-                    <div className="mt-2 text-sm leading-6 text-white/62">{desc}</div>
-                  </div>
-                ))}
+            <div className="relative min-h-[360px] rounded-[32px] border border-white/10 bg-black/20 p-6">
+              <div className="absolute left-1/2 top-1/2 h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#D4AF37]/20 bg-[#D4AF37]/5 blur-[1px]" />
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 orkio-pulse">
+                <OrkioSphereMark size={132} ring glow />
               </div>
-            </div>
-
-            <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
-              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-white/42">What users feel</div>
-              <div className="mt-4 space-y-3">
-                {[
-                  "Menos ruído visual e mais confiança de marca",
-                  "Checkout bonito do primeiro clique ao redirecionamento",
-                  "Onboarding preparado para converter em plano pago",
-                  "Operação com sinais de negócio, infraestrutura e valuation",
-                ].map((item) => (
-                  <div key={item} className="flex items-start gap-3 rounded-2xl border border-white/8 bg-white/[0.04] p-4 text-sm leading-6 text-white/76">
-                    <span className="mt-2 h-2.5 w-2.5 rounded-full bg-gradient-to-r from-cyan-300 to-violet-500" />
-                    <span>{item}</span>
-                  </div>
+              <div className="grid h-full min-h-[312px] grid-cols-2 content-between gap-4">
+                {copy.integrationItems.map((item, index) => (
+                  <IntegrationNode key={item} label={item} delay={index * 100} />
                 ))}
               </div>
             </div>
           </div>
-        </div>
+        </GlowCard>
       </section>
 
-      <section id="outcomes" className="mx-auto max-w-7xl px-4 py-16">
-        <div className="grid gap-5 lg:grid-cols-3">
-          {[
-            ["Founders", "Estruture business plans, playbooks e priorização sem se perder em ruído operacional."],
-            ["Consultores", "Transforme seu método em uma camada de execução com histórico, ativos e recorrência."],
-            ["Equipes", "Coordene operação, aprovação e inteligência com uma interface que não parece improvisada."],
-          ].map(([title, desc]) => (
-            <div key={title} className="rounded-[30px] border border-white/10 bg-white/[0.04] p-6 backdrop-blur">
-              <div className="flex items-center gap-3">
-                <OrkioSphereMark size={24} />
-                <div className="text-lg font-black">{title}</div>
-              </div>
-              <div className="mt-4 text-sm leading-7 text-white/66">{desc}</div>
-            </div>
-          ))}
-        </div>
+      <section id="governance" className="mx-auto grid max-w-7xl gap-5 px-4 py-14 lg:grid-cols-3">
+        <GlowCard className="lg:col-span-2">
+          <div className="text-[11px] font-black uppercase tracking-[0.28em] text-[#F7D774]/70">Governance</div>
+          <h2 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">{copy.governanceTitle}</h2>
+          <p className="mt-5 max-w-3xl text-base leading-8 text-white/66">{copy.governanceCopy}</p>
+        </GlowCard>
+        <GlowCard>
+          <div className="flex h-full flex-col items-center justify-center text-center">
+            <OrkioSphereMark size={120} ring glow />
+            <div className="mt-6 text-sm font-black uppercase tracking-[0.22em] text-white/50">Human control</div>
+            <div className="mt-2 text-2xl font-black">Audit trail</div>
+          </div>
+        </GlowCard>
       </section>
 
-      <section id="architecture" className="mx-auto max-w-7xl px-4 py-16">
-        <div className="rounded-[36px] border border-white/10 bg-white/[0.04] p-6 backdrop-blur md:p-8">
-          <div className="max-w-2xl">
-            <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/42">Architecture</div>
-            <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">
-              Design revisto para parecer plataforma, não experimento.
-            </h2>
-            <p className="mt-4 text-sm leading-7 text-white/66">
-              O visual agora trabalha com massa, profundidade, hierarquia clara e marca centralizada na esfera.
-              Isso aproxima o produto do nível enterprise que a proposta comercial exige.
-            </p>
-          </div>
-
-          <div className="mt-8 grid gap-4 md:grid-cols-4">
-            {[
-              ["01", "Entrada comercial", "Landing, PWA install, pricing e widget alinhados ao mesmo sistema visual."],
-              ["02", "Checkout seguro", "Fluxo bonito, claro e preparado para Pix ou cartão."],
-              ["03", "Cockpit operacional", "Infra, billing, valuation e governança no mesmo eixo visual."],
-              ["04", "Marca consistente", "A esfera passa a ser o ativo central de reconhecimento."],
-            ].map(([n, title, desc]) => (
-              <div key={n} className="rounded-[28px] border border-white/10 bg-black/20 p-5">
-                <div className="text-sm font-black text-cyan-300">{n}</div>
-                <div className="mt-3 text-lg font-black">{title}</div>
-                <div className="mt-3 text-sm leading-6 text-white/62">{desc}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+      <section id="esg" className="mx-auto grid max-w-7xl gap-5 px-4 py-14 lg:grid-cols-2">
+        <GlowCard>
+          <div className="text-[11px] font-black uppercase tracking-[0.28em] text-[#F7D774]/70">ESG</div>
+          <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">{copy.esgTitle}</h2>
+          <p className="mt-5 text-base leading-8 text-white/66">{copy.esgCopy}</p>
+        </GlowCard>
+        <GlowCard>
+          <div className="text-[11px] font-black uppercase tracking-[0.28em] text-[#F7D774]/70">White label</div>
+          <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">{copy.whiteLabelTitle}</h2>
+          <p className="mt-5 text-base leading-8 text-white/66">{copy.whiteLabelCopy}</p>
+        </GlowCard>
       </section>
 
-      <section id="pricing" className="mx-auto max-w-7xl px-4 py-16">
-        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <div className="max-w-2xl">
-            <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/42">Pricing</div>
-            <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">Planos claros para vender agora.</h2>
-            <p className="mt-4 text-sm leading-7 text-white/66">
-              O PWA já nasce com proposta comercial simples, premium e escalável. O checkout está integrado ao fluxo de entrada da plataforma.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-white/45">
-            <OrkioSphereMark size={16} />
-            {plansLoaded ? "Planos sincronizados" : "Carregando planos"}
-          </div>
-        </div>
-
-        <div className="mt-8 grid gap-5 lg:grid-cols-3">
-          {pricingPlans.map((plan, idx) => (
-            <PriceCard
-              key={plan.code}
-              plan={plan}
-              tone={idx === 1 ? "featured" : "subtle"}
-              onChoose={openCheckout}
-            />
-          ))}
-        </div>
-
-        <div className="mt-8 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="rounded-[32px] border border-white/10 bg-white/[0.04] p-6 backdrop-blur">
-            <div className="text-[11px] font-black uppercase tracking-[0.24em] text-white/42">Commercial flow</div>
-            <div className="mt-4 grid gap-4 md:grid-cols-4">
-              {[
-                ["1", "Escolha o plano", "Professional, Business ou Enterprise."],
-                ["2", "Redirecionamento seguro", "Pix ou cartão com retorno ao PWA."],
-                ["3", "Confirmação automática", "Pagamento confirmado ativa acesso."],
-                ["4", "Entrada no Orkio", "Cadastro concluído e console liberado."],
-              ].map(([step, title, desc]) => (
-                <div key={step} className="rounded-[26px] border border-white/8 bg-black/20 p-5">
-                  <div className="text-sm font-black text-cyan-300">{step}</div>
-                  <div className="mt-3 text-base font-black">{title}</div>
-                  <div className="mt-3 text-sm leading-6 text-white/62">{desc}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[32px] border border-white/10 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(124,58,237,0.16),rgba(255,255,255,0.05))] p-6 backdrop-blur">
-            <div className="flex items-center gap-3">
-              <OrkioSphereMark size={26} badge />
-              <div className="text-sm font-black">Guided onboarding</div>
-            </div>
-            <div className="mt-4 text-sm leading-7 text-white/72">
-              O onboarding acontece no fluxo protegido, com validação adequada e sem exposição pública na landing.
-            </div>
-            <button
-              onClick={() => nav("/auth?mode=register")}
-              className="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-black text-white hover:bg-white/10"
-            >
-              Falar com a equipe
-            </button>
-          </div>
-        </div>
-      </section>
-
-
-      <section id="proof" className="mx-auto max-w-7xl px-4 py-16">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/42">Commercial proof</div>
-            <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">
-              A landing agora vende contexto, urgência e confiança.
-            </h2>
-            <p className="mt-4 text-sm leading-7 text-white/66">
-              Este bloco foi desenhado para founder-led distribution em LinkedIn, WhatsApp e rede de parceiros.
-              Em vez de parecer um experimento técnico, o Orkio passa a se apresentar como produto pronto para adoção controlada.
-            </p>
-          </div>
-
-          <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] text-white/44">
-            Narrativa institucional e produto pronto para adoção
-          </div>
-        </div>
-
-        <div className="mt-8 grid gap-5 lg:grid-cols-3">
-          <ProofCard
-            eyebrow="Who buys first"
-            title="Founders e consultores sentem o valor mais rápido."
-            copy="Esse ICP tem dor imediata de organização estratégica, execução e clareza. O Orkio entra como sistema de direção, plano e acompanhamento."
-            bullets={[
-              "Business plan e playbook 30/60/90 em fluxo único",
-              "Histórico e memória operacional sem espalhar contexto",
-              "Entrada simples por PWA para compartilhar e indicar",
-            ]}
-          />
-          <ProofCard
-            eyebrow="Why now"
-            title="O timing comercial está maduro."
-            copy="Você já tem produto, pricing, checkout, valuation e governança em linha. O próximo crescimento vem da distribuição certa, não de mais teoria."
-            bullets={[
-              "Lançamento via PWA reduz fricção e custo",
-              "Checkout ativo acelera conversão sem depender de app stores",
-              "Operação já mostra sinais de negócio, infra e receita",
-            ]}
-          />
-          <ProofCard
-            eyebrow="What increases trust"
-            title="Confiança visual e operacional no primeiro clique."
-            copy="Quem chega precisa sentir produto premium, não protótipo. Essa camada visual reforça a percepção de valor e encurta o caminho até o pagamento."
-            bullets={[
-              "Marca concentrada na esfera e interface mais memorável",
-              "Fluxo comercial elegante do plano ao checkout",
-              "Governança e controle de acesso preservados no mesmo sistema",
-            ]}
-          />
-        </div>
-
-        <div className="mt-8 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] p-6 backdrop-blur md:p-8">
-            <div className="text-[11px] font-black uppercase tracking-[0.26em] text-white/42">Use cases with stronger conversion</div>
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              {[
-                ["Founder operating system", "Estruturar visão, prioridades, business plan, captação e trilha de execução sem perder contexto."],
-                ["Consulting delivery engine", "Transformar método em recorrência, evidência de valor e mais capacidade operacional por cliente."],
-                ["Team execution cockpit", "Centralizar decisões, aprovações, playbooks e memória institucional num workspace governado."],
-                ["Enterprise entry wedge", "Começar por uma dor clara, provar valor rápido e expandir para setup, integrações e planos maiores."],
-              ].map(([title, desc]) => (
-                <div key={title} className="rounded-[28px] border border-white/8 bg-black/20 p-5">
-                  <div className="text-base font-black">{title}</div>
-                  <div className="mt-3 text-sm leading-6 text-white/62">{desc}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[34px] border border-white/10 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(124,58,237,0.16),rgba(255,255,255,0.05))] p-6 backdrop-blur">
-            <div className="flex items-center gap-3">
-              <OrkioSphereMark size={24} badge />
-              <div className="text-sm font-black">Operational readiness</div>
-            </div>
-            <div className="mt-5 space-y-4">
-              {[
-                ["Canal", "Distribuição founder-led por LinkedIn, WhatsApp e rede de negócios."],
-                ["Oferta", "Entrada estruturada com pricing claro e onboarding governado."],
-                ["Escassez", "Janela ideal para captar operadores certos antes da abertura ampla."],
-              ].map(([title, desc]) => (
-                <div key={title} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <div className="text-[11px] font-black uppercase tracking-[0.22em] text-white/42">{title}</div>
-                  <div className="mt-2 text-sm leading-6 text-white/74">{desc}</div>
-                </div>
-              ))}
-            </div>
-            <button
-              onClick={() => setModalOpen(true)}
-              className="mt-6 w-full rounded-2xl bg-gradient-to-r from-cyan-300 via-sky-400 to-violet-500 px-4 py-3 text-sm font-black text-slate-950 hover:brightness-110"
-            >
-              Garantir meu acesso agora
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-8 rounded-[34px] border border-white/10 bg-white/[0.04] p-6 backdrop-blur md:p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="text-[11px] font-black uppercase tracking-[0.26em] text-white/42">Suggested social proof layer</div>
-              <h3 className="mt-3 text-2xl font-black tracking-tight">Pronto para receber logos, depoimentos curtos e parceiros âncora.</h3>
-              <p className="mt-3 text-sm leading-7 text-white/66">
-                Deixei a estrutura preparada para encaixar cases, logos de clientes e sinais institucionais assim que você escolher os primeiros nomes públicos.
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:w-[420px]">
-              {[
-                "Founder network ready",
-                "Consulting-ready delivery",
-                "PWA with billing",
-                "Governed onboarding",
-              ].map((item) => (
-                <div key={item} className="rounded-2xl border border-white/8 bg-black/20 px-4 py-4 text-sm font-semibold text-white/80">
-                  {item}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-
-      <section id="security" className="mx-auto max-w-7xl px-4 py-16">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="rounded-[36px] border border-white/10 bg-white/[0.04] p-6 backdrop-blur md:p-8">
-            <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/42">Security and trust</div>
-            <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">O design agora sustenta a promessa do produto.</h2>
-            <p className="mt-4 text-sm leading-7 text-white/66">
-              Menos elementos supérfluos, marca mais memorável e interface mais sólida. Isso melhora percepção de valor,
-              reduz fricção e prepara o Orkio para escala comercial.
-            </p>
-          </div>
-
-          <div className="rounded-[36px] border border-white/10 bg-[linear-gradient(180deg,rgba(34,211,238,0.1),rgba(124,58,237,0.14),rgba(255,255,255,0.04))] p-6 backdrop-blur">
-            <div className="flex justify-center">
-              <OrkioSphereMark size={86} badge />
-            </div>
-            <div className="mt-6 text-center text-sm leading-7 text-white/72">
-              A esfera passa a ser o núcleo visual do Orkio em landing, widget, PWA e entrada de autenticação.
-            </div>
-            <button
-              onClick={() => setModalOpen(true)}
-              className="mt-6 w-full rounded-2xl bg-gradient-to-r from-cyan-300 via-sky-400 to-violet-500 px-4 py-3 text-sm font-black text-slate-950 hover:brightness-110"
-            >
-              Ir para checkout
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <div className="mx-auto max-w-7xl px-4 pb-16 pt-2">
-        <div className="rounded-[38px] border border-white/10 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(124,58,237,0.16),rgba(255,255,255,0.05))] p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-          <div className="mx-auto flex w-fit items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[11px] font-black uppercase tracking-[0.24em] text-white/46">
+      <section className="mx-auto max-w-7xl px-4 pb-20 pt-14">
+        <div className="rounded-[40px] border border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(212,175,55,0.18),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-8 text-center shadow-[0_30px_100px_rgba(0,0,0,0.42)] backdrop-blur-xl md:p-12">
+          <div className="mx-auto flex w-fit items-center gap-3 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-[11px] font-black uppercase tracking-[0.24em] text-white/50">
             <OrkioSphereMark size={18} />
-            Launch-ready PWA
+            Orkio OS
           </div>
-          <h2 className="mt-6 text-3xl font-black tracking-tight md:text-5xl">
-            Orkio está pronto para parecer o que ele já é.
+          <h2 className="mx-auto mt-6 max-w-5xl text-3xl font-black tracking-tight md:text-5xl">
+            {copy.finalTitle}
           </h2>
-          <p className="mx-auto mt-5 max-w-3xl text-base leading-8 text-white/66">
-            Uma plataforma de execução e inteligência com visual de produto premium, entrada comercial clara e checkout desenhado para converter.
-          </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <button
-              onClick={() => setModalOpen(true)}
-              className="rounded-2xl bg-gradient-to-r from-cyan-300 via-sky-400 to-violet-500 px-6 py-4 text-sm font-black text-slate-950 hover:brightness-110"
-            >
-              Ativar meu acesso
+            <button onClick={goDemo} className="rounded-2xl bg-gradient-to-r from-[#D4AF37] via-[#F7D774] to-[#A855F7] px-6 py-4 text-sm font-black text-slate-950 transition hover:brightness-110">
+              {copy.finalPrimary}
             </button>
-            <button
-              onClick={() => nav("/auth?mode=login")}
-              className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm font-semibold text-white hover:bg-white/10"
-            >
-              Já tenho acesso
+            <button onClick={() => nav("/contact?topic=patroai")} className="rounded-2xl border border-white/10 bg-white/[0.055] px-6 py-4 text-sm font-semibold text-white transition hover:bg-white/10">
+              {copy.finalSecondary}
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
       <PublicChatWidget />
       <Footer />
-
-      <PricingCheckoutModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        defaultPlanCode={selectedPlanCode}
-      />
-    </div>
+    </main>
   );
 }
