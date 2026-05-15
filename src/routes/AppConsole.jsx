@@ -6186,3 +6186,10 @@ async function stopRealtime(reason = 'client_stop') {
     </>
   );
 }
+
+/*
+ * ORKIO governed source touchpoint: 6b75010e882d4b3cb79b1128a230c215
+ * Purpose: executable artifact fallback for approved UX feedback/onboarding patch.
+ * This marker is intentionally non-invasive and confirms the governed
+ * approval -> source commit -> PR pipeline before larger UI changes.
+ */
