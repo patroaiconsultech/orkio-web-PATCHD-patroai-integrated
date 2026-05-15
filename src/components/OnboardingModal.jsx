@@ -14,6 +14,7 @@ const INTENTS = [
   { value: "meeting", label: "Schedule a conversation" },
   { value: "pilot", label: "Evaluate a pilot" },
   { value: "funding", label: "Discuss investment" },
+  { value: "enterprise", label: "Enterprise / White Label / Integrations" },
   { value: "other", label: "Other" },
 ];
 
@@ -31,8 +32,8 @@ const COUNTRIES = [
 ];
 
 const LANGUAGES = [
-  { value: "en-US", label: "English (US)" },
   { value: "pt-BR", label: "Português (Brasil)" },
+  { value: "en-US", label: "English (US)" },
   { value: "es-ES", label: "Español" },
   { value: "pt-PT", label: "Português (Portugal)" },
 ];
@@ -49,6 +50,19 @@ const DEFAULT_LANGUAGE_BY_COUNTRY = {
   US: "en-US",
   OTHER: "en-US",
 };
+
+function readPrechatContext() {
+  try {
+    const raw =
+      localStorage.getItem("orkio_prechat_context") ||
+      sessionStorage.getItem("orkio_prechat_context") ||
+      "";
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 function normalizeUserType(value) {
   const raw = String(value || "").trim().toLowerCase();
@@ -78,6 +92,10 @@ function normalizeIntent(value) {
     company_eval: "pilot",
     funding: "funding",
     investment: "funding",
+    enterprise: "enterprise",
+    white_label: "enterprise",
+    integrations: "enterprise",
+    integration: "enterprise",
     other: "other",
   };
   return aliases[raw] || "";
@@ -89,20 +107,40 @@ function normalizeWhatsapp(value) {
 
 function suggestLanguage(country) {
   const code = String(country || "").trim().toUpperCase();
-  return DEFAULT_LANGUAGE_BY_COUNTRY[code] || "en-US";
+  return DEFAULT_LANGUAGE_BY_COUNTRY[code] || "pt-BR";
 }
 
-function sanitizeOnboardingPayload(payload) {
+function sanitizeOnboardingPayload(payload, prechat) {
+  const answers = prechat?.answers || {};
   const country = String(payload?.country || "").trim().toUpperCase() || "BR";
+  const diagnosis = String(prechat?.diagnosis || "").trim();
+  const challenge = String(answers.challenge || "").trim();
+  const segment = String(answers.segment || "").trim();
+  const systems = String(answers.systems || "").trim();
+  const goal = String(answers.goal || "").trim();
+
+  const notesFromPrechat = [
+    diagnosis ? `Diagnóstico inicial Orkio: ${diagnosis}` : "",
+    challenge ? `Desafio principal: ${challenge}` : "",
+    segment ? `Segmento: ${segment}` : "",
+    systems ? `Sistemas/automações existentes: ${systems}` : "",
+    goal ? `Objetivo 90 dias: ${goal}` : "",
+    "Trial sugerido: 7 dias grátis.",
+  ].filter(Boolean).join("\n");
+
+  const enterpriseIntent = /erp|crm|integra|integrat|white\s*label|sistema|api|automação|automation/i.test(
+    `${challenge} ${systems} ${goal}`
+  );
+
   return {
-    company: String(payload?.company || "").trim(),
+    company: String(payload?.company || answers.company || "").trim(),
     role: String(payload?.role || payload?.profile_role || "").trim(),
-    user_type: normalizeUserType(payload?.user_type) || "other",
-    intent: normalizeIntent(payload?.intent) || "explore",
+    user_type: normalizeUserType(payload?.user_type) || "operator",
+    intent: normalizeIntent(payload?.intent) || (enterpriseIntent ? "enterprise" : "explore"),
     country,
     language: String(payload?.language || "").trim() || suggestLanguage(country),
     whatsapp: normalizeWhatsapp(payload?.whatsapp || ""),
-    notes: String(payload?.notes || "").trim(),
+    notes: String(payload?.notes || notesFromPrechat || "").trim(),
   };
 }
 
@@ -134,6 +172,7 @@ function resolveApiBase() {
 function buildUrl(path) {
   const base = resolveApiBase();
   const cleanPath = String(path || "").startsWith("/") ? path : `/${path}`;
+  if (base.endsWith("/api") && cleanPath.startsWith("/api/")) return `${base}${cleanPath.slice(4)}`;
   return `${base}${cleanPath}`;
 }
 
@@ -181,6 +220,20 @@ async function saveOnboarding(payload, token, org) {
   }
 }
 
+async function submitEnterpriseLead(payload, org) {
+  try {
+    const res = await fetch(buildUrl("/api/public/enterprise-lead"), {
+      method: "POST",
+      headers: buildHeaders(null, org),
+      body: JSON.stringify(payload),
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 const labelStyle = {
   display: "block",
   marginBottom: 8,
@@ -212,11 +265,19 @@ const optionStyle = {
 };
 
 export default function OnboardingModal({ user, onComplete }) {
-  const [form, setForm] = useState(() => sanitizeOnboardingPayload(user));
+  const prechat = useMemo(() => readPrechatContext(), []);
+  const [form, setForm] = useState(() => sanitizeOnboardingPayload(user, prechat));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const fullName = useMemo(() => (user?.name || "").trim(), [user]);
+  const fullName = useMemo(() => {
+    const fromUser = (user?.name || "").trim();
+    const fromPrechat = (prechat?.answers?.name || "").trim();
+    return fromUser || fromPrechat;
+  }, [user, prechat]);
+
+  const hasPrechat = !!(prechat?.answers || prechat?.diagnosis);
+  const trialDays = Number(prechat?.trial_days || 7);
 
   function setField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -228,13 +289,17 @@ export default function OnboardingModal({ user, onComplete }) {
     const payload = {
       company: form.company || null,
       role: form.role || null,
-      user_type: form.user_type || "other",
+      user_type: form.user_type || "operator",
       intent: form.intent || "explore",
       country: form.country || "BR",
       language: form.language || suggestLanguage(form.country || "BR"),
       whatsapp: normalizeWhatsapp(form.whatsapp || ""),
       notes: form.notes || null,
       onboarding_completed: true,
+      imported_prechat_context: hasPrechat,
+      prechat_context: hasPrechat ? prechat : null,
+      trial_days: trialDays,
+      trial_source: hasPrechat ? "orkio_public_prechat" : "standard_onboarding",
     };
 
     setBusy(true);
@@ -245,6 +310,22 @@ export default function OnboardingModal({ user, onComplete }) {
       const org = user?.org_slug || getTenant() || "public";
 
       const result = await saveOnboarding(payload, token, org);
+
+      if (payload.intent === "enterprise") {
+        submitEnterpriseLead({
+          name: fullName || user?.email || "",
+          email: user?.email || "",
+          company: payload.company || "",
+          interest_type: "enterprise_white_label_integrations",
+          message: payload.notes || "Solicitação Enterprise / White Label / Integrações via onboarding.",
+          metadata: {
+            prechat_context: prechat,
+            onboarding: payload,
+          },
+          source: "onboarding_modal",
+        }, org).catch(() => null);
+      }
+
       const nextUser = result?.user
         ? { ...user, ...result.user, onboarding_completed: true }
         : {
@@ -258,6 +339,8 @@ export default function OnboardingModal({ user, onComplete }) {
             whatsapp: payload.whatsapp,
             notes: payload.notes,
             onboarding_completed: true,
+            trial_days: payload.trial_days,
+            imported_prechat_context: payload.imported_prechat_context,
           };
 
       onComplete?.(nextUser);
@@ -285,7 +368,7 @@ export default function OnboardingModal({ user, onComplete }) {
         onSubmit={handleSubmit}
         style={{
           width: "100%",
-          maxWidth: 760,
+          maxWidth: 820,
           maxHeight: "92vh",
           overflowY: "auto",
           borderRadius: 24,
@@ -307,203 +390,216 @@ export default function OnboardingModal({ user, onComplete }) {
               fontWeight: 800,
             }}
           >
-            Orkio
+            Orkio OS · 7 dias grátis
           </div>
           <h2 style={{ margin: "8px 0 6px", fontSize: 30, lineHeight: 1.1 }}>
-            Complete your onboarding
+            {fullName ? `Bem-vindo, ${fullName}` : "Complete seu onboarding"}
           </h2>
           <p style={{ margin: 0, color: "#475569", lineHeight: 1.55 }}>
-            Tell us a bit about your context so we can personalize your console experience from the first session.
+            {hasPrechat
+              ? "Importei o contexto da conversa inicial com a Orkio. Revise os dados abaixo para continuarmos a experiência dentro da plataforma."
+              : "Conte um pouco sobre seu contexto para personalizarmos sua primeira experiência dentro do Orkio OS."}
           </p>
         </div>
 
+        {hasPrechat && (
+          <div
+            style={{
+              marginBottom: 18,
+              borderRadius: 18,
+              border: "1px solid #bbf7d0",
+              background: "linear-gradient(135deg, rgba(34,197,94,0.10), rgba(59,130,246,0.08))",
+              padding: "14px 16px",
+              color: "#334155",
+              fontSize: 14,
+              lineHeight: 1.55,
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            <strong style={{ display: "block", color: "#14532d", marginBottom: 6 }}>
+              Diagnóstico inicial importado da landing
+            </strong>
+            {prechat?.diagnosis || "A Orkio iniciou um primeiro mapa estratégico com base nas suas respostas."}
+            <div style={{ marginTop: 10, color: "#166534", fontWeight: 800 }}>
+              Trial ativo: {trialDays} dias gratuitos.
+            </div>
+          </div>
+        )}
+
         <div
           style={{
-            marginBottom: 18,
-            borderRadius: 18,
-            border: "1px solid #dbeafe",
-            background: "linear-gradient(135deg, rgba(37,99,235,0.08), rgba(124,92,255,0.08))",
-            padding: "14px 16px",
-            color: "#334155",
-            fontSize: 14,
-            lineHeight: 1.5,
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 14,
           }}
         >
-          This step appears only once. You can adjust the language later inside the console if needed.
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
-          <div>
-            <label style={labelStyle}>Full name</label>
-            <input value={fullName} readOnly style={{ ...fieldStyle, opacity: 0.85 }} />
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
-            <div>
-              <label style={labelStyle}>Company</label>
-              <input
-                value={form.company}
-                onChange={(e) => setField("company", e.target.value)}
-                placeholder="Your company"
-                style={fieldStyle}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>Role / title</label>
-              <input
-                value={form.role}
-                onChange={(e) => setField("role", e.target.value)}
-                placeholder="Founder, Partner, CTO..."
-                style={fieldStyle}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
-            <div>
-              <label style={labelStyle}>Profile</label>
-              <select
-                value={form.user_type}
-                onChange={(e) => setField("user_type", e.target.value || "other")}
-                style={fieldStyle}
-              >
-                {USER_TYPES.map((opt) => (
-                  <option key={opt.value} value={opt.value} style={optionStyle}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={labelStyle}>Primary goal</label>
-              <select
-                value={form.intent}
-                onChange={(e) => setField("intent", e.target.value || "explore")}
-                style={fieldStyle}
-              >
-                {INTENTS.map((opt) => (
-                  <option key={opt.value} value={opt.value} style={optionStyle}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
-            <div>
-              <label style={labelStyle}>Country</label>
-              <select
-                value={form.country}
-                onChange={(e) => {
-                  const nextCountry = e.target.value || "US";
-                  setForm((prev) => ({
-                    ...prev,
-                    country: nextCountry,
-                    language:
-                      !prev.language || prev.language === suggestLanguage(prev.country || "US")
-                        ? suggestLanguage(nextCountry)
-                        : prev.language,
-                  }));
-                }}
-                style={fieldStyle}
-              >
-                {COUNTRIES.map((opt) => (
-                  <option key={opt.value} value={opt.value} style={optionStyle}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={labelStyle}>Language</label>
-              <select
-                value={form.language}
-                onChange={(e) => setField("language", e.target.value || suggestLanguage(form.country))}
-                style={fieldStyle}
-              >
-                {LANGUAGES.map((opt) => (
-                  <option key={opt.value} value={opt.value} style={optionStyle}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label style={labelStyle}>WhatsApp</label>
+          <label>
+            <span style={labelStyle}>Company</span>
             <input
-              value={form.whatsapp}
-              onChange={(e) => setField("whatsapp", normalizeWhatsapp(e.target.value))}
-              placeholder="+1 555 000 0000"
               style={fieldStyle}
-              inputMode="tel"
+              value={form.company}
+              onChange={(e) => setField("company", e.target.value)}
+              placeholder="Company name"
             />
-          </div>
+          </label>
 
-          <div>
-            <label style={labelStyle}>Additional context</label>
+          <label>
+            <span style={labelStyle}>Role</span>
+            <input
+              style={fieldStyle}
+              value={form.role}
+              onChange={(e) => setField("role", e.target.value)}
+              placeholder="Founder, CEO, Director..."
+            />
+          </label>
+
+          <label>
+            <span style={labelStyle}>User type</span>
+            <select
+              style={fieldStyle}
+              value={form.user_type}
+              onChange={(e) => setField("user_type", e.target.value)}
+            >
+              {USER_TYPES.map((item) => (
+                <option key={item.value} value={item.value} style={optionStyle}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span style={labelStyle}>Intent</span>
+            <select
+              style={fieldStyle}
+              value={form.intent}
+              onChange={(e) => setField("intent", e.target.value)}
+            >
+              {INTENTS.map((item) => (
+                <option key={item.value} value={item.value} style={optionStyle}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span style={labelStyle}>Country</span>
+            <select
+              style={fieldStyle}
+              value={form.country}
+              onChange={(e) => {
+                const nextCountry = e.target.value;
+                setForm((prev) => ({
+                  ...prev,
+                  country: nextCountry,
+                  language: suggestLanguage(nextCountry),
+                }));
+              }}
+            >
+              {COUNTRIES.map((item) => (
+                <option key={item.value} value={item.value} style={optionStyle}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span style={labelStyle}>Language</span>
+            <select
+              style={fieldStyle}
+              value={form.language}
+              onChange={(e) => setField("language", e.target.value)}
+            >
+              {LANGUAGES.map((item) => (
+                <option key={item.value} value={item.value} style={optionStyle}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ gridColumn: "1 / -1" }}>
+            <span style={labelStyle}>WhatsApp / phone</span>
+            <input
+              style={fieldStyle}
+              value={form.whatsapp}
+              onChange={(e) => setField("whatsapp", e.target.value)}
+              placeholder="+55..."
+            />
+          </label>
+
+          <label style={{ gridColumn: "1 / -1" }}>
+            <span style={labelStyle}>Context notes</span>
             <textarea
+              style={{ ...fieldStyle, minHeight: 138, resize: "vertical", lineHeight: 1.5 }}
               value={form.notes}
               onChange={(e) => setField("notes", e.target.value)}
-              placeholder="In one sentence, tell us what you want to solve or explore."
-              style={{ ...fieldStyle, minHeight: 120, resize: "vertical" }}
+              placeholder="Business context, goals, integrations, white-label needs..."
             />
-          </div>
+          </label>
         </div>
 
-        {error ? (
+        {form.intent === "enterprise" && (
           <div
             style={{
               marginTop: 16,
-              color: "#0f172a",
-              background: "#eff6ff",
-              border: "1px solid #bfdbfe",
-              borderRadius: 14,
+              borderRadius: 16,
+              border: "1px solid #fde68a",
+              background: "#fffbeb",
+              color: "#92400e",
               padding: "12px 14px",
               fontSize: 14,
+              lineHeight: 1.5,
+            }}
+          >
+            Solicitações Enterprise, White Label, integrações e personalizações serão registradas
+            para a equipe PatroAI avaliar escopo, prioridade e proposta.
+          </div>
+        )}
+
+        {error && (
+          <div
+            style={{
+              marginTop: 14,
+              borderRadius: 14,
+              background: "#fee2e2",
+              color: "#991b1b",
+              padding: "12px 14px",
+              fontWeight: 700,
             }}
           >
             {error}
           </div>
-        ) : null}
+        )}
 
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
+            justifyContent: "flex-end",
             gap: 12,
-            alignItems: "center",
-            marginTop: 18,
+            marginTop: 20,
             flexWrap: "wrap",
           }}
         >
-          <div style={{ color: "#64748b", fontSize: 13 }}>
-            Your preferred language can be updated later inside the console settings.
-          </div>
-
           <button
             type="submit"
             disabled={busy}
             style={{
               border: 0,
-              borderRadius: 16,
-              padding: "14px 18px",
-              minWidth: 220,
-              cursor: "pointer",
-              background: "linear-gradient(135deg, #2563eb, #7c3aed)",
+              borderRadius: 14,
+              background: busy
+                ? "#94a3b8"
+                : "linear-gradient(135deg, #0f172a 0%, #2563eb 100%)",
               color: "#ffffff",
-              fontWeight: 800,
-              fontSize: 15,
-              boxShadow: "0 14px 30px rgba(37,99,235,0.24)",
-              opacity: busy ? 0.75 : 1,
+              padding: "14px 20px",
+              fontWeight: 900,
+              cursor: busy ? "not-allowed" : "pointer",
+              boxShadow: "0 12px 28px rgba(37,99,235,0.22)",
             }}
           >
-            {busy ? "Saving..." : "Continue to console"}
+            {busy ? "Saving..." : "Continue inside Orkio OS"}
           </button>
         </div>
       </form>
