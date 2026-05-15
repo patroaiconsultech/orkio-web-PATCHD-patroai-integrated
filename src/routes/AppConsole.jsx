@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch, uploadFile, chat, chatStream, transcribeAudio, requestFounderHandoff, getRealtimeClientSecret, startRealtimeSession, startSummitSession, postRealtimeEventsBatch, endRealtimeSession, getRealtimeSession, getSummitSessionScore, submitSummitSessionReview, downloadRealtimeAta as downloadRealtimeAtaFile, guardRealtimeTranscript, getOrionSquadHealth, getOrionSquadPreview, getAgentCapabilities, readPrechatContext, clearPrechatContext } from "../ui/api.js";
+import { apiFetch, uploadFile, chat, chatStream, transcribeAudio, requestFounderHandoff, getRealtimeClientSecret, startRealtimeSession, startSummitSession, postRealtimeEventsBatch, endRealtimeSession, getRealtimeSession, getSummitSessionScore, submitSummitSessionReview, downloadRealtimeAta as downloadRealtimeAtaFile, guardRealtimeTranscript, getOrionSquadHealth, getOrionSquadPreview, getAgentCapabilities } from "../ui/api.js";
 import { clearSession, getTenant, getToken, getUser, isAdmin, isApproved, setSession, logout } from "../lib/auth.js";
 import { ORKIO_VOICES, coerceVoiceId } from "../lib/voices.js";
 import TermsModal from "../ui/TermsModal.jsx";
@@ -15,6 +15,45 @@ const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.
   ? "stt_tts"
   : "realtime";
 const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || import.meta.env.VITE_SPEECH_RECOGNITION_LANG || "pt-BR").trim() || "pt-BR");
+const PRECHAT_KEY = "orkio_prechat_context_v1";
+const PRECHAT_IMPORT_KEY = "orkio_prechat_import_pending_v1";
+
+function readPendingPrechatContext() {
+  try {
+    const raw = window.localStorage?.getItem(PRECHAT_IMPORT_KEY) || window.localStorage?.getItem(PRECHAT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingPrechatContext() {
+  try {
+    window.localStorage?.removeItem(PRECHAT_IMPORT_KEY);
+    window.localStorage?.removeItem(PRECHAT_KEY);
+  } catch {}
+}
+
+function buildPrechatConsolePrompt(ctx) {
+  const name = String(ctx?.name || "").trim();
+  const challenge = String(ctx?.challenge || "").trim();
+  const segment = String(ctx?.segment || "").trim();
+  const systems = String(ctx?.systems || "").trim();
+  const goal = String(ctx?.goal || "").trim();
+  const summary = String(ctx?.summary || "").trim();
+
+  return [
+    "Contexto importado do pré-diagnóstico da landing Orkio.",
+    name ? `Nome do usuário: ${name}.` : "",
+    segment ? `Segmento: ${segment}.` : "",
+    challenge ? `Principal desafio informado: ${challenge}.` : "",
+    systems ? `Sistemas/integrações citadas: ${systems}.` : "",
+    goal ? `Objetivo para os próximos 90 dias: ${goal}.` : "",
+    summary ? `Resumo gerado pela Orkio: ${summary}` : "",
+    "",
+    "Continue a conversa a partir deste contexto, acolha o usuário pelo nome quando possível e proponha os próximos passos estratégicos de forma objetiva.",
+  ].filter(Boolean).join("\n");
+}
 
 
 const ORKIO_CHAT_STREAM_PRIMARY = ((ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import.meta.env.VITE_CHAT_STREAM_PRIMARY || "true").toString().trim().toLowerCase() !== "false");
@@ -924,7 +963,8 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const [threads, setThreads] = useState([]);
   const [threadId, setThreadId] = useState("");
   const [messages, setMessages] = useState([]);
-  const prechatImportDoneRef = useRef(false);
+  const prechatImportedRef = useRef(false);
+  const [prechatImportNotice, setPrechatImportNotice] = useState("");
   const [agents, setAgents] = useState([]);
   const agentsByNameRef = useRef(new Map());
   const activeThreadIdRef = useRef("");
@@ -1579,45 +1619,6 @@ useEffect(() => {
       persistActiveThreadId(safeThreadId);
     }
   }, [threadId]);
-
-
-  useEffect(() => {
-    if (prechatImportDoneRef.current) return;
-    const ctx = typeof readPrechatContext === "function" ? readPrechatContext() : null;
-    if (!ctx || !ctx.answers) return;
-
-    prechatImportDoneRef.current = true;
-
-    const name = ctx.answers?.name || "visitante";
-    const diagnosis = ctx.diagnosis || "Tenho um primeiro diagnóstico gerado a partir da sua conversa pública.";
-    const summary = [
-      `Bem-vindo novamente, ${name}.`,
-      "",
-      "Importei o contexto do seu diagnóstico inicial da landing.",
-      "",
-      diagnosis,
-      "",
-      "Você tem 7 dias gratuitos para continuar explorando o Orkio OS. Posso aprofundar o plano, sugerir prioridades e indicar o melhor caminho entre Essencial, Professional ou Enterprise / White Label."
-    ].join("\n");
-
-    setMessages((prev) => {
-      const list = Array.isArray(prev) ? prev : [];
-      if (list.length) return list;
-      return [
-        {
-          id: `prechat-import-${Date.now()}`,
-          role: "assistant",
-          content: summary,
-          agent_name: "Orkio",
-          created_at: Math.floor(Date.now() / 1000),
-          meta: {
-            imported_from_prechat: true,
-            prechat_context: ctx,
-          },
-        },
-      ];
-    });
-  }, []);
 
   useEffect(() => {
     if (!threadId) {
@@ -3148,6 +3149,54 @@ async function sendMessage(presetMsg = null, opts = {}) {
       }
     }
   }
+
+
+  useEffect(() => {
+    if (!token || !threadId || prechatImportedRef.current) return;
+    const ctx = readPendingPrechatContext();
+    if (!ctx || ctx.imported_at) return;
+
+    prechatImportedRef.current = true;
+
+    const prompt = buildPrechatConsolePrompt(ctx);
+    const name = String(ctx?.name || "").trim();
+
+    try {
+      setOnboardingForm((prev) => ({
+        ...(prev || {}),
+        company: prev?.company || ctx?.company || "",
+        role: prev?.role || "founder",
+        intent: prev?.intent || "growth",
+        language: prev?.language || "pt-BR",
+      }));
+    } catch {}
+
+    setPrechatImportNotice(name
+      ? `Contexto do pré-diagnóstico importado para ${name}.`
+      : "Contexto do pré-diagnóstico importado."
+    );
+    setUploadStatus("✅ Contexto da landing importado para esta conversa.");
+
+    try {
+      window.localStorage?.setItem(PRECHAT_IMPORT_KEY, JSON.stringify({
+        ...ctx,
+        imported_at: new Date().toISOString(),
+        thread_id: threadId,
+      }));
+    } catch {}
+
+    window.setTimeout(() => {
+      try {
+        if (prompt) void sendMessage(prompt);
+      } catch {}
+      clearPendingPrechatContext();
+    }, 650);
+
+    window.setTimeout(() => {
+      try { setPrechatImportNotice(""); } catch {}
+    }, 6500);
+  }, [token, threadId]);
+
 
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -5127,6 +5176,11 @@ async function stopRealtime(reason = 'client_stop') {
           setTimeout(() => setUploadStatus(""), 1800);
         }}
       />
+    )}
+    {prechatImportNotice && (
+      <div style={{ position: "fixed", top: 14, left: "50%", transform: "translateX(-50%)", zIndex: 130, padding: "10px 14px", borderRadius: 14, border: "1px solid rgba(34,197,94,0.35)", background: "rgba(6,78,59,0.94)", color: "#dcfce7", fontSize: 13, fontWeight: 800, boxShadow: "0 18px 40px rgba(0,0,0,0.28)" }}>
+        {prechatImportNotice}
+      </div>
     )}
     <div style={styles.layout}>
       {/* Sidebar */}
