@@ -87,6 +87,23 @@ function isAbortLikeError(err) {
     err?.code === "CHAT_DIRECT_TIMEOUT";
 }
 
+function isGovernedPatchRequestText(text) {
+  const low = String(text || "").toLowerCase();
+  return (
+    low.includes("proposal_only") ||
+    low.includes("proposta governada") ||
+    low.includes("diff preview") ||
+    low.includes("self-evolution-test") ||
+    low.includes("autoevolução") ||
+    low.includes("autoevolucao")
+  ) && (
+    low.includes("patch") ||
+    low.includes("endpoint") ||
+    low.includes("main.py") ||
+    low.includes("appconsole")
+  );
+}
+
 
 
 async function consumeChatStream(
@@ -2766,6 +2783,26 @@ async function sendMessage(presetMsg = null, opts = {}) {
                   trace_id: traceId,
                 },
               };
+            } else if (isGovernedPatchRequestText(finalMsg)) {
+              appendExecutionTrace({
+                kind: "error",
+                label: "Stream governado interrompido",
+                detail: "Não foi acionado fallback /api/chat para proposta governada. Reenvie após o backend liberar o SSE fast-path.",
+              });
+              setMessages((prev) =>
+                (Array.isArray(prev) ? prev : []).map((m) =>
+                  m.id === draftAssistantId
+                    ? {
+                        ...m,
+                        content: "O stream governado não retornou resposta persistida. O fallback direto foi bloqueado para evitar execução narrativa fora da governança.",
+                        agent_name: "Orkio",
+                      }
+                    : m
+                )
+              );
+              setV2vPhase("error");
+              setV2vError("Stream governado interrompido antes da proposta.");
+              return;
             } else {
               appendExecutionTrace({
                 kind: "system",
