@@ -3,185 +3,156 @@ import { useNavigate } from "react-router-dom";
 
 const A = "/patroai-assets/";
 
-const COPY = {
-  "pt-BR": {
-    lang: "PT-BR",
-    next: "EN",
-    nav: ["Soluções", "Plataforma", "Recursos", "Segmentos", "Academia", "Sobre nós"],
-    eyebrow: "INOVAÇÃO · ESTRATÉGIA · EXECUÇÃO · ESG",
-    title: ["Desenvolvemos sistemas", "de inovação", "que impulsionam", "empresas a evoluir,", "prosperar", "e gerar impacto sustentável."],
-    subtitle:
-      "A PatroAI cria e implanta ecossistemas inteligentes com a plataforma Orkio — um cérebro de IA ultra avançado, auditável e governável, que reconhece as dores do negócio, planeja o futuro e participa da execução com máxima eficiência e governança.",
-    primary: "Agendar uma demonstração",
-    secondary: "Ver como funciona",
-    avatarTitle: "Olá! Eu sou o Orkio.",
-    avatarText:
-      "Sou a inteligência que trabalha ao lado da sua empresa para planejar, executar e gerar resultados reais e sustentáveis.",
-    avatarCta: "Conversar agora",
-    pillars: [
-      ["Governança e Segurança", "IA auditável, governável e em conformidade com LGPD."],
-      ["Estratégia Inteligente", "Planejamento sustentável de longo prazo alinhado ao seu propósito e mercado."],
-      ["Execução com IA", "Agentes inteligentes que executam, acompanham e otimizam processos."],
-      ["ESG Integrado", "Decisões conscientes que geram impacto positivo e valor duradouro."],
-    ],
-    cards: [
-      ["Sistemas de Inovação Personalizados", "Desenvolvemos soluções sob medida para os desafios únicos da sua empresa."],
-      ["Plataforma Orkio White Label", "Sua marca, nossa tecnologia. Escalável, evolutiva e totalmente integrada."],
-      ["IA que Entende seu Negócio", "Reconhece dores, identifica oportunidades e propõe o melhor caminho para crescer."],
-      ["Evolução Contínua com Resultados Reais", "Aprende, se adapta e impulsiona resultados cada vez maiores."],
-    ],
-  },
-  "en-US": {
-    lang: "EN-US",
-    next: "PT",
-    nav: ["Solutions", "Platform", "Features", "Segments", "Academy", "About"],
-    eyebrow: "INNOVATION · STRATEGY · EXECUTION · ESG",
-    title: ["We build intelligent", "innovation systems", "that help companies", "evolve, scale,", "prosper", "and create sustainable impact."],
-    subtitle:
-      "PatroAI designs and deploys intelligent ecosystems powered by Orkio — an advanced, auditable and governable AI brain that understands business challenges, plans the future and supports execution with precision and accountability.",
-    primary: "Book a demo",
-    secondary: "See how it works",
-    avatarTitle: "Hi! I am Orkio.",
-    avatarText:
-      "I am the intelligence working alongside your company to plan, execute and generate real, sustainable results.",
-    avatarCta: "Start conversation",
-    pillars: [
-      ["Governance & Security", "Auditable and governable AI aligned with compliance."],
-      ["Strategic Intelligence", "Long-term sustainable planning aligned with your market and purpose."],
-      ["AI Execution", "Intelligent agents that execute, track and optimize processes."],
-      ["ESG Integrated", "Conscious decisions that create positive impact and durable value."],
-    ],
-    cards: [
-      ["Custom Innovation Systems", "Tailored solutions for the unique challenges of your company."],
-      ["Orkio White Label Platform", "Your brand, our technology. Scalable, evolutive and fully integrated."],
-      ["AI That Understands Your Business", "Identifies pain points, opportunities and the best path to growth."],
-      ["Continuous Evolution With Real Results", "Learns, adapts and drives increasingly stronger outcomes."],
-    ],
-  },
+const PT = {
+  nav: ["Soluções", "Plataforma", "Recursos", "Segmentos", "Academia", "Sobre nós"],
+  eyebrow: "INOVAÇÃO · ESTRATÉGIA · EXECUÇÃO · ESG",
+  title: <>Desenvolvemos sistemas<br/>de <span className="grad-gold">inovação</span> que impulsionam<br/>empresas a evoluir, <span className="grad-gold">prosperar</span><br/>e gerar impacto sustentável.</>,
+  subtitle: "A PatroAI cria e implanta ecossistemas inteligentes com a plataforma Orkio — um cérebro de IA ultra avançado, auditável e governável, que reconhece as dores do negócio, planeja o futuro e participa da execução com máxima eficiência e governança.",
+  primary: "Conhecer o Orkio OS",
+  secondary: "Ver experiência Orkio",
+  avatarTitle: "Olá! Eu sou o Orkio.",
+  avatarText: "Sou a inteligência que trabalha ao lado da sua empresa para planejar, executar e gerar resultados reais e sustentáveis.",
+  pillars: [
+    ["🛡", "Governança e Segurança", "IA auditável, governável e em conformidade com LGPD."],
+    ["🧠", "Estratégia Inteligente", "Planejamento sustentável de longo prazo alinhado ao seu propósito e mercado."],
+    ["📈", "Execução com IA", "Agentes inteligentes que executam, acompanham e otimizam processos."],
+    ["🌿", "ESG Integrado", "Decisões conscientes que geram impacto positivo e valor duradouro."]
+  ],
+  cards: [
+    ["👥", "Sistemas de Inovação Personalizados", "Desenvolvemos soluções sob medida para os desafios únicos da sua empresa."],
+    ["🔗", "Plataforma Orkio White Label", "Sua marca, nossa tecnologia. Escalável, evolutiva e totalmente integrada."],
+    ["🎯", "IA que Entende seu Negócio", "Reconhece dores, identifica oportunidades e propõe o melhor caminho para crescer."],
+    ["🚀", "Evolução Contínua com Resultados Reais", "Aprende, se adapta e impulsiona resultados cada vez maiores."]
+  ]
 };
 
-function Icon({ type }) {
-  const common = { width: 36, height: 36, viewBox: "0 0 48 48", fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round" };
-  const paths = {
-    shield: <><path d="M24 5 9 11v12c0 10 6.6 17 15 20 8.4-3 15-10 15-20V11L24 5Z"/><path d="m17 24 5 5 10-12"/></>,
-    brain: <><path d="M18 10c-4 0-7 3-7 7 0 1 .2 2 .6 2.8A8 8 0 0 0 12 36h7V10Z"/><path d="M30 10c4 0 7 3 7 7 0 1-.2 2-.6 2.8A8 8 0 0 1 36 36h-7V10Z"/></>,
-    chart: <><path d="M8 39h32"/><rect x="12" y="25" width="5" height="10"/><rect x="22" y="18" width="5" height="17"/><rect x="32" y="10" width="5" height="25"/><path d="M11 16c8 1 16-2 25-10"/></>,
-    leaf: <><path d="M39 8C23 9 10 18 10 34c16 2 27-7 29-26Z"/><path d="M12 34c7-8 14-13 25-20"/></>,
-    people: <><circle cx="17" cy="17" r="6"/><circle cx="31" cy="17" r="6"/><path d="M7 39c2-8 7-12 14-12s12 4 14 12"/><path d="M27 28c6 1 10 5 12 11"/></>,
-    nodes: <><rect x="18" y="6" width="12" height="12" rx="2"/><rect x="6" y="30" width="12" height="12" rx="2"/><rect x="30" y="30" width="12" height="12" rx="2"/><path d="M24 18v7M12 30l12-5 12 5"/></>,
-    target: <><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="7"/><path d="M24 24 38 10"/><path d="M34 10h4v4"/></>,
-    rocket: <><path d="M28 7c7 2 11 6 13 13-8 1-14 6-18 14l-9-9c8-4 13-10 14-18Z"/><path d="M16 32 9 39M32 16h.01"/></>,
+const EN = {
+  nav: ["Solutions", "Platform", "Resources", "Segments", "Academy", "About"],
+  eyebrow: "INNOVATION · STRATEGY · EXECUTION · ESG",
+  title: <>We build intelligent<br/><span className="grad-gold">innovation</span> systems that help<br/>companies evolve, <span className="grad-gold">scale</span><br/>and create sustainable impact.</>,
+  subtitle: "PatroAI creates and implements intelligent ecosystems powered by Orkio — an advanced, auditable and governable AI brain that understands business pain points, plans the future and participates in execution.",
+  primary: "Explore Orkio OS",
+  secondary: "See Orkio experience",
+  avatarTitle: "Hi! I am Orkio.",
+  avatarText: "I work alongside your company to plan, execute and generate real, sustainable results.",
+  pillars: [
+    ["🛡", "Governance & Security", "Auditable, governable AI aligned with privacy and compliance."],
+    ["🧠", "Strategic Intelligence", "Long-term planning aligned with purpose, market and execution."],
+    ["📈", "AI Execution", "Intelligent agents execute, monitor and optimize business processes."],
+    ["🌿", "Integrated ESG", "Conscious decisions that create positive impact and lasting value."]
+  ],
+  cards: [
+    ["👥", "Custom Innovation Systems", "Tailored solutions for the unique challenges of your company."],
+    ["🔗", "Orkio White Label Platform", "Your brand, our technology. Scalable, evolutionary and fully integrated."],
+    ["🎯", "AI that Understands Business", "Recognizes pain points, identifies opportunities and proposes paths to growth."],
+    ["🚀", "Continuous Evolution", "Learns, adapts and drives better results over time."]
+  ]
+};
+
+export default function PatroaiLanding() {
+  const navigate = useNavigate?.();
+  const [lang, setLang] = useState("pt");
+  const t = lang === "pt" ? PT : EN;
+
+  const go = (path) => {
+    try { navigate(path); }
+    catch { window.location.href = path; }
   };
-  return <svg {...common}>{paths[type]}</svg>;
-}
-
-function RobotCard({ t }) {
-  return (
-    <aside className="robot-card">
-      <div className="robot-head">
-        <div className="head-ring" />
-        <div className="eye left" />
-        <div className="eye right" />
-        <div className="smile" />
-        <div className="ear ear-left" />
-        <div className="ear ear-right" />
-      </div>
-      <div className="robot-body">
-        <img src={`${A}logo-patroai-novo.png`} alt="" />
-      </div>
-      <h2>{t.avatarTitle.split("Orkio")[0]}<span>Orkio</span>{t.avatarTitle.split("Orkio")[1]}</h2>
-      <p>{t.avatarText}</p>
-      <button>{t.avatarCta}<i>▮▮▮</i></button>
-    </aside>
-  );
-}
-
-function PatroaiLanding() {
-  const navigate = useNavigate();
-  const [locale, setLocale] = useState("pt-BR");
-  const t = COPY[locale];
+  const mail = () => {
+    window.location.href = "mailto:contato@patroai.com?subject=Agendar%20demonstra%C3%A7%C3%A3o%20PatroAI";
+  };
+  const scroll = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
-    <main className="patroai-page">
-      <style>{css}</style>
+    <main className="lp-shell patroai">
+      <style>{`/* V3 official landing styles */
+  :root{--bg:#02060c;--panel:#06111b;--line:rgba(255,255,255,.12);--soft:rgba(255,255,255,.72);--white:#f8fbff;--gold:#f5b821;--gold2:#ffe58a;--green:#92f25e;--blue:#32a9ff;--cyan:#63e6ff;--purple:#9b3cff}
+  *{box-sizing:border-box} body{margin:0;background:#02060c;color:var(--white);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif} button,a{font:inherit}
+  .lp-shell{min-height:100vh;background:radial-gradient(circle at 62% 30%,rgba(42,153,255,.16),transparent 31%),radial-gradient(circle at 82% 20%,rgba(114,255,74,.08),transparent 26%),radial-gradient(circle at 48% 60%,rgba(255,183,33,.12),transparent 28%),linear-gradient(180deg,#030911 0%,#02060c 58%,#010307 100%);overflow:hidden;position:relative}
+  .lp-shell::before{content:"";position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:72px 72px;mask-image:linear-gradient(to bottom,transparent,black 12%,black 82%,transparent);opacity:.32;pointer-events:none}
+  .container{width:min(1460px,calc(100% - 56px));margin:0 auto;position:relative;z-index:1}.topbar{height:96px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06)}
+  .brand{display:flex;align-items:center;gap:14px;cursor:pointer;border:0;background:transparent;color:inherit;padding:0}.brand-emblem{width:72px;height:72px;border-radius:50%;object-fit:contain;filter:drop-shadow(0 0 24px rgba(255,185,33,.38))}
+  .brand-word{line-height:.92}.brand-main{font-size:40px;font-weight:800;letter-spacing:.055em}.brand-main .gold{color:var(--gold)}.brand-sub{display:block;font-size:15px;letter-spacing:.48em;color:var(--gold);margin-top:9px}.brand-os{font-size:23px;color:var(--green);font-weight:800;margin-left:6px}
+  .nav{display:flex;align-items:center;gap:44px;color:rgba(255,255,255,.86);font-weight:520}.nav button{background:transparent;color:inherit;border:0;cursor:pointer;padding:10px 0}.nav button:hover{color:white}.actions{display:flex;align-items:center;gap:16px}
+  .btn{border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.03);color:white;padding:14px 22px;cursor:pointer;transition:.25s ease;display:inline-flex;align-items:center;gap:10px;text-decoration:none}.btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.07)}
+  .btn-primary{background:linear-gradient(135deg,var(--gold),#9f6d10);border-color:rgba(255,221,111,.55);color:#fff;box-shadow:0 0 28px rgba(245,184,33,.22)}.orkio .btn-primary{background:linear-gradient(135deg,#9cf35b,#4fae33);color:#06110a;border-color:rgba(156,243,91,.55)}.btn-secondary{background:rgba(4,12,22,.65);border-color:rgba(255,255,255,.18)}.btn-purple{background:linear-gradient(135deg,#5627c9,#a318d6);border:1px solid rgba(190,98,255,.62);box-shadow:0 0 28px rgba(155,60,255,.25);width:100%;justify-content:center}.lang{border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:8px 12px;background:rgba(255,255,255,.04);color:rgba(255,255,255,.8);cursor:pointer}
+  .hero{display:grid;grid-template-columns:minmax(360px,.9fr) minmax(420px,1fr) minmax(330px,.8fr);gap:42px;align-items:center;padding:54px 0 34px}.eyebrow{display:inline-flex;border:1px solid rgba(245,184,33,.48);color:#ffd444;border-radius:999px;padding:10px 18px;letter-spacing:.08em;font-size:14px;font-weight:700;background:rgba(255,202,47,.04);margin-bottom:28px}.orkio .eyebrow{border-color:rgba(146,242,94,.52);color:var(--green);background:rgba(146,242,94,.05)}
+  h1{margin:0;font-size:clamp(44px,4.2vw,72px);line-height:1.08;letter-spacing:-.055em}.grad-gold{background:linear-gradient(90deg,#fff 0%,#fff 30%,#f8c12b 52%,#ffdf7f 74%);-webkit-background-clip:text;background-clip:text;color:transparent}.grad-blue{background:linear-gradient(90deg,#8af15a 0%,#47a9ff 70%,#e8edf4 100%);-webkit-background-clip:text;background-clip:text;color:transparent}.hero p{color:rgba(255,255,255,.78);font-size:18px;line-height:1.7;margin:28px 0 32px;max-width:650px}.hero-ctas{display:flex;gap:18px;flex-wrap:wrap}
+  .visual-stage{position:relative;min-height:460px;display:grid;place-items:center}.halo{position:absolute;width:540px;height:540px;border-radius:50%;background:radial-gradient(circle at 50% 50%,rgba(255,202,69,.28),transparent 18%),radial-gradient(circle at 50% 50%,transparent 36%,rgba(245,184,33,.95) 37%,rgba(245,184,33,.2) 38%,transparent 39%),radial-gradient(circle at 50% 50%,rgba(255,213,81,.12),transparent 65%);filter:drop-shadow(0 0 26px rgba(245,184,33,.45));animation:pulse 4s ease-in-out infinite}.orkio .halo{background:radial-gradient(circle at 50% 50%,rgba(76,179,255,.22),transparent 18%),radial-gradient(circle at 50% 50%,transparent 36%,rgba(92,216,255,.82) 37%,rgba(92,216,255,.18) 38%,transparent 39%),radial-gradient(circle at 50% 50%,rgba(146,242,94,.15),transparent 65%)}
+  .brain-icon{width:430px;height:430px;position:relative;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 50% 47%,rgba(255,236,151,.16),transparent 58%)}.brain-lines{position:absolute;inset:58px;border-radius:50%;background:repeating-radial-gradient(circle at 50% 50%,transparent 0 18px,rgba(245,184,33,.08) 19px 20px),linear-gradient(90deg,transparent 49%,rgba(255,218,105,.9) 50%,transparent 51%)}.brain-lines::before,.brain-lines::after{content:"";position:absolute;inset:25px;border:2px solid rgba(255,220,107,.55);border-radius:50%;filter:drop-shadow(0 0 10px rgba(255,198,48,.6))}.brain-lines::after{inset:70px;border-style:dotted;opacity:.8}.central-word{position:relative;z-index:3;font-size:64px;font-weight:900;letter-spacing:-.045em;color:#fff;text-shadow:0 7px 22px rgba(0,0,0,.72),0 0 18px rgba(255,255,255,.18)}.pedestal{position:absolute;bottom:38px;width:260px;height:48px;border-radius:50%;border:1px solid rgba(245,184,33,.55);background:radial-gradient(ellipse at center,rgba(245,184,33,.22),transparent 68%);filter:drop-shadow(0 0 20px rgba(245,184,33,.3))}.orbit-dot{position:absolute;width:10px;height:10px;background:#ffd75c;border-radius:50%;box-shadow:0 0 20px #ffc729}.d1{top:44px}.d2{right:48px;top:230px}.d3{bottom:88px;left:116px}.d4{left:42px;top:224px}
+  .orkio-sphere{position:relative;z-index:2;width:340px;height:340px;object-fit:contain;filter:drop-shadow(0 0 36px rgba(68,178,255,.5)) drop-shadow(0 18px 42px rgba(0,0,0,.75));animation:float 6s ease-in-out infinite}.network{position:absolute;right:-40px;width:470px;height:380px;opacity:.8;background:linear-gradient(90deg,transparent,rgba(52,170,255,.22),transparent),repeating-linear-gradient(12deg,transparent 0 28px,rgba(85,200,255,.22) 29px 30px);mask-image:linear-gradient(90deg,transparent,black 16%,black 74%,transparent);filter:drop-shadow(0 0 20px rgba(67,177,255,.25))}.systems-list{position:absolute;right:-20px;top:84px;display:grid;gap:16px;z-index:3}.sys{display:flex;align-items:center;gap:12px;color:#eaf8ff;font-size:14px}.sys i{width:42px;height:42px;border-radius:50%;border:1px solid rgba(99,230,255,.64);display:grid;place-items:center;background:rgba(2,12,20,.8);box-shadow:0 0 18px rgba(99,230,255,.18)}
+  .dashboard-card{position:relative;border:1px solid rgba(99,230,255,.2);background:linear-gradient(180deg,rgba(4,17,28,.82),rgba(2,8,15,.9));border-radius:18px;padding:18px;box-shadow:0 0 44px rgba(54,168,255,.09)}.dashboard-title{text-align:center;font-size:13px;letter-spacing:.08em;font-weight:800;color:#eaffff;margin-bottom:12px}.dashboard-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.metric-card{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);border-radius:12px;padding:14px}.rings{display:flex;gap:12px}.ring{width:60px;height:60px;border-radius:50%;border:6px solid rgba(146,242,94,.28);border-top-color:var(--green);display:grid;place-items:center;font-size:13px;font-weight:800}.line-chart{height:82px;background:linear-gradient(135deg,transparent 20%,rgba(71,169,255,.1));border-bottom:1px solid rgba(83,200,255,.25);position:relative;overflow:hidden}.line-chart::before{content:"";position:absolute;inset:28px 0 18px 0;border-top:3px solid #56c7ff;transform:skewY(-14deg)}.mini-flow{height:82px;display:grid;place-items:center;color:rgba(255,255,255,.75);font-size:13px}.insight{grid-column:1/3;font-size:12px;color:rgba(255,255,255,.62)}
+  .assistant-card{border:1px solid rgba(155,60,255,.34);border-radius:22px;padding:22px;background:linear-gradient(180deg,rgba(34,15,58,.45),rgba(5,9,16,.9));box-shadow:0 0 52px rgba(155,60,255,.13)}.avatar-human{position:relative;height:255px;border-radius:18px;background:radial-gradient(circle at 50% 30%,rgba(92,216,255,.18),transparent 26%),radial-gradient(circle at 50% 72%,rgba(245,184,33,.1),transparent 24%),linear-gradient(180deg,rgba(4,20,32,.75),rgba(5,8,15,.35));overflow:hidden;display:grid;place-items:center}.avatar-head{position:absolute;top:32px;width:118px;height:138px;border-radius:45% 45% 42% 42%;background:linear-gradient(180deg,#dcefff,#6e8196 38%,#111925 74%);box-shadow:inset 0 0 25px rgba(255,255,255,.26),0 0 26px rgba(76,179,255,.45)}.avatar-head::before{content:"";position:absolute;left:-18px;top:54px;width:20px;height:42px;border-radius:12px;background:linear-gradient(180deg,#ffd45b,#462c92);box-shadow:154px 0 0 #6a38dc}.avatar-eye{position:absolute;top:72px;width:14px;height:14px;background:#8e54ff;border-radius:50%;box-shadow:0 0 16px #9f55ff}.avatar-eye.left{left:36px}.avatar-eye.right{right:36px}.avatar-smile{position:absolute;left:42px;top:104px;width:34px;height:16px;border-bottom:3px solid rgba(255,255,255,.82);border-radius:0 0 30px 30px}.avatar-body{position:absolute;bottom:-20px;width:200px;height:110px;border-radius:70px 70px 20px 20px;background:linear-gradient(120deg,#111827,#1b2230 46%,#060913);border:1px solid rgba(255,255,255,.1);box-shadow:0 -12px 35px rgba(155,60,255,.2)}.avatar-core{position:absolute;bottom:50px;width:48px;height:48px;border-radius:50%;background:radial-gradient(circle,#ffd972,transparent 60%);border:1px solid rgba(245,184,33,.55);box-shadow:0 0 26px rgba(245,184,33,.45)}.assistant-card h3{font-size:25px;margin:18px 0 8px}.assistant-card p{font-size:16px;line-height:1.55;margin:0 0 18px;color:rgba(255,255,255,.76)}
+  .pill-row{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08);padding:22px 0;margin:8px 0 28px}.patroai .pill-row{grid-template-columns:repeat(4,1fr)}.pill{display:flex;gap:14px;padding:0 20px;border-right:1px solid rgba(255,255,255,.12);align-items:center}.pill:last-child{border-right:0}.ico{width:44px;height:44px;border-radius:14px;border:1px solid currentColor;display:grid;place-items:center;font-size:22px;filter:drop-shadow(0 0 10px currentColor)}.pill strong{display:block;font-size:17px;margin-bottom:6px}.pill span{color:rgba(255,255,255,.66);font-size:14px;line-height:1.35}.section-title{text-align:center;font-size:22px;letter-spacing:.12em;margin:28px 0;color:rgba(255,255,255,.75)}.section-title b{color:var(--green)}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;padding-bottom:52px}.card{border:1px solid rgba(255,255,255,.1);border-radius:20px;background:linear-gradient(180deg,rgba(7,17,30,.72),rgba(4,9,16,.86));padding:28px;min-height:190px;box-shadow:0 0 35px rgba(0,0,0,.28);position:relative;overflow:hidden}.card::after{content:"";position:absolute;inset:auto -40px -50px auto;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,rgba(80,180,255,.14),transparent 65%)}.card h3{font-size:22px;margin:18px 0 10px}.card p{color:rgba(255,255,255,.68);line-height:1.55;margin:0}.arrow-line{position:absolute;right:-24px;top:50%;color:var(--green);font-size:38px;z-index:4}
+  @keyframes pulse{0%,100%{transform:scale(.98);opacity:.82}50%{transform:scale(1.03);opacity:1}}@keyframes float{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-16px) rotate(2deg)}}
+  @media(max-width:1180px){.hero{grid-template-columns:1fr;gap:22px}.visual-stage{min-height:420px}.assistant-card{max-width:560px;margin:auto}.pill-row,.cards,.patroai .pill-row{grid-template-columns:1fr 1fr}.pill{border-right:0;border-bottom:1px solid rgba(255,255,255,.1);padding:18px}.nav{display:none}}
+  @media(max-width:720px){.container{width:min(100% - 28px,1460px)}.topbar{height:auto;padding:18px 0;align-items:flex-start;gap:14px}.actions{display:none}.brand-main{font-size:30px}.brand-sub{font-size:11px}.brand-emblem{width:56px;height:56px}.hero{padding-top:28px}.hero-ctas{flex-direction:column}.btn{width:100%;justify-content:center}.halo{width:330px;height:330px}.brain-icon{width:310px;height:310px}.central-word{font-size:44px}.orkio-sphere{width:260px;height:260px}.systems-list{position:relative;right:auto;top:auto;grid-template-columns:1fr 1fr}.dashboard-grid,.insight{grid-template-columns:1fr}.pill-row,.cards,.patroai .pill-row{grid-template-columns:1fr}}`}</style>
+      <div className="container">
+        <header className="topbar">
+          <button className="brand" onClick={() => go("/")} aria-label="PatroAI home">
+            <img className="brand-emblem" src={A + "logo-patroai-oficial.png"} alt="PatroAI" />
+            <span className="brand-word">
+              <span className="brand-main">PATRO<span className="gold">AI</span></span>
+              <span className="brand-sub">CONSULTECH</span>
+            </span>
+          </button>
+          <nav className="nav">
+            {t.nav.map((n) => (
+              <button key={n} onClick={() => n.toLowerCase().includes("plata") || n.toLowerCase().includes("platform") ? go("/orkio") : scroll("como-funciona")}>{n}</button>
+            ))}
+          </nav>
+          <div className="actions">
+            <button className="btn btn-secondary" onClick={() => go("/app")}>Login</button>
+            <button className="btn btn-primary" onClick={() => go("/orkio")}>{t.primary} →</button>
+            <button className="lang" onClick={() => setLang(lang === "pt" ? "en" : "pt")}>{lang === "pt" ? "EN" : "PT"}</button>
+          </div>
+        </header>
 
-      <nav className="topbar">
-        <button className="brand" onClick={() => navigate("/")}>
-          <img src={`${A}logo-patroai-novo.png`} alt="PatroAI" />
+        <section className="hero">
           <div>
-            <strong>PATRO<span>AI</span></strong>
-            <small>CONSULTECH</small>
+            <div className="eyebrow">{t.eyebrow}</div>
+            <h1>{t.title}</h1>
+            <p>{t.subtitle}</p>
+            <div className="hero-ctas">
+              <button className="btn btn-primary" onClick={() => go("/orkio")}>{t.primary} →</button>
+              <button className="btn btn-secondary" onClick={() => scroll("como-funciona")}>{t.secondary} ▶</button>
+            </div>
           </div>
-        </button>
-        <div className="navlinks">{t.nav.map((n) => <a key={n} href={`#${n.toLowerCase()}`}>{n}</a>)}</div>
-        <div className="actions">
-          <button className="lang" onClick={() => setLocale(locale === "pt-BR" ? "en-US" : "pt-BR")}>{t.next}</button>
-          <button className="login" onClick={() => navigate("/login")}>Login</button>
-          <button className="demo">Agendar demo <span>↗</span></button>
-        </div>
-      </nav>
 
-      <section className="hero">
-        <div className="copy">
-          <div className="eyebrow">{t.eyebrow}</div>
-          <h1>
-            {t.title[0]}<br />
-            <span>{t.title[1]}</span> {t.title[2]}<br />
-            {t.title[3]} <span>{t.title[4]}</span><br />
-            {t.title[5]}
-          </h1>
-          <p>{t.subtitle}</p>
-          <div className="buttons">
-            <button className="primary">{t.primary} <span>→</span></button>
-            <button className="secondary">{t.secondary} <i>▷</i></button>
+          <div className="visual-stage" aria-label="PatroAI intelligence brain">
+            <div className="halo" />
+            <div className="brain-icon">
+              <div className="brain-lines" />
+              <div className="central-word">PatroAI</div>
+              <span className="orbit-dot d1" /><span className="orbit-dot d2" /><span className="orbit-dot d3" /><span className="orbit-dot d4" />
+            </div>
+            <div className="pedestal" />
           </div>
-        </div>
 
-        <div className="brain-stage">
-          <div className="halo" />
-          <img src={`${A}logo-patroai-novo.png`} alt="" />
-          <strong>PatroAI</strong>
-          <div className="pedestal" />
-          <div className="rings" />
-        </div>
+          <aside className="assistant-card">
+            <div className="avatar-human">
+              <div className="avatar-body" />
+              <div className="avatar-core" />
+              <div className="avatar-head">
+                <span className="avatar-eye left" />
+                <span className="avatar-eye right" />
+                <span className="avatar-smile" />
+              </div>
+            </div>
+            <h3>{t.avatarTitle}</h3>
+            <p>{t.avatarText}</p>
+            <button className="btn btn-purple" onClick={() => go("/orkio")}>Conversar agora ◔</button>
+          </aside>
+        </section>
 
-        <RobotCard t={t} />
-      </section>
+        <section className="pill-row">
+          {t.pillars.map(([i,h,d]) => <div className="pill" key={h}><span className="ico" style={{color:h.includes("ESG") ? "#8df95a" : h.includes("Estr") || h.includes("Strateg") ? "#d335ff" : "#f5b821"}}>{i}</span><div><strong>{h}</strong><span>{d}</span></div></div>)}
+        </section>
 
-      <section className="pillars">
-        {t.pillars.map(([title, desc], i) => (
-          <article key={title}>
-            <div className={`icon i${i}`}><Icon type={["shield", "brain", "chart", "leaf"][i]} /></div>
-            <h3>{title}</h3>
-            <p>{desc}</p>
-          </article>
-        ))}
-      </section>
-
-      <section className="cards">
-        {t.cards.map(([title, desc], i) => (
-          <article key={title}>
-            <div className={`card-icon c${i}`}><Icon type={["people", "nodes", "target", "rocket"][i]} /></div>
-            <h3>{title}</h3>
-            <p>{desc}</p>
-          </article>
-        ))}
-      </section>
+        <section id="como-funciona" className="cards">
+          {t.cards.map(([i,h,d]) => <article className="card" key={h}><span className="ico" style={{color:h.includes("Orkio") ? "#46a9ff" : h.includes("Evol") || h.includes("Continuous") ? "#d335ff" : "#f5b821"}}>{i}</span><h3>{h}</h3><p>{d}</p></article>)}
+        </section>
+      </div>
     </main>
   );
 }
-
-const css = `
-:root{--bg:#050509;--gold:#f4c33d;--gold2:#ffdf7b;--purple:#9b28ff;--green:#79ed58;--text:#f6f7fb;--muted:#b9bdc7}
-*{box-sizing:border-box}.patroai-page{min-height:100vh;background:radial-gradient(circle at 50% 28%,rgba(244,195,61,.14),transparent 28%),radial-gradient(circle at 82% 30%,rgba(155,40,255,.11),transparent 22%),linear-gradient(180deg,#030306,#08090e 60%,#040408);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.patroai-page:before{content:"";position:fixed;inset:0;background:radial-gradient(circle at 50% 45%,rgba(255,206,77,.16),transparent 3%,transparent 45%),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px);background-size:auto,94px 94px,94px 94px;mask-image:radial-gradient(circle at 50% 35%,#000,transparent 72%);pointer-events:none}
-.topbar{height:118px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;border-bottom:1px solid rgba(255,255,255,.05);position:relative;z-index:5}.brand{display:flex;align-items:center;gap:14px;background:none;border:0;color:#fff;cursor:pointer;text-align:left}.brand img{width:78px;height:78px;border-radius:50%;filter:drop-shadow(0 0 18px rgba(244,195,61,.38))}.brand strong{font-size:43px;line-height:.92;letter-spacing:.06em;font-weight:900}.brand strong span{color:var(--gold)}.brand small{display:block;color:var(--gold2);font-size:15px;letter-spacing:.52em;margin-left:4px;margin-top:8px}.navlinks{display:flex;gap:38px}.navlinks a{color:#fff;text-decoration:none;font-size:16px}.actions{display:flex;gap:18px;align-items:center}.actions button{font:inherit;color:#fff;background:none;border:0}.lang,.login{opacity:.95}.demo{border:1px solid rgba(244,195,61,.65)!important;border-radius:999px!important;padding:15px 25px!important;color:#ffd65d!important;font-weight:800!important;background:rgba(244,195,61,.03)!important}
-.hero{display:grid;grid-template-columns:1.02fr 1.05fr .88fr;gap:32px;align-items:center;padding:52px 38px 32px;position:relative;z-index:2}.eyebrow{display:inline-flex;border:1px solid rgba(244,195,61,.58);border-radius:999px;padding:11px 18px;color:#ffda54;font-weight:800;letter-spacing:.04em;margin-bottom:28px;background:rgba(244,195,61,.05)}h1{font-size:50px;line-height:1.12;margin:0 0 25px;font-weight:900;letter-spacing:-.055em}h1 span{color:var(--gold);text-shadow:0 0 24px rgba(244,195,61,.28)}.copy p{font-size:18px;line-height:1.7;color:#d5d6dd;max-width:610px}.buttons{display:flex;gap:22px;margin-top:32px}.primary{border:1px solid rgba(255,225,112,.75);border-radius:13px;padding:17px 28px;background:linear-gradient(135deg,#ffd95d,#a66d05);color:#fff;font-weight:800;box-shadow:0 0 35px rgba(244,195,61,.25)}.secondary{border:1px solid rgba(255,255,255,.22);border-radius:13px;padding:17px 28px;background:rgba(255,255,255,.03);color:#fff;font-weight:800}.secondary i{margin-left:14px;border:1px solid #fff;border-radius:50%;padding:3px 5px;font-style:normal}
-.brain-stage{height:470px;display:grid;place-items:center;position:relative}.brain-stage img{width:380px;height:380px;object-fit:contain;border-radius:50%;filter:drop-shadow(0 0 28px rgba(244,195,61,.48));z-index:2;animation:breath 4.8s ease-in-out infinite}.brain-stage strong{position:absolute;z-index:3;font-size:52px;font-weight:900;color:#fff;text-shadow:0 2px 8px #000}.halo{position:absolute;width:390px;height:390px;border:2px solid rgba(244,195,61,.8);border-radius:50%;box-shadow:0 0 28px rgba(244,195,61,.45),inset 0 0 28px rgba(244,195,61,.15)}.halo:before,.halo:after{content:"";position:absolute;inset:-12px;border-radius:50%;border:1px solid rgba(244,195,61,.18)}.pedestal{position:absolute;bottom:42px;width:300px;height:64px;border-radius:50%;background:radial-gradient(ellipse at center,rgba(244,195,61,.45),rgba(244,195,61,.08),transparent 70%);filter:blur(3px)}.rings{position:absolute;bottom:48px;width:460px;height:160px;border-radius:50%;border:1px solid rgba(244,195,61,.16);transform:rotateX(68deg)}
-.robot-card{border:1px solid rgba(155,40,255,.48);border-radius:25px;padding:28px 24px 24px;background:radial-gradient(circle at 50% 20%,rgba(155,40,255,.23),transparent 44%),linear-gradient(180deg,rgba(10,8,21,.94),rgba(5,5,9,.88));box-shadow:0 0 48px rgba(155,40,255,.13);min-height:510px;display:flex;flex-direction:column;justify-content:flex-end;position:relative;overflow:hidden}.robot-head{position:absolute;top:36px;left:50%;transform:translateX(-50%);width:210px;height:210px;border-radius:50%;background:radial-gradient(circle at 50% 42%,#1e1434,#050509 64%);border:2px solid rgba(255,207,66,.65);box-shadow:0 0 60px rgba(155,40,255,.62)}.head-ring{position:absolute;inset:-20px;border-radius:50%;border:8px solid rgba(163,68,255,.8);border-bottom-color:transparent;filter:drop-shadow(0 0 18px #a33cff)}.eye{position:absolute;top:72px;width:28px;height:46px;border-radius:50%;background:#fff;box-shadow:0 0 18px #a33cff,0 0 30px #a33cff inset}.eye.left{left:58px}.eye.right{right:58px}.smile{position:absolute;left:82px;top:128px;width:48px;height:25px;border-bottom:5px solid #e6b7ff;border-radius:50%;box-shadow:0 0 12px #a33cff}.ear{position:absolute;top:72px;width:32px;height:64px;border-radius:22px;background:linear-gradient(#ffd764,#3b2463);border:1px solid rgba(255,215,100,.75)}.ear-left{left:-18px}.ear-right{right:-18px}.robot-body{position:absolute;left:50%;top:242px;transform:translateX(-50%);width:190px;height:130px;border-radius:70px 70px 20px 20px;background:linear-gradient(180deg,#12101a,#07070b);border:1px solid rgba(255,255,255,.08)}.robot-body img{width:58px;height:58px;object-fit:contain;position:absolute;left:50%;top:28px;transform:translateX(-50%);filter:drop-shadow(0 0 12px rgba(244,195,61,.7))}.robot-card h2{margin:350px 0 10px;font-size:24px}.robot-card h2 span{color:#ffd33f}.robot-card p{color:#d6d1df;line-height:1.55;font-size:17px;margin:0 0 24px}.robot-card button{border:1px solid rgba(255,255,255,.12);background:linear-gradient(135deg,#5132d5,#aa14c5);color:#fff;border-radius:15px;padding:17px 20px;font-weight:800}.robot-card button i{float:right;font-style:normal;opacity:.8}
-.pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;margin:18px 38px 0;padding:28px 0;border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.06)}.pillars article{display:grid;grid-template-columns:auto 1fr;gap:18px;padding-right:24px;border-right:1px solid rgba(255,255,255,.11)}.pillars article:last-child{border-right:0}.icon{color:var(--gold);filter:drop-shadow(0 0 14px rgba(244,195,61,.35))}.i1,.i3{color:#ad2cff}.i3{color:#6cff55}.pillars h3{margin:0 0 6px;font-size:18px}.pillars p{margin:0;color:#bec0ca;line-height:1.5}
-.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding:34px 32px 56px}.cards article{border:1px solid rgba(255,255,255,.11);border-radius:20px;padding:24px;min-height:190px;background:linear-gradient(180deg,rgba(11,13,20,.82),rgba(5,5,9,.78));box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}.card-icon{color:#b62cff;margin-bottom:18px}.c1{color:#3aa6ff}.c2{color:#ffc83d}.c3{color:#b62cff}.cards h3{font-size:23px;line-height:1.16;margin:0 0 14px}.cards p{color:#bec0ca;line-height:1.55;margin:0}
-@keyframes breath{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-12px) scale(1.02)}}
-@media(max-width:1150px){.topbar{height:auto;padding:22px}.navlinks{display:none}.hero{grid-template-columns:1fr}.brain-stage{order:-1;height:360px}.brain-stage img{width:300px;height:300px}.halo{width:310px;height:310px}.robot-card{min-height:480px;max-width:520px}.pillars,.cards{grid-template-columns:1fr 1fr}.pillars article{border-right:0}.brand strong{font-size:34px}}@media(max-width:700px){.actions .login,.actions .demo{display:none}.hero{padding:26px 20px}.topbar{padding:18px}.brand img{width:58px;height:58px}.brand strong{font-size:28px}.brand small{font-size:11px}.copy h1,h1{font-size:38px}.buttons{flex-direction:column}.primary,.secondary{width:100%}.pillars,.cards{grid-template-columns:1fr;margin-left:20px;margin-right:20px;padding-left:0;padding-right:0}.cards{padding-left:20px;padding-right:20px;margin:0}.brain-stage strong{font-size:40px}}
-`;
-
-export default PatroaiLanding;
