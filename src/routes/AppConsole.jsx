@@ -15,45 +15,6 @@ const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.
   ? "stt_tts"
   : "realtime";
 const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || import.meta.env.VITE_SPEECH_RECOGNITION_LANG || "pt-BR").trim() || "pt-BR");
-const PRECHAT_KEY = "orkio_prechat_context_v1";
-const PRECHAT_IMPORT_KEY = "orkio_prechat_import_pending_v1";
-
-function readPendingPrechatContext() {
-  try {
-    const raw = window.localStorage?.getItem(PRECHAT_IMPORT_KEY) || window.localStorage?.getItem(PRECHAT_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function clearPendingPrechatContext() {
-  try {
-    window.localStorage?.removeItem(PRECHAT_IMPORT_KEY);
-    window.localStorage?.removeItem(PRECHAT_KEY);
-  } catch {}
-}
-
-function buildPrechatConsolePrompt(ctx) {
-  const name = String(ctx?.name || "").trim();
-  const challenge = String(ctx?.challenge || "").trim();
-  const segment = String(ctx?.segment || "").trim();
-  const systems = String(ctx?.systems || "").trim();
-  const goal = String(ctx?.goal || "").trim();
-  const summary = String(ctx?.summary || "").trim();
-
-  return [
-    "Contexto importado do pré-diagnóstico da landing Orkio.",
-    name ? `Nome do usuário: ${name}.` : "",
-    segment ? `Segmento: ${segment}.` : "",
-    challenge ? `Principal desafio informado: ${challenge}.` : "",
-    systems ? `Sistemas/integrações citadas: ${systems}.` : "",
-    goal ? `Objetivo para os próximos 90 dias: ${goal}.` : "",
-    summary ? `Resumo gerado pela Orkio: ${summary}` : "",
-    "",
-    "Continue a conversa a partir deste contexto, acolha o usuário pelo nome quando possível e proponha os próximos passos estratégicos de forma objetiva.",
-  ].filter(Boolean).join("\n");
-}
 
 
 const ORKIO_CHAT_STREAM_PRIMARY = ((ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import.meta.env.VITE_CHAT_STREAM_PRIMARY || "true").toString().trim().toLowerCase() !== "false");
@@ -963,8 +924,6 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const [threads, setThreads] = useState([]);
   const [threadId, setThreadId] = useState("");
   const [messages, setMessages] = useState([]);
-  const prechatImportedRef = useRef(false);
-  const [prechatImportNotice, setPrechatImportNotice] = useState("");
   const [agents, setAgents] = useState([]);
   const agentsByNameRef = useRef(new Map());
   const activeThreadIdRef = useRef("");
@@ -1033,10 +992,7 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const [patchApprovalPassword, setPatchApprovalPassword] = useState("");
   const [patchApprovalBusy, setPatchApprovalBusy] = useState(false);
   const [patchApprovalError, setPatchApprovalError] = useState("");
-  const [executionTraceExpanded, setExecutionTraceExpanded] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage?.getItem("orkio_execution_trace_open") !== "0";
-  });
+  const [executionTraceExpanded, setExecutionTraceExpanded] = useState(false);
 
   // Destination selector (Team / single / multi)
   const [destMode, setDestMode] = useState(() => {
@@ -1108,6 +1064,27 @@ const appendExecutionTrace = (step) => {
     return next;
   });
 };
+
+const collapseExecutionTrace = (delayMs = 0) => {
+  const run = () => {
+    setExecutionTraceExpanded(false);
+    try { window.localStorage?.setItem("orkio_execution_trace_open", "0"); } catch {}
+  };
+  if (delayMs > 0) {
+    window.setTimeout(run, delayMs);
+  } else {
+    run();
+  }
+};
+
+useEffect(() => {
+  if (sending || !executionTrace.length) return undefined;
+  const timer = window.setTimeout(() => {
+    setExecutionTraceExpanded(false);
+    try { window.localStorage?.setItem("orkio_execution_trace_open", "0"); } catch {}
+  }, 900);
+  return () => window.clearTimeout(timer);
+}, [sending, executionTrace.length]);
 
 const describeExecutionStatus = (payload = {}) => ({
   kind: payload?.agent_id ? "agent" : "status",
@@ -2522,6 +2499,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
       setV2vError(null);
       setWalletBlockedDetail(null);
       setExecutionTraceExpanded(true);
+      try { window.localStorage?.setItem("orkio_execution_trace_open", "1"); } catch {}
       setActiveRuntimeAgent("Orkio");
       setRuntimeHandoffLabel("");
       resetExecutionTrace([
@@ -2683,7 +2661,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
               setV2vPhase(null);
               setV2vError(null);
               setRuntimeHandoffLabel("");
-              setExecutionTraceExpanded(false);
+              collapseExecutionTrace();
             },
           }), CHAT_STREAM_TIMEOUT_MS, "CHAT_STREAM_TIMEOUT");
           if (isStale()) return;
@@ -2741,7 +2719,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
               setV2vPhase(null);
               setV2vError(null);
               setRuntimeHandoffLabel("");
-              setExecutionTraceExpanded(false);
+              collapseExecutionTrace();
               resp = {
                 data: {
                   thread_id: reconcileThreadId || newThreadId || threadId,
@@ -3149,54 +3127,6 @@ async function sendMessage(presetMsg = null, opts = {}) {
       }
     }
   }
-
-
-  useEffect(() => {
-    if (!token || !threadId || prechatImportedRef.current) return;
-    const ctx = readPendingPrechatContext();
-    if (!ctx || ctx.imported_at) return;
-
-    prechatImportedRef.current = true;
-
-    const prompt = buildPrechatConsolePrompt(ctx);
-    const name = String(ctx?.name || "").trim();
-
-    try {
-      setOnboardingForm((prev) => ({
-        ...(prev || {}),
-        company: prev?.company || ctx?.company || "",
-        role: prev?.role || "founder",
-        intent: prev?.intent || "growth",
-        language: prev?.language || "pt-BR",
-      }));
-    } catch {}
-
-    setPrechatImportNotice(name
-      ? `Contexto do pré-diagnóstico importado para ${name}.`
-      : "Contexto do pré-diagnóstico importado."
-    );
-    setUploadStatus("✅ Contexto da landing importado para esta conversa.");
-
-    try {
-      window.localStorage?.setItem(PRECHAT_IMPORT_KEY, JSON.stringify({
-        ...ctx,
-        imported_at: new Date().toISOString(),
-        thread_id: threadId,
-      }));
-    } catch {}
-
-    window.setTimeout(() => {
-      try {
-        if (prompt) void sendMessage(prompt);
-      } catch {}
-      clearPendingPrechatContext();
-    }, 650);
-
-    window.setTimeout(() => {
-      try { setPrechatImportNotice(""); } catch {}
-    }, 6500);
-  }, [token, threadId]);
-
 
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -5177,11 +5107,6 @@ async function stopRealtime(reason = 'client_stop') {
         }}
       />
     )}
-    {prechatImportNotice && (
-      <div style={{ position: "fixed", top: 14, left: "50%", transform: "translateX(-50%)", zIndex: 130, padding: "10px 14px", borderRadius: 14, border: "1px solid rgba(34,197,94,0.35)", background: "rgba(6,78,59,0.94)", color: "#dcfce7", fontSize: 13, fontWeight: 800, boxShadow: "0 18px 40px rgba(0,0,0,0.28)" }}>
-        {prechatImportNotice}
-      </div>
-    )}
     <div style={styles.layout}>
       {/* Sidebar */}
       <div style={{ ...styles.sidebar, display: isMobile ? "none" : "flex" }}>
@@ -5782,7 +5707,11 @@ async function stopRealtime(reason = 'client_stop') {
   >
     <button
       type="button"
-      onClick={() => setExecutionTraceExpanded((prev) => !prev)}
+      onClick={() => setExecutionTraceExpanded((prev) => {
+        const next = !prev;
+        try { window.localStorage?.setItem("orkio_execution_trace_open", next ? "1" : "0"); } catch {}
+        return next;
+      })}
       style={{
         width: "100%",
         border: 0,
@@ -5798,9 +5727,15 @@ async function stopRealtime(reason = 'client_stop') {
       }}
     >
       <div>
-        <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.01em" }}>Execution trace</div>
+        <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.01em" }}>
+          {executionTraceExpanded ? "Execution trace" : "Ver execução"}
+        </div>
         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", marginTop: 2 }}>
-          {sending ? "Orkio está executando etapas desta solicitação." : "Última execução registrada no console."}
+          {sending
+            ? "Orkio está executando etapas desta solicitação."
+            : executionTraceExpanded
+            ? "Última execução registrada no console."
+            : "Execução recolhida automaticamente. Abra apenas se quiser revisar."}
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -5812,6 +5747,12 @@ async function stopRealtime(reason = 'client_stop') {
         <span style={{ fontSize: 16, opacity: 0.8 }}>{executionTraceExpanded ? "▾" : "▸"}</span>
       </div>
     </button>
+
+    {!executionTraceExpanded ? (
+      <div style={{ padding: "0 14px 14px", color: "rgba(255,255,255,0.58)", fontSize: 12 }}>
+        {executionTrace.length} etapa(s) registradas nesta execução.
+      </div>
+    ) : null}
 
     {executionTraceExpanded ? (
       <div style={{ padding: "0 14px 14px", display: "grid", gap: 8 }}>
