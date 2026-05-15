@@ -938,6 +938,68 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const storageBootstrapInitializedRef = useRef(false);
   const THREAD_STORAGE_KEY = "orkio_active_thread_id";
 
+  const PRECHAT_CONTEXT_KEY = "orkio_prechat_context_v1";
+  const prechatContextConsumedRef = useRef(false);
+
+  useEffect(() => {
+    if (prechatContextConsumedRef.current) return;
+    if (!user || typeof window === "undefined") return;
+
+    let ctx = null;
+    try {
+      const raw = window.localStorage?.getItem(PRECHAT_CONTEXT_KEY);
+      if (raw) ctx = JSON.parse(raw);
+    } catch {}
+
+    if (!ctx || typeof ctx !== "object") return;
+    prechatContextConsumedRef.current = true;
+
+    const userName = String(ctx.name || user?.name || "").trim();
+    const challenge = String(ctx.challenge || "").trim();
+    const segment = String(ctx.segment || "").trim();
+    const systems = String(ctx.systems || "").trim();
+    const goal = String(ctx.goal || "").trim();
+
+    const importedPrompt = [
+      userName ? `Nome do usuário: ${userName}` : "",
+      segment ? `Segmento da empresa: ${segment}` : "",
+      challenge ? `Maior desafio declarado: ${challenge}` : "",
+      systems ? `Sistemas/integrações citados: ${systems}` : "",
+      goal ? `Objetivo dos próximos 90 dias: ${goal}` : "",
+      "",
+      "Continue o diagnóstico iniciado na landing pública do Orkio.",
+      "Gere um mapa inicial de evolução com prioridades, riscos, oportunidades e próximos passos.",
+      "Explique também que o usuário tem 7 dias gratuitos para experimentar a plataforma."
+    ].filter(Boolean).join("\n");
+
+    try {
+      window.localStorage?.setItem("orkio_prechat_context_imported_v1", JSON.stringify({
+        ...ctx,
+        imported_at: new Date().toISOString(),
+      }));
+      window.localStorage?.removeItem(PRECHAT_CONTEXT_KEY);
+    } catch {}
+
+    setText(importedPrompt);
+    setMessages((prev) => {
+      if (Array.isArray(prev) && prev.length) return prev;
+      return [
+        {
+          id: `prechat-imported-${Date.now()}`,
+          role: "assistant",
+          content: userName
+            ? `Bem-vindo, ${userName}. Importeis o contexto da conversa inicial. Clique em enviar para eu continuar o diagnóstico dentro do Orkio OS.`
+            : "Importei o contexto da conversa inicial. Clique em enviar para eu continuar o diagnóstico dentro do Orkio OS.",
+          agent_name: "Orkio",
+          agent_id: "orkio",
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      ];
+    });
+    try { setUploadStatus("✅ Contexto pré-login importado. Clique em enviar para continuar."); } catch {}
+  }, [user]);
+
+
   function readStoredThreadId() {
     if (typeof window === "undefined") return "";
     try { return String(window.localStorage?.getItem(THREAD_STORAGE_KEY) || "").trim(); } catch { return ""; }
