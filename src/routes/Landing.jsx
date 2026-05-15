@@ -143,7 +143,14 @@ function PreChat({ t, lang }) {
     { role: "orkio", text: t.chatText }
   ]);
   const [speaking, setSpeaking] = useState(false);
+  const messagesEndRef = useRef(null);
   const langCode = lang === "pt" ? "pt-BR" : "en-US";
+
+  useEffect(() => {
+    try {
+      messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
+    } catch {}
+  }, [messages, open]);
 
   useEffect(() => {
     setMessages([{ role: "orkio", text: t.chatText }]);
@@ -226,6 +233,7 @@ function PreChat({ t, lang }) {
         <div className="chatbox">
           <div className="msgs">
             {messages.map((m, i) => <div key={i} className={`msg ${m.role}`}>{m.text}</div>)}
+              <div ref={messagesEndRef} />
           </div>
           {!finished ? (
             <div className="composer">
