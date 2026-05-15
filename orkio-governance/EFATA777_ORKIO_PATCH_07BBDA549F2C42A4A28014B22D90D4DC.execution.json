@@ -1,0 +1,25 @@
+{
+  "status": "execution_artifact_created_no_source_change",
+  "org_slug": "public",
+  "thread_id": "ca7d72d724424601979010a8fb2e51bd",
+  "approval_id": "apr_16108d40311b",
+  "patch_id": "EFATA777_ORKIO_PATCH_07BBDA549F2C42A4A28014B22D90D4DC",
+  "audit_receipt_id": "07bbda549f2c42a4a28014b22d90d4dc",
+  "patch_mode": "approved_apply",
+  "human_approved": true,
+  "write_allowed": true,
+  "target_files": [
+    "AppConsole.jsx"
+  ],
+  "target_functions": [],
+  "requested_actions": [
+    "create_branch",
+    "apply_patch",
+    "prepare_commit",
+    "open_pr"
+  ],
+  "source_files_modified": [],
+  "governance_note": "This minimal executor writes an audit artifact branch/commit/PR only; no source file is modified without an executable diff.",
+  "trace_id": "7110bcd0da91431291cc1ed30ba9aa9f",
+  "created_at": 1778846073
+}
