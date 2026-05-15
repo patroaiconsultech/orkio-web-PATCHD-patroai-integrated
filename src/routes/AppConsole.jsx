@@ -17,14 +17,12 @@ const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.
 const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || import.meta.env.VITE_SPEECH_RECOGNITION_LANG || "pt-BR").trim() || "pt-BR");
 
 
-// METATRON PATCH: SSE stream is the primary governed rail again.
-// /api/chat is a legacy direct fallback and can hang on long governance prompts.
-// Keep this env-controlled, but default to stream=true.
-const ORKIO_CHAT_STREAM_PRIMARY = String(
-  ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY ??
-  import.meta.env.VITE_CHAT_STREAM_PRIMARY ??
-  "true"
-).trim().toLowerCase() !== "false";
+// METATRON P0: for controlled self-evolution and agent runtime, the only safe
+// primary rail is SSE `/api/chat/stream`.
+// `/api/chat` is a legacy direct rail and was observed hanging after OPTIONS,
+// so it must not be used as automatic fallback in production.
+const ORKIO_CHAT_STREAM_PRIMARY = true;
+const ORKIO_ALLOW_DIRECT_CHAT_FALLBACK = false;
 const CHAT_STREAM_TIMEOUT_MS = Math.max(
   15000,
   Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 45000) || 45000
@@ -85,23 +83,6 @@ function isAbortLikeError(err) {
     err?.code === "CHAT_STREAM_TIMEOUT" ||
     err?.code === "FETCH_ABORTED" ||
     err?.code === "CHAT_DIRECT_TIMEOUT";
-}
-
-function isGovernedPatchRequestText(text) {
-  const low = String(text || "").toLowerCase();
-  return (
-    low.includes("proposal_only") ||
-    low.includes("proposta governada") ||
-    low.includes("diff preview") ||
-    low.includes("self-evolution-test") ||
-    low.includes("autoevolução") ||
-    low.includes("autoevolucao")
-  ) && (
-    low.includes("patch") ||
-    low.includes("endpoint") ||
-    low.includes("main.py") ||
-    low.includes("appconsole")
-  );
 }
 
 
@@ -2485,31 +2466,40 @@ async function sendMessage(presetMsg = null, opts = {}) {
       };
 
       const describeDirectRailError = (err) => {
+        if (err?.code === "CHAT_DIRECT_FALLBACK_DISABLED") return "Fallback direto /api/chat bloqueado por governança; o fluxo deve usar /api/chat/stream.";
         if (err?.code === "CHAT_DIRECT_TIMEOUT") return "O fallback direto excedeu o tempo limite.";
         if (err?.code === "NETWORK_FETCH_FAILED") return "Falha de rede ao executar a resposta direta.";
         if (err?.code === "FETCH_ABORTED") return "A resposta direta foi abortada antes da conclusão.";
         return err?.message || "Não foi possível concluir a resposta direta.";
       };
 
-      const runDirectChat = async () => withTimeout(
-        chat({
-          token,
-          org: tenant,
-          thread_id: threadId,
-          message: finalMsg,
-          agent_id: destinationContract.agent_id,
-          trace_id: traceId,
-          client_message_id: clientMessageId,
-          agent_ids: destinationContract.agent_ids,
-          dest_mode: destinationContract.dest_mode,
-          visible_agent: destinationContract.visible_agent,
-          target_agent_slug: destinationContract.target_agent_slug,
-          requested_agent_names: destinationContract.requested_agent_names,
-          signal: allocDirectRailSignal(),
-        }),
-        CHAT_STREAM_TIMEOUT_MS,
-        "CHAT_DIRECT_TIMEOUT"
-      );
+      const runDirectChat = async () => {
+        if (!ORKIO_ALLOW_DIRECT_CHAT_FALLBACK) {
+          const err = new Error("Fallback direto /api/chat bloqueado. Use o trilho governado /api/chat/stream.");
+          err.code = "CHAT_DIRECT_FALLBACK_DISABLED";
+          err.status = 409;
+          throw err;
+        }
+        return withTimeout(
+          chat({
+            token,
+            org: tenant,
+            thread_id: threadId,
+            message: finalMsg,
+            agent_id: destinationContract.agent_id,
+            trace_id: traceId,
+            client_message_id: clientMessageId,
+            agent_ids: destinationContract.agent_ids,
+            dest_mode: destinationContract.dest_mode,
+            visible_agent: destinationContract.visible_agent,
+            target_agent_slug: destinationContract.target_agent_slug,
+            requested_agent_names: destinationContract.requested_agent_names,
+            signal: allocDirectRailSignal(),
+          }),
+          CHAT_STREAM_TIMEOUT_MS,
+          "CHAT_DIRECT_TIMEOUT"
+        );
+      };
 
 
       const optimisticUserId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2783,26 +2773,6 @@ async function sendMessage(presetMsg = null, opts = {}) {
                   trace_id: traceId,
                 },
               };
-            } else if (isGovernedPatchRequestText(finalMsg)) {
-              appendExecutionTrace({
-                kind: "error",
-                label: "Stream governado interrompido",
-                detail: "Não foi acionado fallback /api/chat para proposta governada. Reenvie após o backend liberar o SSE fast-path.",
-              });
-              setMessages((prev) =>
-                (Array.isArray(prev) ? prev : []).map((m) =>
-                  m.id === draftAssistantId
-                    ? {
-                        ...m,
-                        content: "O stream governado não retornou resposta persistida. O fallback direto foi bloqueado para evitar execução narrativa fora da governança.",
-                        agent_name: "Orkio",
-                      }
-                    : m
-                )
-              );
-              setV2vPhase("error");
-              setV2vError("Stream governado interrompido antes da proposta.");
-              return;
             } else {
               appendExecutionTrace({
                 kind: "system",
