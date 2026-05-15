@@ -140,6 +140,42 @@ const planPill = {
 
 const AUTH_REQUEST_TIMEOUT_MS = 45000;
 const POST_LOGIN_REDIRECT_FALLBACK_MS = 900;
+const PRECHAT_KEY = "orkio_prechat_context_v1";
+const PRECHAT_IMPORT_KEY = "orkio_prechat_import_pending_v1";
+const ADMIN_ALLOWED_EMAILS = new Set(["daniel@patroai.com", "daniel@patroai.com.br"]);
+
+function normalizeIdentityEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isAuthorizedAdminEmail(value) {
+  return ADMIN_ALLOWED_EMAILS.has(normalizeIdentityEmail(value));
+}
+
+function readPrechatContext() {
+  try {
+    const raw = window.localStorage?.getItem(PRECHAT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function stagePrechatImport(extra = {}) {
+  try {
+    const ctx = readPrechatContext();
+    if (!ctx) return;
+    window.localStorage?.setItem(
+      PRECHAT_IMPORT_KEY,
+      JSON.stringify({
+        ...ctx,
+        ...extra,
+        staged_at: new Date().toISOString(),
+      })
+    );
+  } catch {}
+}
+
 
 function normalizeAuthErrorMessage(err, fallbackMessage) {
   if (!err) return fallbackMessage;
@@ -234,14 +270,15 @@ export default function AuthPage() {
     !!token &&
     !!currentUser &&
     isApproved(currentUser) &&
-    isAdmin(currentUser);
+    isAdmin(currentUser) &&
+    isAuthorizedAdminEmail(currentUser?.email);
 
   useEffect(() => {
     const token = getToken();
     const user = getUser();
     if (token && user && isApproved(user)) {
       const redirect = sessionStorage.getItem("post_auth_redirect");
-      const next = isAdmin(user) ? "/admin" : (redirect || "/app");
+      const next = (isAdmin(user) && isAuthorizedAdminEmail(user?.email)) ? "/admin" : (redirect || "/app");
       sessionStorage.removeItem("post_auth_redirect");
       nav(next, { replace: true });
     }
@@ -327,27 +364,27 @@ export default function AuthPage() {
   }, []);
 
   const title = useMemo(() => {
-    if (otpMode) return "Verify your access code";
-    if (mode === "login") return "Sign in to your account";
-    if (mode === "forgot") return "Recover your password";
-    if (mode === "reset") return "Create a new password";
-    return "Create your account";
+    if (otpMode) return "Verifique seu e-mail";
+    if (mode === "login") return "Entrar na sua conta";
+    if (mode === "forgot") return "Recuperar senha";
+    if (mode === "reset") return "Criar nova senha";
+    return "Ative seus 7 dias grátis";
   }, [otpMode, mode]);
 
   const subtitle = useMemo(() => {
     if (otpMode) {
-      return "Use the one-time code sent to your email to enter the console.";
+      return "Digite o código numérico enviado para seu e-mail. Não usamos link de landing para validar acesso.";
     }
     if (mode === "login") {
-      return "Sign in with your email and password. If required, we will send a one-time code to complete access.";
+      return "Entre com e-mail e senha. Se o OTP estiver ativo, o código será solicitado na próxima etapa."; 
     }
     if (mode === "forgot") {
-      return "Enter your email and we will send a password reset link if the account exists.";
+      return "Informe seu e-mail para receber as instruções de recuperação."; 
     }
     if (mode === "reset") {
-      return "Set your new password to recover access to the console.";
+      return "Defina sua nova senha para recuperar o acesso."; 
     }
-    return "Use a private access code or continue to secure checkout, then verify your email with OTP to enter the console.";
+    return "Continue o diagnóstico iniciado pela Orkio dentro da plataforma. O teste gratuito é liberado por 7 dias.";
   }, [otpMode, mode]);
 
   function normalizeEmail(v) {
@@ -440,7 +477,7 @@ export default function AuthPage() {
 
     const storedUser = getUser();
     const redirect = sessionStorage.getItem("post_auth_redirect");
-    const next = isAdmin(storedUser) ? "/admin" : (redirect || "/app");
+    const next = (isAdmin(storedUser) && isAuthorizedAdminEmail(storedUser?.email)) ? "/admin" : (redirect || "/app");
 
     sessionStorage.removeItem("post_auth_redirect");
     redirectedAfterLoginRef.current = true;
@@ -473,13 +510,20 @@ export default function AuthPage() {
       marketing_consent: false,
     };
 
+    stagePrechatImport({
+      email: emailValue,
+      name: nameValue,
+      trial_days: 7,
+      source: "auth-register",
+    });
+
     await apiFetch("/api/auth/register", {
       method: "POST",
       org: tenant,
       body: registerPayload,
     });
 
-    setStatus("Account created. Sending OTP...");
+    setStatus("Conta criada. Verificando necessidade de código...");
     savePendingOtpContext({
       email: emailValue,
       tenant,
@@ -504,7 +548,7 @@ export default function AuthPage() {
         accessCode: accessCodeValue || "",
       });
       setPendingEmail(loginData.email || emailValue);
-      setStatus(loginData.message || "OTP sent. Verify it to enter the console.");
+      setStatus(loginData.message || "Código enviado. Verifique seu e-mail para entrar.");
       return;
     }
 
@@ -513,7 +557,7 @@ export default function AuthPage() {
       return;
     }
 
-    setStatus(loginData?.message || "Account created, but OTP was not issued correctly.");
+    setStatus(loginData?.message || "Conta criada, mas a validação não foi concluída corretamente.");
   }
 
   async function startPaidCheckout({ nameValue, emailValue }) {
@@ -555,11 +599,11 @@ export default function AuthPage() {
     if (busy) return;
 
     if (password !== passwordConfirm) {
-      setStatus("Passwords do not match.");
+      setStatus("As senhas não conferem.");
       return;
     }
     if (!acceptTerms) {
-      setStatus("You must accept the terms to continue.");
+      setStatus("Você precisa aceitar os termos para continuar.");
       return;
     }
 
@@ -568,34 +612,33 @@ export default function AuthPage() {
     const normalizedAccessCode = normalizeAccessCode(accessCode);
 
     if (!nameNormalized) {
-      setStatus("Please enter your full name.");
+      setStatus("Informe seu nome completo.");
       return;
     }
 
     if (!emailNormalized || !password) {
-      setStatus("Please complete name, email, and password.");
+      setStatus("Preencha nome, e-mail e senha.");
       return;
     }
 
     setBusy(true);
-    setStatus(normalizedAccessCode ? "Creating your account..." : "Preparing secure checkout...");
+    setStatus("Criando sua conta e preparando seu teste gratuito...");
 
     try {
-      if (normalizedAccessCode) {
-        await completeRegistration({
-          nameValue: nameNormalized,
-          emailValue: emailNormalized,
-          passwordValue: password,
-          accessCodeValue: normalizedAccessCode,
-        });
-      } else {
-        await startPaidCheckout({
-          nameValue: nameNormalized,
-          emailValue: emailNormalized,
-        });
-      }
+      await completeRegistration({
+        nameValue: nameNormalized,
+        emailValue: emailNormalized,
+        passwordValue: password,
+        accessCodeValue: normalizedAccessCode,
+      });
     } catch (err) {
-      setStatus(err?.message || "Registration failed.");
+      if (err?.status === 409) {
+        setAuthMode("login");
+        setEmail(emailNormalized);
+        setStatus("Este e-mail já possui cadastro. Entre com sua senha para continuar.");
+      } else {
+        setStatus(err?.message || "Não foi possível criar a conta.");
+      }
     } finally {
       setBusy(false);
     }
@@ -607,12 +650,12 @@ export default function AuthPage() {
     const emailNormalized = normalizeEmail(email);
 
     if (!emailNormalized || !password) {
-      setStatus("Please enter your email and password.");
+      setStatus("Informe e-mail e senha.");
       return;
     }
 
     setBusy(true);
-    setStatus("Signing you in...");
+    setStatus("Entrando...");
 
     try {
       const { data } = await apiFetchWithTimeout("/api/auth/login", {
@@ -685,7 +728,7 @@ export default function AuthPage() {
       return;
     }
     if (password !== passwordConfirm) {
-      setStatus("Passwords do not match.");
+      setStatus("As senhas não conferem.");
       return;
     }
     if (!password || !passwordConfirm) {
@@ -774,35 +817,34 @@ export default function AuthPage() {
         <div style={sidePanel}>
           <div style={sideChip}>
             <OrkioSphereMark size={18} glow={false} ring={false} />
-            private access • pwa launch
+            Orkio OS • acesso guiado
           </div>
 
           <div style={{ marginTop: 24, display: "flex", alignItems: "center", gap: 14 }}>
             <OrkioSphereMark size={64} badge />
             <div>
               <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.18em", color: "rgba(255,255,255,0.5)", fontWeight: 900 }}>
-                Orkio
+                PatroAI + Orkio
               </div>
               <div style={{ marginTop: 6, fontSize: 28, lineHeight: 1.02, fontWeight: 900 }}>
-                Beautiful entry.<br />Serious product.
+                Continue seu diagnóstico<br />com 7 dias grátis.
               </div>
             </div>
           </div>
 
           <p style={{ marginTop: 20, color: "rgba(255,255,255,0.72)", lineHeight: 1.8, fontSize: 15 }}>
-            Entre no PWA por um fluxo mais bonito, direto e comercial. Checkout, códigos privados e aprovação seguem governados.
+            A Orkio preserva o contexto do pré-chat e abre sua experiência inicial com foco em estratégia, governança e execução.
           </p>
 
           <div style={{ marginTop: 24, display: "grid", gap: 14 }}>
             {[
-              ["Professional", "R$ 197/mês", "For founders and consultants who need speed with structure."],
-              ["Business", "R$ 497/mês", "For operators who need more capacity, control and commercial leverage."],
-              ["Private code", "Efata777", "Selected users can bypass checkout with a governed invite code."],
-            ].map(([title, value, desc]) => (
+              ["Diagnóstico preservado", "Nome, desafio, segmento, sistemas e metas seguem para o console."],
+              ["Teste gratuito", "7 dias para sentir a plataforma em operação antes da contratação."],
+              ["Enterprise sob proposta", "Integrações, white label e personalização são solicitadas à equipe PatroAI."],
+            ].map(([title, desc]) => (
               <div key={title} style={planPill}>
                 <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(255,255,255,0.42)", fontWeight: 800 }}>{title}</div>
-                <div style={{ marginTop: 6, fontSize: 24, lineHeight: 1, fontWeight: 900 }}>{value}</div>
-                <div style={{ marginTop: 8, color: "rgba(255,255,255,0.68)", fontSize: 14, lineHeight: 1.7 }}>{desc}</div>
+                <div style={{ marginTop: 8, color: "rgba(255,255,255,0.76)", fontSize: 14, lineHeight: 1.7 }}>{desc}</div>
               </div>
             ))}
           </div>
@@ -813,7 +855,7 @@ export default function AuthPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <OrkioSphereMark size={28} badge={false} glow={false} />
             <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.14em", color: "#64748b", fontWeight: 800 }}>
-              Orkio access
+              Acesso Orkio
             </div>
           </div>
           {showAdminShortcut ? (
@@ -852,27 +894,27 @@ export default function AuthPage() {
             {mode === "register" ? (
               <div style={{ display: "grid", gap: 14 }}>
                 <div>
-                  <label style={label}>Full name</label>
-                  <input style={input} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
+                  <label style={label}>Nome completo</label>
+                  <input style={input} placeholder="Seu nome" value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
 
                 <div>
-                  <label style={label}>Email</label>
-                  <input style={input} placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <label style={label}>E-mail</label>
+                  <input style={input} placeholder="voce@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                   <PasswordField
-                    labelText="Password"
-                    placeholder="Your password"
+                    labelText="Senha"
+                    placeholder="Sua senha"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     show={showPassword}
                     onToggle={() => setShowPassword((v) => !v)}
                   />
                   <PasswordField
-                    labelText="Confirm password"
-                    placeholder="Repeat your password"
+                    labelText="Confirmar senha"
+                    placeholder="Repita sua senha"
                     value={passwordConfirm}
                     onChange={(e) => setPasswordConfirm(e.target.value)}
                     show={showPasswordConfirm}
@@ -880,54 +922,33 @@ export default function AuthPage() {
                   />
                 </div>
 
-                <div style={{ display: "grid", gap: 8 }}>
-                  <label style={label}>Plan</label>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPlan("founder_access")}
-                      style={{
-                        ...secondaryBtn,
-                        borderColor: selectedPlan === "founder_access" ? "#2563eb" : "#cbd5e1",
-                        background: selectedPlan === "founder_access" ? "rgba(37,99,235,0.06)" : "#fff",
-                      }}
-                    >
-                      Founder Access<br /><span style={{ fontSize: 12, color: "#64748b" }}>US$ 20/mês + US$ 20 créditos</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPlan("pro_access")}
-                      style={{
-                        ...secondaryBtn,
-                        borderColor: selectedPlan === "pro_access" ? "#2563eb" : "#cbd5e1",
-                        background: selectedPlan === "pro_access" ? "rgba(37,99,235,0.06)" : "#fff",
-                      }}
-                    >
-                      Pro Access<br /><span style={{ fontSize: 12, color: "#64748b" }}>US$ 49/mês + US$ 60 créditos</span>
-                    </button>
+                <div style={{ border: "1px solid #bfdbfe", background: "rgba(37,99,235,0.06)", borderRadius: 18, padding: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#1d4ed8" }}>Teste gratuito de 7 dias</div>
+                  <div style={{ ...muted, marginTop: 6 }}>
+                    Sem checkout nesta etapa. Após o teste, a Orkio apresentará os planos e, para integrações ou white label, abrirá uma solicitação para a equipe PatroAI.
                   </div>
                 </div>
 
                 <div>
-                  <label style={label}>Private access code (optional)</label>
+                  <label style={label}>Código privado (opcional)</label>
                   <input
                     style={input}
-                    placeholder="Use Efata777 or another invite code"
+                    placeholder="Informe seu código privado, se você recebeu um"
                     value={accessCode}
                     onChange={(e) => setAccessCode(e.target.value.toUpperCase())}
                   />
                   <div style={{ ...muted, marginTop: 8 }}>
-                    Selected users can enter directly with a private code. Everyone else continues to secure checkout.
+                    Use este campo apenas se você recebeu um código diretamente da PatroAI.
                   </div>
                 </div>
 
                 <label style={{ display: "flex", gap: 10, alignItems: "flex-start", color: "#334155", fontSize: 14 }}>
                   <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
-                  <span>I agree to the terms and privacy policy.</span>
+                  <span>Aceito os termos e a política de privacidade.</span>
                 </label>
 
                 <button style={btn} disabled={busy} onClick={doRegister}>
-                  {busy ? "Processing..." : (accessCode.trim() ? "Create account and receive OTP" : "Continue to secure checkout")}
+                  {busy ? "Processando..." : "Criar conta e continuar"}
                 </button>
               </div>
             ) : null}
@@ -935,13 +956,13 @@ export default function AuthPage() {
             {mode === "login" ? (
               <div style={{ display: "grid", gap: 14 }}>
                 <div>
-                  <label style={label}>Email</label>
-                  <input style={input} placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <label style={label}>E-mail</label>
+                  <input style={input} placeholder="voce@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
 
                 <PasswordField
-                  labelText="Password"
-                  placeholder="Your password"
+                  labelText="Senha"
+                  placeholder="Sua senha"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   show={showLoginPassword}
@@ -955,7 +976,7 @@ export default function AuthPage() {
                 </div>
 
                 <button style={btn} disabled={busy} onClick={doLogin}>
-                  {busy ? "Processing..." : "Sign in"}
+                  {busy ? "Processando..." : "Entrar"}
                 </button>
               </div>
             ) : null}
@@ -963,11 +984,11 @@ export default function AuthPage() {
             {mode === "forgot" ? (
               <div style={{ display: "grid", gap: 14 }}>
                 <div>
-                  <label style={label}>Email</label>
-                  <input style={input} placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <label style={label}>E-mail</label>
+                  <input style={input} placeholder="voce@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
                 <button style={btn} disabled={busy} onClick={doForgotPassword}>
-                  {busy ? "Processing..." : "Send reset link"}
+                  {busy ? "Processando..." : "Enviar instruções"}
                 </button>
                 <button type="button" style={secondaryBtn} disabled={busy} onClick={() => setAuthMode("login")}>
                   Back to sign in
@@ -978,27 +999,27 @@ export default function AuthPage() {
             {mode === "reset" ? (
               <div style={{ display: "grid", gap: 14 }}>
                 <div>
-                  <label style={label}>Reset token</label>
-                  <input style={input} placeholder="Paste your reset token" value={resetToken} onChange={(e) => setResetToken(e.target.value)} />
+                  <label style={label}>Token de recuperação</label>
+                  <input style={input} placeholder="Cole o token de recuperação" value={resetToken} onChange={(e) => setResetToken(e.target.value)} />
                 </div>
                 <PasswordField
-                  labelText="New password"
-                  placeholder="Your new password"
+                  labelText="Nova senha"
+                  placeholder="Sua nova senha"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   show={showResetPassword}
                   onToggle={() => setShowResetPassword((v) => !v)}
                 />
                 <PasswordField
-                  labelText="Confirm new password"
-                  placeholder="Repeat your new password"
+                  labelText="Confirmar nova senha"
+                  placeholder="Repita sua nova senha"
                   value={passwordConfirm}
                   onChange={(e) => setPasswordConfirm(e.target.value)}
                   show={showResetPasswordConfirm}
                   onToggle={() => setShowResetPasswordConfirm((v) => !v)}
                 />
                 <button style={btn} disabled={busy} onClick={doResetPassword}>
-                  {busy ? "Processing..." : "Update password"}
+                  {busy ? "Processando..." : "Atualizar senha"}
                 </button>
                 <button type="button" style={secondaryBtn} disabled={busy} onClick={() => setAuthMode("login")}>
                   Back to sign in
@@ -1009,15 +1030,15 @@ export default function AuthPage() {
         ) : (
           <div style={{ display: "grid", gap: 14 }}>
             <div>
-              <label style={label}>Email</label>
+              <label style={label}>E-mail</label>
               <input style={{ ...input, opacity: 0.85 }} readOnly value={pendingEmail || email} />
             </div>
             <div>
-              <label style={label}>OTP code</label>
-              <input style={input} placeholder="Enter the code you received" value={otpCode} onChange={(e) => setOtpCode(e.target.value)} />
+              <label style={label}>Código recebido por e-mail</label>
+              <input style={input} placeholder="Digite o código numérico" value={otpCode} onChange={(e) => setOtpCode(e.target.value)} />
             </div>
             <button style={btn} disabled={busy} onClick={doVerifyOtp}>
-              {busy ? "Verifying..." : "Enter console"}
+              {busy ? "Verificando..." : "Validar e entrar"}
             </button>
             <button
               type="button"
