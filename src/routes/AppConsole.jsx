@@ -22,6 +22,10 @@ const CHAT_STREAM_TIMEOUT_MS = Math.max(
   15000,
   Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 45000) || 45000
 );
+const CHAT_STREAM_CONNECT_TIMEOUT_MS = Math.max(
+  5000,
+  Number(ORKIO_ENV.VITE_CHAT_STREAM_CONNECT_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_CONNECT_TIMEOUT_MS || 15000) || 15000
+);
 const CHAT_TURN_RECONCILE_ATTEMPTS = Math.max(
   1,
   Number(ORKIO_ENV.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || import.meta.env.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || 3) || 3
@@ -2529,7 +2533,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
 
       if (ORKIO_CHAT_STREAM_PRIMARY) {
         try {
-          const streamResp = await chatStream({
+          const streamResp = await withTimeout(chatStream({
             token,
             org: tenant,
             thread_id: threadId,
@@ -2543,7 +2547,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             target_agent_slug: destinationContract.target_agent_slug,
             requested_agent_names: destinationContract.requested_agent_names,
             signal: ctl.signal,
-          });
+          }), CHAT_STREAM_CONNECT_TIMEOUT_MS, "CHAT_STREAM_CONNECT_TIMEOUT");
           streamMeta = await withTimeout(consumeChatStream(streamResp, {
             signal: ctl.signal,
             isStale,
