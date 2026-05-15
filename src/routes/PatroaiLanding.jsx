@@ -1,306 +1,187 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+const A = "/patroai-assets/";
 
 const COPY = {
   "pt-BR": {
     lang: "PT-BR",
-    altLang: "EN-US",
-    nav: ["Visão", "Orkio", "ESG", "Contato"],
-    eyebrow: "PatroAI · Sistemas de inovação empresarial",
-    title: "Desenvolvemos sistemas de inovação para empresas que desejam evoluir.",
+    next: "EN",
+    nav: ["Soluções", "Plataforma", "Recursos", "Segmentos", "Academia", "Sobre nós"],
+    eyebrow: "INOVAÇÃO · ESTRATÉGIA · EXECUÇÃO · ESG",
+    title: ["Desenvolvemos sistemas", "de inovação", "que impulsionam", "empresas a evoluir,", "prosperar", "e gerar impacto sustentável."],
     subtitle:
-      "A PatroAI cria ecossistemas inteligentes para estratégia, governança, automação e execução. Nossa tecnologia proprietária, Orkio OS, funciona como um cérebro de IA avançado, auditável e governável para ajudar empresas a prosperar.",
-    primary: "Conhecer o Orkio",
-    secondary: "Falar com a PatroAI",
-    pillarsTitle: "Inteligência aplicada à evolução empresarial",
+      "A PatroAI cria e implanta ecossistemas inteligentes com a plataforma Orkio — um cérebro de IA ultra avançado, auditável e governável, que reconhece as dores do negócio, planeja o futuro e participa da execução com máxima eficiência e governança.",
+    primary: "Agendar uma demonstração",
+    secondary: "Ver como funciona",
+    avatarTitle: "Olá! Eu sou o Orkio.",
+    avatarText:
+      "Sou a inteligência que trabalha ao lado da sua empresa para planejar, executar e gerar resultados reais e sustentáveis.",
+    avatarCta: "Conversar agora",
     pillars: [
-      ["Estratégia", "Diagnóstico de dores, desenho de cenários e planejamento sustentável de longo prazo."],
-      ["Execução", "Agentes e fluxos que apoiam a operação, reduzem retrabalho e aceleram decisões."],
-      ["Governança", "Rastreabilidade, controle humano, segurança e evolução auditável."],
-      ["ESG", "Tecnologia alinhada a responsabilidade, eficiência, transparência e impacto positivo."],
+      ["Governança e Segurança", "IA auditável, governável e em conformidade com LGPD."],
+      ["Estratégia Inteligente", "Planejamento sustentável de longo prazo alinhado ao seu propósito e mercado."],
+      ["Execução com IA", "Agentes inteligentes que executam, acompanham e otimizam processos."],
+      ["ESG Integrado", "Decisões conscientes que geram impacto positivo e valor duradouro."],
     ],
-    orkioTitle: "Orkio OS é nossa tecnologia proprietária.",
-    orkioCopy:
-      "Uma plataforma white label evolutiva que reconhece as dores do negócio, planeja caminhos sustentáveis e participa da execução com agentes inteligentes, integrações e governança.",
-    businessTitle: "Para empresas que precisam sair da intenção e chegar à execução.",
-    businessCopy:
-      "Unimos visão estratégica, arquitetura tecnológica e inteligência operacional para implantar sistemas vivos de melhoria contínua em empresas, consultorias, verticais e ecossistemas corporativos.",
-    finalTitle: "A inovação deixa de ser discurso quando vira sistema.",
-    finalPrimary: "Agendar conversa",
-    finalSecondary: "Ver Orkio OS",
-    footer: "PatroAI — Inteligência empresarial com evolução contínua.",
+    cards: [
+      ["Sistemas de Inovação Personalizados", "Desenvolvemos soluções sob medida para os desafios únicos da sua empresa."],
+      ["Plataforma Orkio White Label", "Sua marca, nossa tecnologia. Escalável, evolutiva e totalmente integrada."],
+      ["IA que Entende seu Negócio", "Reconhece dores, identifica oportunidades e propõe o melhor caminho para crescer."],
+      ["Evolução Contínua com Resultados Reais", "Aprende, se adapta e impulsiona resultados cada vez maiores."],
+    ],
   },
   "en-US": {
     lang: "EN-US",
-    altLang: "PT-BR",
-    nav: ["Vision", "Orkio", "ESG", "Contact"],
-    eyebrow: "PatroAI · Enterprise innovation systems",
-    title: "We build innovation systems for companies that want to evolve.",
+    next: "PT",
+    nav: ["Solutions", "Platform", "Features", "Segments", "Academy", "About"],
+    eyebrow: "INNOVATION · STRATEGY · EXECUTION · ESG",
+    title: ["We build intelligent", "innovation systems", "that help companies", "evolve, scale,", "prosper", "and create sustainable impact."],
     subtitle:
-      "PatroAI creates intelligent ecosystems for strategy, governance, automation and execution. Our proprietary technology, Orkio OS, works as an advanced, auditable and governable AI brain that helps companies prosper.",
-    primary: "Discover Orkio",
-    secondary: "Talk to PatroAI",
-    pillarsTitle: "Applied intelligence for enterprise evolution",
+      "PatroAI designs and deploys intelligent ecosystems powered by Orkio — an advanced, auditable and governable AI brain that understands business challenges, plans the future and supports execution with precision and accountability.",
+    primary: "Book a demo",
+    secondary: "See how it works",
+    avatarTitle: "Hi! I am Orkio.",
+    avatarText:
+      "I am the intelligence working alongside your company to plan, execute and generate real, sustainable results.",
+    avatarCta: "Start conversation",
     pillars: [
-      ["Strategy", "Business diagnosis, scenario design and sustainable long-term planning."],
-      ["Execution", "Agents and workflows that support operations, reduce rework and accelerate decisions."],
-      ["Governance", "Traceability, human control, security and auditable evolution."],
-      ["ESG", "Technology aligned with responsibility, efficiency, transparency and positive impact."],
+      ["Governance & Security", "Auditable and governable AI aligned with compliance."],
+      ["Strategic Intelligence", "Long-term sustainable planning aligned with your market and purpose."],
+      ["AI Execution", "Intelligent agents that execute, track and optimize processes."],
+      ["ESG Integrated", "Conscious decisions that create positive impact and durable value."],
     ],
-    orkioTitle: "Orkio OS is our proprietary technology.",
-    orkioCopy:
-      "An evolutionary white-label platform that understands business pains, plans sustainable paths and supports execution through intelligent agents, integrations and governance.",
-    businessTitle: "For companies that need to move from intention to execution.",
-    businessCopy:
-      "We combine strategic vision, technology architecture and operational intelligence to deploy living systems of continuous improvement across companies, consultancies, verticals and corporate ecosystems.",
-    finalTitle: "Innovation becomes real when it becomes a system.",
-    finalPrimary: "Schedule a conversation",
-    finalSecondary: "See Orkio OS",
-    footer: "PatroAI — Enterprise intelligence with continuous evolution.",
+    cards: [
+      ["Custom Innovation Systems", "Tailored solutions for the unique challenges of your company."],
+      ["Orkio White Label Platform", "Your brand, our technology. Scalable, evolutive and fully integrated."],
+      ["AI That Understands Your Business", "Identifies pain points, opportunities and the best path to growth."],
+      ["Continuous Evolution With Real Results", "Learns, adapts and drives increasingly stronger outcomes."],
+    ],
   },
 };
 
-function detectLocale() {
-  if (typeof window === "undefined") return "pt-BR";
-  const lang = String(window.navigator?.language || "pt-BR").toLowerCase();
-  return lang.startsWith("en") ? "en-US" : "pt-BR";
+function Icon({ type }) {
+  const common = { width: 36, height: 36, viewBox: "0 0 48 48", fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round" };
+  const paths = {
+    shield: <><path d="M24 5 9 11v12c0 10 6.6 17 15 20 8.4-3 15-10 15-20V11L24 5Z"/><path d="m17 24 5 5 10-12"/></>,
+    brain: <><path d="M18 10c-4 0-7 3-7 7 0 1 .2 2 .6 2.8A8 8 0 0 0 12 36h7V10Z"/><path d="M30 10c4 0 7 3 7 7 0 1-.2 2-.6 2.8A8 8 0 0 1 36 36h-7V10Z"/></>,
+    chart: <><path d="M8 39h32"/><rect x="12" y="25" width="5" height="10"/><rect x="22" y="18" width="5" height="17"/><rect x="32" y="10" width="5" height="25"/><path d="M11 16c8 1 16-2 25-10"/></>,
+    leaf: <><path d="M39 8C23 9 10 18 10 34c16 2 27-7 29-26Z"/><path d="M12 34c7-8 14-13 25-20"/></>,
+    people: <><circle cx="17" cy="17" r="6"/><circle cx="31" cy="17" r="6"/><path d="M7 39c2-8 7-12 14-12s12 4 14 12"/><path d="M27 28c6 1 10 5 12 11"/></>,
+    nodes: <><rect x="18" y="6" width="12" height="12" rx="2"/><rect x="6" y="30" width="12" height="12" rx="2"/><rect x="30" y="30" width="12" height="12" rx="2"/><path d="M24 18v7M12 30l12-5 12 5"/></>,
+    target: <><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="7"/><path d="M24 24 38 10"/><path d="M34 10h4v4"/></>,
+    rocket: <><path d="M28 7c7 2 11 6 13 13-8 1-14 6-18 14l-9-9c8-4 13-10 14-18Z"/><path d="M16 32 9 39M32 16h.01"/></>,
+  };
+  return <svg {...common}>{paths[type]}</svg>;
 }
 
-function PatroAILogo({ compact = false }) {
+function RobotCard({ t }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="relative grid h-12 w-12 place-items-center rounded-full border border-[#D4AF37]/35 bg-[#0B1020] shadow-[0_0_34px_rgba(212,175,55,0.26)]">
-        <img
-          src="/patroai-assets/logo-patroai-novo.png"
-          alt="PatroAI"
-          className="h-9 w-9 rounded-full object-contain"
-        />
+    <aside className="robot-card">
+      <div className="robot-head">
+        <div className="head-ring" />
+        <div className="eye left" />
+        <div className="eye right" />
+        <div className="smile" />
+        <div className="ear ear-left" />
+        <div className="ear ear-right" />
       </div>
-      {!compact ? (
-        <div className="text-xl font-black tracking-[0.18em] text-white">PatroAI</div>
-      ) : null}
-    </div>
+      <div className="robot-body">
+        <img src={`${A}logo-patroai-novo.png`} alt="" />
+      </div>
+      <h2>{t.avatarTitle.split("Orkio")[0]}<span>Orkio</span>{t.avatarTitle.split("Orkio")[1]}</h2>
+      <p>{t.avatarText}</p>
+      <button>{t.avatarCta}<i>▮▮▮</i></button>
+    </aside>
   );
 }
 
-function GoldCard({ children, className = "" }) {
-  return (
-    <div className={`relative overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.045] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl ${className}`}>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(500px_220px_at_10%_0%,rgba(212,175,55,0.16),transparent_55%),radial-gradient(480px_260px_at_100%_0%,rgba(79,183,243,0.11),transparent_55%)]" />
-      <div className="relative">{children}</div>
-    </div>
-  );
-}
-
-function MiniChip({ children }) {
-  return (
-    <span className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white/58">
-      {children}
-    </span>
-  );
-}
-
-export default function PatroaiLanding() {
-  const nav = useNavigate();
+function PatroaiLanding() {
+  const navigate = useNavigate();
   const [locale, setLocale] = useState("pt-BR");
-
-  useEffect(() => setLocale(detectLocale()), []);
-  const copy = useMemo(() => COPY[locale] || COPY["pt-BR"], [locale]);
+  const t = COPY[locale];
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#06070D] text-white">
-      <style>{`
-        @keyframes patroaiGlow { 0%,100%{ opacity:.72; transform:scale(1)} 50%{ opacity:1; transform:scale(1.06)} }
-        @keyframes patroaiFloat { 0%,100%{ transform:translateY(0)} 50%{ transform:translateY(-12px)} }
-        .patroai-glow { animation: patroaiGlow 3.8s ease-in-out infinite; }
-        .patroai-float { animation: patroaiFloat 6s ease-in-out infinite; }
-      `}</style>
+    <main className="patroai-page">
+      <style>{css}</style>
 
-      <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-[radial-gradient(900px_560px_at_16%_8%,rgba(212,175,55,0.16),transparent_56%),radial-gradient(860px_540px_at_88%_6%,rgba(79,183,243,0.14),transparent_60%),linear-gradient(180deg,#07080F,#0A1020_58%,#05060B)]" />
-        <div className="absolute inset-0 opacity-[0.18] bg-[linear-gradient(rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.055)_1px,transparent_1px)] bg-[size:38px_38px]" />
-      </div>
-
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#06070D]/78 backdrop-blur-2xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
-          <Link to="/" className="flex items-center">
-            <PatroAILogo />
-          </Link>
-
-          <nav className="hidden items-center gap-2 md:flex">
-            {copy.nav.map((item, idx) => (
-              <a
-                key={item}
-                href={["#vision", "#orkio", "#esg", "#contact"][idx]}
-                className="rounded-xl px-3 py-2 text-sm text-white/62 transition hover:bg-white/5 hover:text-white"
-              >
-                {item}
-              </a>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setLocale(locale === "pt-BR" ? "en-US" : "pt-BR")}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-black text-white/75 hover:bg-white/10"
-            >
-              {copy.altLang}
-            </button>
-            <button
-              type="button"
-              onClick={() => nav("/contact?topic=patroai")}
-              className="rounded-xl bg-gradient-to-r from-[#D4AF37] via-[#F7D774] to-[#4FB7F3] px-4 py-2 text-sm font-black text-slate-950 shadow-[0_14px_40px_rgba(212,175,55,0.18)] transition hover:brightness-110"
-            >
-              {copy.secondary}
-            </button>
+      <nav className="topbar">
+        <button className="brand" onClick={() => navigate("/")}>
+          <img src={`${A}logo-patroai-novo.png`} alt="PatroAI" />
+          <div>
+            <strong>PATRO<span>AI</span></strong>
+            <small>CONSULTECH</small>
           </div>
+        </button>
+        <div className="navlinks">{t.nav.map((n) => <a key={n} href={`#${n.toLowerCase()}`}>{n}</a>)}</div>
+        <div className="actions">
+          <button className="lang" onClick={() => setLocale(locale === "pt-BR" ? "en-US" : "pt-BR")}>{t.next}</button>
+          <button className="login" onClick={() => navigate("/login")}>Login</button>
+          <button className="demo">Agendar demo <span>↗</span></button>
         </div>
-      </header>
+      </nav>
 
-      <section id="vision" className="mx-auto grid max-w-7xl gap-12 px-4 pb-20 pt-16 lg:grid-cols-[1.04fr_0.96fr] lg:items-center">
-        <div>
-          <div className="inline-flex items-center gap-3 rounded-full border border-[#D4AF37]/20 bg-white/[0.04] px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-[#F7D774]">
-            <span className="h-2 w-2 rounded-full bg-[#D4AF37] shadow-[0_0_18px_rgba(212,175,55,0.75)]" />
-            {copy.eyebrow}
-          </div>
-
-          <h1 className="mt-7 max-w-5xl text-5xl font-black leading-[0.94] tracking-tight md:text-7xl">
-            {copy.title}
+      <section className="hero">
+        <div className="copy">
+          <div className="eyebrow">{t.eyebrow}</div>
+          <h1>
+            {t.title[0]}<br />
+            <span>{t.title[1]}</span> {t.title[2]}<br />
+            {t.title[3]} <span>{t.title[4]}</span><br />
+            {t.title[5]}
           </h1>
-
-          <p className="mt-6 max-w-3xl text-lg leading-8 text-white/68">
-            {copy.subtitle}
-          </p>
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            <button
-              onClick={() => nav("/orkio")}
-              className="rounded-2xl bg-gradient-to-r from-[#D4AF37] via-[#F7D774] to-[#4FB7F3] px-6 py-4 text-sm font-black text-slate-950 shadow-[0_24px_70px_rgba(212,175,55,0.22)] transition hover:brightness-110"
-            >
-              {copy.primary}
-            </button>
-            <button
-              onClick={() => nav("/contact?topic=patroai")}
-              className="rounded-2xl border border-white/10 bg-white/[0.055] px-6 py-4 text-sm font-semibold text-white transition hover:bg-white/10"
-            >
-              {copy.secondary}
-            </button>
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            <MiniChip>Strategy</MiniChip>
-            <MiniChip>Execution</MiniChip>
-            <MiniChip>Governance</MiniChip>
-            <MiniChip>ESG</MiniChip>
+          <p>{t.subtitle}</p>
+          <div className="buttons">
+            <button className="primary">{t.primary} <span>→</span></button>
+            <button className="secondary">{t.secondary} <i>▷</i></button>
           </div>
         </div>
 
-        <GoldCard className="min-h-[560px]">
-          <div className="relative flex min-h-[500px] flex-col items-center justify-center text-center">
-            <div className="absolute h-[410px] w-[410px] rounded-full border border-[#D4AF37]/20" />
-            <div className="absolute h-[300px] w-[300px] rounded-full border border-[#4FB7F3]/18" />
-            <div className="patroai-glow grid h-56 w-56 place-items-center rounded-full border border-[#D4AF37]/40 bg-[#090B14]/80 shadow-[0_0_90px_rgba(212,175,55,0.24)]">
-              <img
-                src="/patroai-assets/logo-patroai-novo.png"
-                alt="PatroAI"
-                className="h-40 w-40 rounded-full object-contain"
-              />
-            </div>
-            <div className="mt-7 text-3xl font-black tracking-[0.22em] text-white">PatroAI</div>
-            <p className="mx-auto mt-4 max-w-md text-sm leading-7 text-white/66">
-              Enterprise innovation systems powered by governable intelligence.
-            </p>
-          </div>
-        </GoldCard>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 py-14">
-        <div className="mb-8 max-w-3xl">
-          <div className="text-[11px] font-black uppercase tracking-[0.28em] text-[#F7D774]/70">Operating thesis</div>
-          <h2 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">{copy.pillarsTitle}</h2>
+        <div className="brain-stage">
+          <div className="halo" />
+          <img src={`${A}logo-patroai-novo.png`} alt="" />
+          <strong>PatroAI</strong>
+          <div className="pedestal" />
+          <div className="rings" />
         </div>
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-          {copy.pillars.map(([title, body], index) => (
-            <GoldCard key={title} className="min-h-[250px]">
-              <div className="text-sm font-black text-[#F7D774]">0{index + 1}</div>
-              <h3 className="mt-4 text-xl font-black tracking-tight">{title}</h3>
-              <p className="mt-4 text-sm leading-7 text-white/64">{body}</p>
-            </GoldCard>
-          ))}
-        </div>
+
+        <RobotCard t={t} />
       </section>
 
-      <section id="orkio" className="mx-auto max-w-7xl px-4 py-14">
-        <GoldCard className="md:p-10">
-          <div className="grid gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
-            <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.28em] text-[#F7D774]/70">Proprietary platform</div>
-              <h2 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">{copy.orkioTitle}</h2>
-              <p className="mt-5 text-base leading-8 text-white/66">{copy.orkioCopy}</p>
-              <button
-                onClick={() => nav("/orkio")}
-                className="mt-7 rounded-2xl border border-white/10 bg-white/[0.055] px-6 py-4 text-sm font-black text-white transition hover:bg-white/10"
-              >
-                {copy.finalSecondary}
-              </button>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              {["AI Brain", "Auditability", "White Label", "Integrations"].map((item) => (
-                <div key={item} className="patroai-float rounded-[28px] border border-white/10 bg-black/24 p-6">
-                  <div className="text-xs font-black uppercase tracking-[0.2em] text-[#F7D774]/72">{item}</div>
-                  <div className="mt-4 h-20 rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.18),transparent_65%)]" />
-                </div>
-              ))}
-            </div>
-          </div>
-        </GoldCard>
+      <section className="pillars">
+        {t.pillars.map(([title, desc], i) => (
+          <article key={title}>
+            <div className={`icon i${i}`}><Icon type={["shield", "brain", "chart", "leaf"][i]} /></div>
+            <h3>{title}</h3>
+            <p>{desc}</p>
+          </article>
+        ))}
       </section>
 
-      <section id="esg" className="mx-auto grid max-w-7xl gap-5 px-4 py-14 lg:grid-cols-2">
-        <GoldCard>
-          <div className="text-[11px] font-black uppercase tracking-[0.28em] text-[#F7D774]/70">Business evolution</div>
-          <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">{copy.businessTitle}</h2>
-          <p className="mt-5 text-base leading-8 text-white/66">{copy.businessCopy}</p>
-        </GoldCard>
-        <GoldCard>
-          <div className="text-[11px] font-black uppercase tracking-[0.28em] text-[#F7D774]/70">ESG + Governance</div>
-          <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">Inovação responsável, rastreável e sustentável.</h2>
-          <p className="mt-5 text-base leading-8 text-white/66">
-            A PatroAI posiciona inteligência artificial como infraestrutura para empresas evoluírem com eficiência, transparência, responsabilidade e impacto positivo.
-          </p>
-        </GoldCard>
+      <section className="cards">
+        {t.cards.map(([title, desc], i) => (
+          <article key={title}>
+            <div className={`card-icon c${i}`}><Icon type={["people", "nodes", "target", "rocket"][i]} /></div>
+            <h3>{title}</h3>
+            <p>{desc}</p>
+          </article>
+        ))}
       </section>
-
-      <section id="contact" className="mx-auto max-w-7xl px-4 pb-20 pt-14">
-        <div className="rounded-[40px] border border-white/10 bg-[radial-gradient(circle_at_50%_0%,rgba(212,175,55,0.20),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-8 text-center shadow-[0_30px_100px_rgba(0,0,0,0.42)] backdrop-blur-xl md:p-12">
-          <div className="mx-auto w-fit">
-            <PatroAILogo compact />
-          </div>
-          <h2 className="mx-auto mt-6 max-w-5xl text-3xl font-black tracking-tight md:text-5xl">
-            {copy.finalTitle}
-          </h2>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <button onClick={() => nav("/contact?topic=patroai")} className="rounded-2xl bg-gradient-to-r from-[#D4AF37] via-[#F7D774] to-[#4FB7F3] px-6 py-4 text-sm font-black text-slate-950 transition hover:brightness-110">
-              {copy.finalPrimary}
-            </button>
-            <button onClick={() => nav("/orkio")} className="rounded-2xl border border-white/10 bg-white/[0.055] px-6 py-4 text-sm font-semibold text-white transition hover:bg-white/10">
-              {copy.finalSecondary}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <footer className="border-t border-white/10 bg-black/20">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-white/56 md:flex-row md:items-center md:justify-between">
-          <div>{copy.footer}</div>
-          <div className="flex flex-wrap gap-4">
-            <Link to="/orkio" className="hover:text-white">Orkio OS</Link>
-            <Link to="/legal/privacy" className="hover:text-white">Privacy</Link>
-            <Link to="/legal/terms" className="hover:text-white">Terms</Link>
-          </div>
-        </div>
-      </footer>
     </main>
   );
 }
+
+const css = `
+:root{--bg:#050509;--gold:#f4c33d;--gold2:#ffdf7b;--purple:#9b28ff;--green:#79ed58;--text:#f6f7fb;--muted:#b9bdc7}
+*{box-sizing:border-box}.patroai-page{min-height:100vh;background:radial-gradient(circle at 50% 28%,rgba(244,195,61,.14),transparent 28%),radial-gradient(circle at 82% 30%,rgba(155,40,255,.11),transparent 22%),linear-gradient(180deg,#030306,#08090e 60%,#040408);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.patroai-page:before{content:"";position:fixed;inset:0;background:radial-gradient(circle at 50% 45%,rgba(255,206,77,.16),transparent 3%,transparent 45%),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px);background-size:auto,94px 94px,94px 94px;mask-image:radial-gradient(circle at 50% 35%,#000,transparent 72%);pointer-events:none}
+.topbar{height:118px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;border-bottom:1px solid rgba(255,255,255,.05);position:relative;z-index:5}.brand{display:flex;align-items:center;gap:14px;background:none;border:0;color:#fff;cursor:pointer;text-align:left}.brand img{width:78px;height:78px;border-radius:50%;filter:drop-shadow(0 0 18px rgba(244,195,61,.38))}.brand strong{font-size:43px;line-height:.92;letter-spacing:.06em;font-weight:900}.brand strong span{color:var(--gold)}.brand small{display:block;color:var(--gold2);font-size:15px;letter-spacing:.52em;margin-left:4px;margin-top:8px}.navlinks{display:flex;gap:38px}.navlinks a{color:#fff;text-decoration:none;font-size:16px}.actions{display:flex;gap:18px;align-items:center}.actions button{font:inherit;color:#fff;background:none;border:0}.lang,.login{opacity:.95}.demo{border:1px solid rgba(244,195,61,.65)!important;border-radius:999px!important;padding:15px 25px!important;color:#ffd65d!important;font-weight:800!important;background:rgba(244,195,61,.03)!important}
+.hero{display:grid;grid-template-columns:1.02fr 1.05fr .88fr;gap:32px;align-items:center;padding:52px 38px 32px;position:relative;z-index:2}.eyebrow{display:inline-flex;border:1px solid rgba(244,195,61,.58);border-radius:999px;padding:11px 18px;color:#ffda54;font-weight:800;letter-spacing:.04em;margin-bottom:28px;background:rgba(244,195,61,.05)}h1{font-size:50px;line-height:1.12;margin:0 0 25px;font-weight:900;letter-spacing:-.055em}h1 span{color:var(--gold);text-shadow:0 0 24px rgba(244,195,61,.28)}.copy p{font-size:18px;line-height:1.7;color:#d5d6dd;max-width:610px}.buttons{display:flex;gap:22px;margin-top:32px}.primary{border:1px solid rgba(255,225,112,.75);border-radius:13px;padding:17px 28px;background:linear-gradient(135deg,#ffd95d,#a66d05);color:#fff;font-weight:800;box-shadow:0 0 35px rgba(244,195,61,.25)}.secondary{border:1px solid rgba(255,255,255,.22);border-radius:13px;padding:17px 28px;background:rgba(255,255,255,.03);color:#fff;font-weight:800}.secondary i{margin-left:14px;border:1px solid #fff;border-radius:50%;padding:3px 5px;font-style:normal}
+.brain-stage{height:470px;display:grid;place-items:center;position:relative}.brain-stage img{width:380px;height:380px;object-fit:contain;border-radius:50%;filter:drop-shadow(0 0 28px rgba(244,195,61,.48));z-index:2;animation:breath 4.8s ease-in-out infinite}.brain-stage strong{position:absolute;z-index:3;font-size:52px;font-weight:900;color:#fff;text-shadow:0 2px 8px #000}.halo{position:absolute;width:390px;height:390px;border:2px solid rgba(244,195,61,.8);border-radius:50%;box-shadow:0 0 28px rgba(244,195,61,.45),inset 0 0 28px rgba(244,195,61,.15)}.halo:before,.halo:after{content:"";position:absolute;inset:-12px;border-radius:50%;border:1px solid rgba(244,195,61,.18)}.pedestal{position:absolute;bottom:42px;width:300px;height:64px;border-radius:50%;background:radial-gradient(ellipse at center,rgba(244,195,61,.45),rgba(244,195,61,.08),transparent 70%);filter:blur(3px)}.rings{position:absolute;bottom:48px;width:460px;height:160px;border-radius:50%;border:1px solid rgba(244,195,61,.16);transform:rotateX(68deg)}
+.robot-card{border:1px solid rgba(155,40,255,.48);border-radius:25px;padding:28px 24px 24px;background:radial-gradient(circle at 50% 20%,rgba(155,40,255,.23),transparent 44%),linear-gradient(180deg,rgba(10,8,21,.94),rgba(5,5,9,.88));box-shadow:0 0 48px rgba(155,40,255,.13);min-height:510px;display:flex;flex-direction:column;justify-content:flex-end;position:relative;overflow:hidden}.robot-head{position:absolute;top:36px;left:50%;transform:translateX(-50%);width:210px;height:210px;border-radius:50%;background:radial-gradient(circle at 50% 42%,#1e1434,#050509 64%);border:2px solid rgba(255,207,66,.65);box-shadow:0 0 60px rgba(155,40,255,.62)}.head-ring{position:absolute;inset:-20px;border-radius:50%;border:8px solid rgba(163,68,255,.8);border-bottom-color:transparent;filter:drop-shadow(0 0 18px #a33cff)}.eye{position:absolute;top:72px;width:28px;height:46px;border-radius:50%;background:#fff;box-shadow:0 0 18px #a33cff,0 0 30px #a33cff inset}.eye.left{left:58px}.eye.right{right:58px}.smile{position:absolute;left:82px;top:128px;width:48px;height:25px;border-bottom:5px solid #e6b7ff;border-radius:50%;box-shadow:0 0 12px #a33cff}.ear{position:absolute;top:72px;width:32px;height:64px;border-radius:22px;background:linear-gradient(#ffd764,#3b2463);border:1px solid rgba(255,215,100,.75)}.ear-left{left:-18px}.ear-right{right:-18px}.robot-body{position:absolute;left:50%;top:242px;transform:translateX(-50%);width:190px;height:130px;border-radius:70px 70px 20px 20px;background:linear-gradient(180deg,#12101a,#07070b);border:1px solid rgba(255,255,255,.08)}.robot-body img{width:58px;height:58px;object-fit:contain;position:absolute;left:50%;top:28px;transform:translateX(-50%);filter:drop-shadow(0 0 12px rgba(244,195,61,.7))}.robot-card h2{margin:350px 0 10px;font-size:24px}.robot-card h2 span{color:#ffd33f}.robot-card p{color:#d6d1df;line-height:1.55;font-size:17px;margin:0 0 24px}.robot-card button{border:1px solid rgba(255,255,255,.12);background:linear-gradient(135deg,#5132d5,#aa14c5);color:#fff;border-radius:15px;padding:17px 20px;font-weight:800}.robot-card button i{float:right;font-style:normal;opacity:.8}
+.pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;margin:18px 38px 0;padding:28px 0;border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.06)}.pillars article{display:grid;grid-template-columns:auto 1fr;gap:18px;padding-right:24px;border-right:1px solid rgba(255,255,255,.11)}.pillars article:last-child{border-right:0}.icon{color:var(--gold);filter:drop-shadow(0 0 14px rgba(244,195,61,.35))}.i1,.i3{color:#ad2cff}.i3{color:#6cff55}.pillars h3{margin:0 0 6px;font-size:18px}.pillars p{margin:0;color:#bec0ca;line-height:1.5}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding:34px 32px 56px}.cards article{border:1px solid rgba(255,255,255,.11);border-radius:20px;padding:24px;min-height:190px;background:linear-gradient(180deg,rgba(11,13,20,.82),rgba(5,5,9,.78));box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}.card-icon{color:#b62cff;margin-bottom:18px}.c1{color:#3aa6ff}.c2{color:#ffc83d}.c3{color:#b62cff}.cards h3{font-size:23px;line-height:1.16;margin:0 0 14px}.cards p{color:#bec0ca;line-height:1.55;margin:0}
+@keyframes breath{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-12px) scale(1.02)}}
+@media(max-width:1150px){.topbar{height:auto;padding:22px}.navlinks{display:none}.hero{grid-template-columns:1fr}.brain-stage{order:-1;height:360px}.brain-stage img{width:300px;height:300px}.halo{width:310px;height:310px}.robot-card{min-height:480px;max-width:520px}.pillars,.cards{grid-template-columns:1fr 1fr}.pillars article{border-right:0}.brand strong{font-size:34px}}@media(max-width:700px){.actions .login,.actions .demo{display:none}.hero{padding:26px 20px}.topbar{padding:18px}.brand img{width:58px;height:58px}.brand strong{font-size:28px}.brand small{font-size:11px}.copy h1,h1{font-size:38px}.buttons{flex-direction:column}.primary,.secondary{width:100%}.pillars,.cards{grid-template-columns:1fr;margin-left:20px;margin-right:20px;padding-left:0;padding-right:0}.cards{padding-left:20px;padding-right:20px;margin:0}.brain-stage strong{font-size:40px}}
+`;
+
+export default PatroaiLanding;
