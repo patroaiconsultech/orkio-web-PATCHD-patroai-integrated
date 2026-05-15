@@ -17,8 +17,14 @@ const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.
 const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || import.meta.env.VITE_SPEECH_RECOGNITION_LANG || "pt-BR").trim() || "pt-BR");
 
 
-// AO-01 FORCE DIRECT RAIL: disable SSE stream in web until /api/chat/stream POST is stable.
-const ORKIO_CHAT_STREAM_PRIMARY = false;
+// METATRON PATCH: SSE stream is the primary governed rail again.
+// /api/chat is a legacy direct fallback and can hang on long governance prompts.
+// Keep this env-controlled, but default to stream=true.
+const ORKIO_CHAT_STREAM_PRIMARY = String(
+  ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY ??
+  import.meta.env.VITE_CHAT_STREAM_PRIMARY ??
+  "true"
+).trim().toLowerCase() !== "false";
 const CHAT_STREAM_TIMEOUT_MS = Math.max(
   15000,
   Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 45000) || 45000
@@ -174,6 +180,32 @@ async function consumeChatStream(
     if (doneSeen) break;
   }
   if (!doneSeen && buf.trim()) flushBlock(buf);
+
+  // METATRON PATCH:
+  // Never leave the UI in "Gerando resposta..." when the SSE connection closes
+  // without an explicit `event: done`. This is a UI guard only; it does not
+  // pretend that runtime execution succeeded. It finalizes the turn and lets
+  // the normal reconcile/loadMessages path pull any persisted assistant answer.
+  if (!doneSeen) {
+    const syntheticDone = {
+      thread_id: lastThreadId || null,
+      trace_id: lastTraceId || null,
+      final_text: draftText || "",
+      done: true,
+      assistant_persisted: false,
+      synthetic_done: true,
+      code: "STREAM_CLOSED_WITHOUT_DONE",
+      runtime_hints: {
+        routing: {
+          stream_closed_without_done: true,
+          event_count: eventCount,
+        },
+      },
+    };
+    donePayload = syntheticDone;
+    try { onDone?.(syntheticDone); } catch {}
+  }
+
   return {
     thread_id: donePayload?.thread_id || lastThreadId,
     trace_id: donePayload?.trace_id || lastTraceId,
