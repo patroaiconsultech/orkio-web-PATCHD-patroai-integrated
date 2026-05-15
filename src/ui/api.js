@@ -382,6 +382,14 @@ export async function chatStream({
   client_message_id,
   signal,
 } = {}) {
+  // AO-01 FORCE DIRECT RAIL: never open /api/chat/stream from the web bundle.
+  // AppConsole will fall back to /api/chat without triggering CORS preflight/POST stream.
+  const disabledErr = new Error("CHAT_STREAM_DISABLED");
+  disabledErr.code = "CHAT_STREAM_DISABLED";
+  disabledErr.method = "POST";
+  disabledErr.url = joinApi("/api/chat/stream");
+  throw disabledErr;
+
   const streamUrl = joinApi("/api/chat/stream");
   let response;
   try {
