@@ -1,450 +1,326 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  savePrechatContext,
-  submitEnterpriseLead,
-} from "../ui/api.js";
 
 const A = "/patroai-assets/";
+const PRECHAT_KEY = "orkio_prechat_context_v1";
 
-const COPY = {
-  pt: {
-    nav: ["Recursos", "Como funciona", "Integrações", "Soluções", "Sobre nós"],
-    eyebrow: "SISTEMA OPERACIONAL DE INTELIGÊNCIA EMPRESARIAL",
-    title: (
-      <>
-        Seu negócio<br />
-        <span className="blue">operando</span> com<br />
-        <span className="blue">inteligência</span> contínua.
-      </>
-    ),
-    subtitle:
-      "O Orkio OS conecta estratégia, dados, automação e execução em um ecossistema de agentes inteligentes que evolui com a sua empresa.",
-    primary: "Agendar uma demonstração",
-    secondary: "Ver Orkio em ação",
-    specialist: "Falar com especialista",
-    ecosystem: "INTEGRA-SE AO ECOSSISTEMA DA SUA EMPRESA",
-    systems: ["ERP", "CRM", "Financeiro", "Comunicação", "Dados & BI", "APIs & Sistemas"],
-    pillars: [
-      ["shield", "IA Governável", "Decisões auditáveis e rastreáveis."],
-      ["brain", "Multiagentes", "Especialistas digitais trabalhando juntos."],
-      ["rocket", "Execução Contínua", "Do planejamento à execução, com acompanhamento em tempo real."],
-      ["lock", "Segurança & Privacidade", "Proteção de dados, LGPD e controle granular de acesso."],
-      ["leaf", "ESG Integrado", "Sustentabilidade e impacto positivo na estratégia do seu negócio."],
-    ],
-    steps: [
-      ["1.", "Diagnóstico Inteligente", "Nossa IA analisa dados, identifica gargalos, padrões e oportunidades no seu negócio."],
-      ["2.", "Planejamento Estratégico", "Propõe cenários, metas e planos de ação sustentáveis alinhados aos seus objetivos."],
-      ["3.", "Execução Assistida", "Agentes inteligentes automatizam processos e acompanham resultados em tempo real."],
-      ["4.", "Aprendizado Contínuo", "O sistema aprende com os dados e evolui continuamente junto com a sua empresa."],
-    ],
-    chatTitle: "Olá. Eu sou a Orkio.",
-    chatIntro: "Antes de começarmos, qual é o seu nome?",
-    chatPlaceholder: "Digite sua resposta...",
-    mic: "Falar",
-    send: "Enviar",
-    continueTrial: "Continuar com 7 dias grátis",
-    enterprise: "Solicitar implantação personalizada",
-    reset: "Reiniciar diagnóstico",
-    plansTitle: "Planos Orkio OS",
-    plans: [
-      ["Essencial", "Agentes base, diagnóstico e execução assistida para começar."],
-      ["Professional", "Multiagentes, relatórios, workflows e inteligência operacional avançada."],
-      ["Enterprise / White Label", "Integrações, personalização, governança ampliada e implantação assistida."],
-    ],
-  },
-  en: {
-    nav: ["Resources", "How it works", "Integrations", "Solutions", "About"],
-    eyebrow: "ENTERPRISE INTELLIGENCE OPERATING SYSTEM",
-    title: (
-      <>
-        Your business<br />
-        <span className="blue">operating</span> with<br />
-        <span className="blue">continuous</span> intelligence.
-      </>
-    ),
-    subtitle:
-      "Orkio OS connects strategy, data, automation and execution into a multi-agent ecosystem that evolves alongside your company.",
-    primary: "Schedule a demo",
-    secondary: "See Orkio in action",
-    specialist: "Talk to a specialist",
-    ecosystem: "CONNECTED TO YOUR COMPANY ECOSYSTEM",
-    systems: ["ERP", "CRM", "Finance", "Communication", "Data & BI", "APIs & Systems"],
-    pillars: [
-      ["shield", "Governable AI", "Auditable and traceable decisions."],
-      ["brain", "Multi-Agent Runtime", "Specialized digital agents working together."],
-      ["rocket", "Continuous Execution", "From planning to execution, monitored in real time."],
-      ["lock", "Security & Privacy", "Data protection and granular access control."],
-      ["leaf", "ESG Integrated", "Sustainability and positive impact embedded into strategy."],
-    ],
-    steps: [
-      ["1.", "Intelligent Diagnosis", "AI analyzes data, identifies bottlenecks, patterns and opportunities."],
-      ["2.", "Strategic Planning", "Proposes scenarios, goals and sustainable action plans."],
-      ["3.", "Assisted Execution", "Intelligent agents automate processes and monitor results."],
-      ["4.", "Continuous Learning", "The system learns from data and evolves with your company."],
-    ],
-    chatTitle: "Hello. I am Orkio.",
-    chatIntro: "Before we begin, what is your name?",
-    chatPlaceholder: "Type your answer...",
-    mic: "Speak",
-    send: "Send",
-    continueTrial: "Continue with 7 free days",
-    enterprise: "Request custom implementation",
-    reset: "Restart diagnosis",
-    plansTitle: "Orkio OS Plans",
-    plans: [
-      ["Essential", "Core agents, diagnosis and assisted execution to get started."],
-      ["Professional", "Multi-agent workflows, reports and advanced operational intelligence."],
-      ["Enterprise / White Label", "Integrations, customization, advanced governance and assisted deployment."],
-    ],
-  },
+const PT = {
+  nav: ["Recursos", "Como funciona", "Integrações", "Soluções", "Sobre nós"],
+  eyebrow: "SISTEMA OPERACIONAL DE INTELIGÊNCIA EMPRESARIAL",
+  title: <>Seu negócio<br/><span className="green">operando</span> com<br/><span className="blue">inteligência</span> contínua.</>,
+  subtitle: "O Orkio OS conecta estratégia, dados, automação e execução em um ecossistema de agentes inteligentes que evolui com a sua empresa.",
+  demo: "Agendar demonstração",
+  action: "Ver Orkio em ação",
+  chatTitle: "Olá, eu sou a Orkio.",
+  chatText: "Antes de você criar uma conta, posso entender rapidamente seu negócio e preparar um primeiro mapa de evolução.",
+  start: "Começar diagnóstico",
+  mic: "Falar",
+  typePlaceholder: "Escreva ou fale sua resposta...",
+  trial: "Ativar 7 dias grátis",
+  questions: [
+    "Antes de começarmos, qual é o seu nome?",
+    "Prazer. Qual é hoje o maior desafio da sua empresa?",
+    "Qual é o segmento da sua empresa?",
+    "Vocês já utilizam sistemas integrados, automações ou algum ERP/CRM?",
+    "O que você gostaria de melhorar nos próximos 90 dias?"
+  ],
+  plans: [
+    ["IA Governável", "Decisões auditáveis e rastreáveis."],
+    ["Multiagentes", "Especialistas digitais trabalhando juntos."],
+    ["Execução Contínua", "Do planejamento à execução, com acompanhamento em tempo real."],
+    ["Segurança & Privacidade", "Proteção de dados, LGPD e controle granular de acesso."],
+    ["ESG Integrado", "Sustentabilidade e impacto positivo na estratégia do seu negócio."]
+  ],
+  steps: [
+    ["1. Diagnóstico Inteligente", "Nossa IA analisa dados, identifica gargalos, padrões e oportunidades no seu negócio."],
+    ["2. Planejamento Estratégico", "Propõe cenários, metas e planos de ação sustentáveis alinhados aos seus objetivos."],
+    ["3. Execução Assistida", "Agentes inteligentes automatizam processos e acompanham resultados em tempo real."],
+    ["4. Aprendizado Contínuo", "O sistema aprende com os dados e evolui continuamente junto com a sua empresa."]
+  ]
 };
 
-function Icon({ name }) {
-  const paths = {
-    shield: "M12 2l7 3v6c0 5-3.5 8.7-7 10-3.5-1.3-7-5-7-10V5l7-3zm-3 10l2 2 4-5",
-    brain: "M8 8a4 4 0 0 1 8 0v8a4 4 0 0 1-8 0V8zm4-4v16M7 10H4m16 0h-3M7 15H4m16 0h-3",
-    rocket: "M13 3c4 1 7 4 8 8l-5 5-5-5 2-8zM8 14l2 2-4 4-2-2 4-4zm7-6l2 2",
-    lock: "M7 10V7a5 5 0 0 1 10 0v3M6 10h12v10H6V10zm6 4v3",
-    leaf: "M20 4C12 4 6 8 5 16c6 1 12-1 15-12zM5 20c3-5 7-8 13-11",
-  };
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d={paths[name] || paths.brain} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+const EN = {
+  nav: ["Resources", "How it works", "Integrations", "Solutions", "About"],
+  eyebrow: "ENTERPRISE INTELLIGENCE OPERATING SYSTEM",
+  title: <>Your business<br/><span className="green">operating</span> with<br/><span className="blue">continuous</span> intelligence.</>,
+  subtitle: "Orkio OS connects strategy, data, automation and execution into an intelligent agent ecosystem that evolves with your company.",
+  demo: "Schedule demo",
+  action: "See Orkio in action",
+  chatTitle: "Hi, I am Orkio.",
+  chatText: "Before you create an account, I can quickly understand your business and prepare a first evolution map.",
+  start: "Start diagnosis",
+  mic: "Speak",
+  typePlaceholder: "Write or speak your answer...",
+  trial: "Activate 7-day trial",
+  questions: [
+    "Before we start, what is your name?",
+    "Nice to meet you. What is your company’s biggest challenge today?",
+    "What is your business segment?",
+    "Do you already use integrated systems, automations or ERP/CRM?",
+    "What would you like to improve in the next 90 days?"
+  ],
+  plans: [
+    ["Governable AI", "Auditable and traceable decisions."],
+    ["Multi-agents", "Digital specialists working together."],
+    ["Continuous Execution", "From planning to execution, with real-time tracking."],
+    ["Security & Privacy", "Data protection and granular access control."],
+    ["ESG Integrated", "Sustainability and positive impact in your business strategy."]
+  ],
+  steps: [
+    ["1. Intelligent Diagnosis", "Our AI analyzes data and identifies bottlenecks, patterns and opportunities."],
+    ["2. Strategic Planning", "Proposes scenarios, goals and sustainable action plans aligned with your objectives."],
+    ["3. Assisted Execution", "Intelligent agents automate processes and track results in real time."],
+    ["4. Continuous Learning", "The system learns from data and evolves continuously with your company."]
+  ]
+};
 
 function speak(text, lang = "pt-BR") {
-  if (!("speechSynthesis" in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = lang;
-  utterance.rate = 0.94;
-  utterance.pitch = 1.08;
-  const voices = window.speechSynthesis.getVoices?.() || [];
-  const preferred = voices.find((v) => /female|maria|luciana|francisca|google português|portuguese/i.test(v.name)) || voices.find((v) => v.lang?.toLowerCase().startsWith(lang.toLowerCase().slice(0, 2)));
-  if (preferred) utterance.voice = preferred;
-  window.speechSynthesis.speak(utterance);
+  try {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang;
+    u.rate = 0.94;
+    u.pitch = 1.08;
+    const voices = window.speechSynthesis.getVoices?.() || [];
+    const preferred = voices.find(v => /female|maria|luciana|helena|google português|brasil/i.test(v.name)) || voices.find(v => String(v.lang).toLowerCase().startsWith(lang.slice(0,2).toLowerCase()));
+    if (preferred) u.voice = preferred;
+    window.speechSynthesis.speak(u);
+  } catch {}
 }
 
-function buildDiagnosis(answers, lang) {
-  const name = answers.name || (lang === "pt" ? "você" : "you");
-  const challenge = answers.challenge || "";
-  const segment = answers.segment || "";
-  const systems = answers.systems || "";
-  const goal = answers.goal || "";
-  if (lang === "en") {
-    return `${name}, I identified an initial path: connect the operation around your main challenge (${challenge || "operational efficiency"}), map the key processes in ${segment || "your business"}, organize the systems already in use (${systems || "current tools"}) and turn the next 90 days into a measurable execution plan focused on ${goal || "growth and operational clarity"}.`;
-  }
-  return `${name}, identifiquei um primeiro caminho: conectar a operação ao redor do principal desafio (${challenge || "eficiência operacional"}), mapear os processos críticos em ${segment || "sua empresa"}, organizar os sistemas já utilizados (${systems || "ferramentas atuais"}) e transformar os próximos 90 dias em um plano mensurável de execução focado em ${goal || "crescimento com clareza operacional"}.`;
-}
-
-function OrkioPreChat({ lang, onClose }) {
-  const t = COPY[lang];
-  const [step, setStep] = useState(0);
-  const [input, setInput] = useState("");
-  const [answers, setAnswers] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("orkio_prechat_context") || "{}")?.answers || {};
-    } catch {
-      return {};
-    }
-  });
-  const [messages, setMessages] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("orkio_prechat_context") || "{}");
-      if (Array.isArray(saved.messages) && saved.messages.length) return saved.messages;
-    } catch {}
-    return [{ role: "orkio", text: t.chatIntro }];
-  });
+function useSpeechRecognition({ onResult, lang }) {
+  const recRef = useRef(null);
   const [listening, setListening] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const recognitionRef = useRef(null);
-  const navigate = useNavigate();
+  const supported = typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window);
 
-  const prompts = useMemo(() => lang === "pt"
-    ? [
-        ["name", "Antes de começarmos, qual é o seu nome?"],
-        ["challenge", (a) => `Prazer, ${a.name || ""}. Qual é hoje o maior desafio da sua empresa?`],
-        ["segment", "Qual é o segmento da sua empresa?"],
-        ["systems", "Vocês já usam sistemas, automações, ERP, CRM ou ferramentas internas?"],
-        ["goal", "O que você gostaria de melhorar nos próximos 90 dias?"],
-      ]
-    : [
-        ["name", "Before we begin, what is your name?"],
-        ["challenge", (a) => `Nice to meet you, ${a.name || ""}. What is your company's biggest challenge today?`],
-        ["segment", "What industry or segment does your company operate in?"],
-        ["systems", "Do you already use systems, automations, ERP, CRM or internal tools?"],
-        ["goal", "What would you like to improve in the next 90 days?"],
-      ], [lang]);
-
-  useEffect(() => {
-    const last = messages[messages.length - 1];
-    if (last?.role === "orkio") speak(last.text, lang === "pt" ? "pt-BR" : "en-US");
-  }, [messages, lang]);
-
-  useEffect(() => {
-    const context = {
-      source: "orkio_public_prechat",
-      language: lang,
-      answers,
-      messages,
-      diagnosis: step >= prompts.length ? buildDiagnosis(answers, lang) : "",
-      trial_days: 7,
-      updated_at: new Date().toISOString(),
+  const start = () => {
+    if (!supported) return false;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SpeechRecognition();
+    rec.lang = lang;
+    rec.interimResults = false;
+    rec.continuous = false;
+    rec.onstart = () => setListening(true);
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    rec.onresult = (event) => {
+      const txt = event?.results?.[0]?.[0]?.transcript || "";
+      if (txt) onResult(txt);
     };
-    localStorage.setItem("orkio_prechat_context", JSON.stringify(context));
-  }, [answers, messages, step, lang, prompts.length]);
-
-  const askNext = (nextStep, nextAnswers) => {
-    if (nextStep >= prompts.length) {
-      const diagnosis = buildDiagnosis(nextAnswers, lang);
-      setMessages((m) => [
-        ...m,
-        { role: "orkio", text: diagnosis },
-        {
-          role: "orkio",
-          text:
-            lang === "pt"
-              ? "Criei um primeiro mapa estratégico para sua empresa. Continue essa análise dentro do Orkio OS com 7 dias gratuitos."
-              : "I created a first strategic map for your company. Continue this analysis inside Orkio OS with 7 free days.",
-        },
-      ]);
-      return;
-    }
-    const prompt = prompts[nextStep][1];
-    setMessages((m) => [...m, { role: "orkio", text: typeof prompt === "function" ? prompt(nextAnswers) : prompt }]);
+    recRef.current = rec;
+    rec.start();
+    return true;
   };
 
-  const send = async () => {
-    const value = input.trim();
-    if (!value) return;
-    const key = prompts[Math.min(step, prompts.length - 1)]?.[0] || "note";
-    const nextAnswers = { ...answers, [key]: value };
-    setAnswers(nextAnswers);
-    setMessages((m) => [...m, { role: "user", text: value }]);
-    setInput("");
-    const nextStep = step + 1;
-    setStep(nextStep);
-    setTimeout(() => askNext(nextStep, nextAnswers), 450);
-  };
+  return { start, listening, supported };
+}
 
-  const startVoice = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      alert(lang === "pt" ? "Seu navegador não liberou reconhecimento de voz. Use o campo de texto." : "Voice recognition is not available. Please type your answer.");
-      return;
-    }
-    const recognition = new SR();
-    recognition.lang = lang === "pt" ? "pt-BR" : "en-US";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
-    recognition.onresult = (event) => {
-      const transcript = event.results?.[0]?.[0]?.transcript || "";
-      setInput(transcript);
-    };
-    recognitionRef.current = recognition;
-    recognition.start();
-  };
-
-  const continueTrial = () => {
-    savePrechatContext({
-      language: lang,
-      answers,
-      messages,
-      diagnosis: buildDiagnosis(answers, lang),
-      trial_days: 7,
-      source: "orkio_public_prechat",
-    }).catch(() => null);
-    navigate("/auth?mode=register&trial=7&source=orkio-prechat");
-  };
-
-  const requestEnterprise = async () => {
-    setSubmitted(true);
-    const payload = {
-      name: answers.name || "",
-      source: "orkio_public_prechat",
-      interest_type: "enterprise_white_label_integrations",
-      message: buildDiagnosis(answers, lang),
-      metadata: { answers, language: lang, trial_days: 7 },
-    };
-    await submitEnterpriseLead(payload).catch(() => {
-      const subject = encodeURIComponent("Solicitação Enterprise / White Label - Orkio OS");
-      const body = encodeURIComponent(JSON.stringify(payload, null, 2));
-      window.location.href = `mailto:daniel@patroai.com?subject=${subject}&body=${body}`;
-    });
-  };
-
-  const reset = () => {
-    localStorage.removeItem("orkio_prechat_context");
-    setStep(0);
-    setAnswers({});
-    setInput("");
-    setMessages([{ role: "orkio", text: t.chatIntro }]);
-    setSubmitted(false);
-  };
-
+function OrkioAvatar({ speaking, listening }) {
   return (
-    <div className="prechat-backdrop" role="dialog" aria-modal="true">
-      <div className="prechat-panel">
-        <button className="prechat-close" onClick={onClose} aria-label="Fechar">×</button>
-        <div className="prechat-avatar">
-          <div className={`digital-face ${listening ? "listening" : ""}`}>
-            <span className="face-eye left" />
-            <span className="face-eye right" />
-            <span className="face-smile" />
-          </div>
-          <div>
-            <h3>{t.chatTitle}</h3>
-            <p>{lang === "pt" ? "Consultora executiva de IA para diagnóstico e evolução empresarial." : "Executive AI consultant for business diagnosis and evolution."}</p>
-          </div>
-        </div>
-
-        <div className="prechat-feed">
-          {messages.map((m, i) => (
-            <div key={`${m.role}-${i}`} className={`bubble ${m.role}`}>
-              {m.text}
-            </div>
-          ))}
-        </div>
-
-        <div className="prechat-input">
-          <button className={`voice-btn ${listening ? "active" : ""}`} onClick={startVoice}>{listening ? "..." : t.mic}</button>
-          <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={t.chatPlaceholder} />
-          <button onClick={send}>{t.send}</button>
-        </div>
-
-        {step >= prompts.length && (
-          <div className="prechat-actions">
-            <button className="btn btn-primary" onClick={continueTrial}>{t.continueTrial} →</button>
-            <button className="btn btn-secondary" onClick={requestEnterprise}>{submitted ? (lang === "pt" ? "Solicitação registrada" : "Request registered") : t.enterprise}</button>
-            <button className="link-btn" onClick={reset}>{t.reset}</button>
-          </div>
-        )}
-
-        <div className="plan-strip">
-          <strong>{t.plansTitle}</strong>
-          <div>
-            {t.plans.map(([name, desc]) => (
-              <span key={name}><b>{name}</b>{desc}</span>
-            ))}
-          </div>
-        </div>
+    <div className={`orkio-avatar ${speaking ? "speaking" : ""} ${listening ? "listening" : ""}`}>
+      <div className="avatar-grid" />
+      <div className="digital-halo" />
+      <div className="female-head">
+        <span className="hair left" /><span className="hair right" />
+        <span className="eye left" /><span className="eye right" />
+        <span className="smile" />
       </div>
+      <div className="digital-neck" />
+      <div className="digital-body"><span /></div>
+      <div className="voice-rings"><i/><i/><i/></div>
     </div>
   );
 }
 
+function PreChat({ t, lang }) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState(0);
+  const [input, setInput] = useState("");
+  const [answers, setAnswers] = useState([]);
+  const [messages, setMessages] = useState([
+    { role: "orkio", text: t.chatText }
+  ]);
+  const [speaking, setSpeaking] = useState(false);
+  const langCode = lang === "pt" ? "pt-BR" : "en-US";
+
+  useEffect(() => {
+    setMessages([{ role: "orkio", text: t.chatText }]);
+  }, [lang]);
+
+  function orkioSay(text) {
+    setMessages(m => [...m, { role: "orkio", text }]);
+    setSpeaking(true);
+    speak(text, langCode);
+    window.setTimeout(() => setSpeaking(false), Math.max(1500, text.length * 55));
+  }
+
+  function start() {
+    setOpen(true);
+    if (messages.length <= 1) orkioSay(t.questions[0]);
+  }
+
+  function submit(text = input) {
+    const clean = String(text || "").trim();
+    if (!clean) return;
+    setInput("");
+    const nextAnswers = [...answers, clean];
+    setAnswers(nextAnswers);
+    setMessages(m => [...m, { role: "user", text: clean }]);
+    const nextStep = step + 1;
+    setStep(nextStep);
+
+    if (nextStep < t.questions.length) {
+      const q = nextStep === 1 && clean ? t.questions[nextStep].replace("Prazer.", `Prazer, ${clean}.`).replace("Nice to meet you.", `Nice to meet you, ${clean}.`) : t.questions[nextStep];
+      window.setTimeout(() => orkioSay(q), 450);
+      return;
+    }
+
+    const name = nextAnswers[0] || "";
+    const challenge = nextAnswers[1] || "";
+    const segment = nextAnswers[2] || "";
+    const systems = nextAnswers[3] || "";
+    const goal = nextAnswers[4] || "";
+    const summary = lang === "pt"
+      ? `${name}, já identifiquei um primeiro mapa: sua empresa atua em ${segment || "um segmento ainda a detalhar"}, possui como desafio "${challenge || "evolução operacional"}" e pode evoluir com diagnóstico, integração, planejamento e execução assistida.`
+      : `${name}, I created a first map: your company operates in ${segment || "a segment to detail"}, has the challenge "${challenge || "operational evolution"}" and can evolve through diagnosis, integration, planning and assisted execution.`;
+    window.setTimeout(() => orkioSay(summary), 500);
+
+    try {
+      localStorage.setItem(PRECHAT_KEY, JSON.stringify({
+        source: "orkio-prechat",
+        created_at: new Date().toISOString(),
+        name, challenge, segment, systems, goal,
+        answers: nextAnswers,
+        summary,
+        trial_days: 7
+      }));
+    } catch {}
+  }
+
+  const { start: startMic, listening, supported } = useSpeechRecognition({
+    lang: langCode,
+    onResult: (txt) => { setInput(txt); submit(txt); }
+  });
+
+  function activateTrial() {
+    try {
+      const current = JSON.parse(localStorage.getItem(PRECHAT_KEY) || "{}");
+      localStorage.setItem(PRECHAT_KEY, JSON.stringify({ ...current, trial_days: 7, cta_clicked_at: new Date().toISOString() }));
+    } catch {}
+    navigate("/auth?mode=register&trial=7&source=orkio-prechat");
+  }
+
+  const finished = answers.length >= t.questions.length;
+
+  return (
+    <aside className="prechat-card">
+      <OrkioAvatar speaking={speaking} listening={listening} />
+      <h3>{t.chatTitle}</h3>
+      <p>{t.chatText}</p>
+
+      {!open ? (
+        <button className="btn purple" onClick={start}>{t.start} ◔</button>
+      ) : (
+        <div className="chatbox">
+          <div className="msgs">
+            {messages.map((m, i) => <div key={i} className={`msg ${m.role}`}>{m.text}</div>)}
+          </div>
+          {!finished ? (
+            <div className="composer">
+              <input value={input} onChange={(e)=>setInput(e.target.value)} onKeyDown={(e)=>{ if(e.key==="Enter") submit(); }} placeholder={t.typePlaceholder} />
+              <button onClick={() => submit()}>Enviar</button>
+              <button title={supported ? t.mic : "Voz indisponível neste navegador"} disabled={!supported || listening} onClick={startMic}>{listening ? "..." : "🎙"}</button>
+            </div>
+          ) : (
+            <button className="btn green wide" onClick={activateTrial}>{t.trial} →</button>
+          )}
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function IconCircle({ children }) { return <span className="icon-circle">{children}</span>; }
+
 export default function Landing() {
   const navigate = useNavigate();
   const [lang, setLang] = useState("pt");
-  const [chatOpen, setChatOpen] = useState(false);
-  const t = COPY[lang];
-
-  const go = (path) => navigate(path);
-  const scroll = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const demo = () => setChatOpen(true);
-  const specialist = () => {
-    window.location.href = "mailto:daniel@patroai.com?subject=Orkio%20OS%20-%20Falar%20com%20especialista";
-  };
+  const t = lang === "pt" ? PT : EN;
+  const integrations = ["ERP", "CRM", "Financeiro", "Comunicação", "Dados & BI", "APIs & Sistemas"];
 
   return (
     <main className="orkio-page">
       <style>{`
-        :root{--bg:#02060c;--panel:#06111b;--line:rgba(255,255,255,.12);--soft:rgba(255,255,255,.72);--white:#f8fbff;--green:#92f25e;--blue:#32a9ff;--cyan:#63e6ff;--purple:#9b3cff;--gold:#f5b821}
-        *{box-sizing:border-box} body{margin:0;background:#02060c;color:var(--white);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif} button,a{font:inherit}
-        .orkio-page{min-height:100vh;background:radial-gradient(circle at 58% 30%,rgba(35,160,255,.17),transparent 34%),radial-gradient(circle at 82% 24%,rgba(146,242,94,.09),transparent 24%),linear-gradient(180deg,#030911 0%,#02060c 66%,#010307 100%);overflow:hidden;position:relative}
-        .orkio-page:before{content:"";position:absolute;inset:0;background:linear-gradient(rgba(90,190,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(90,190,255,.035) 1px,transparent 1px);background-size:76px 76px;mask-image:linear-gradient(to bottom,black 0%,black 75%,transparent 100%);opacity:.35;pointer-events:none}
-        .container{width:min(1480px,calc(100% - 56px));margin:0 auto;position:relative;z-index:1}.topbar{height:94px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.055)}
-        .brand{display:flex;align-items:center;gap:14px;cursor:pointer;border:0;background:transparent;color:inherit;padding:0}.brand img{width:66px;height:66px;border-radius:50%;object-fit:contain;filter:drop-shadow(0 0 28px rgba(70,185,255,.42))}
-        .brand-main{font-size:39px;font-weight:900;letter-spacing:.03em}.brand-os{font-size:24px;color:var(--green);font-weight:900;margin-left:10px}.nav{display:flex;align-items:center;gap:44px;color:rgba(255,255,255,.86);font-weight:520}.nav button{background:transparent;color:inherit;border:0;cursor:pointer;padding:10px 0}.nav button:hover{color:white}
-        .actions{display:flex;align-items:center;gap:16px}.btn{border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.03);color:white;padding:14px 22px;cursor:pointer;transition:.25s ease;display:inline-flex;align-items:center;justify-content:center;gap:10px;text-decoration:none}.btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.07)}
-        .btn-primary{background:linear-gradient(135deg,#a8f263,#58b737);color:#07120a;border-color:rgba(160,244,96,.7);box-shadow:0 0 32px rgba(129,239,87,.22);font-weight:800}.btn-secondary{background:rgba(3,12,22,.65);border-color:rgba(255,255,255,.18)}.lang{border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:8px 12px;background:rgba(255,255,255,.04);color:rgba(255,255,255,.8);cursor:pointer}
-        .hero{display:grid;grid-template-columns:minmax(360px,.88fr) minmax(420px,1.12fr) minmax(330px,.82fr);gap:34px;align-items:center;padding:50px 0 28px}.eyebrow{display:inline-flex;border:1px solid rgba(146,242,94,.52);color:var(--green);border-radius:999px;padding:10px 18px;letter-spacing:.075em;font-size:14px;font-weight:800;background:rgba(146,242,94,.05);margin-bottom:28px}
-        h1{margin:0;font-size:clamp(44px,4.35vw,74px);line-height:1.08;letter-spacing:-.058em}.blue{background:linear-gradient(90deg,#8ef35e 0%,#35aaff 78%,#e8edf4 100%);-webkit-background-clip:text;background-clip:text;color:transparent}.hero p{color:rgba(255,255,255,.78);font-size:18px;line-height:1.7;margin:28px 0 32px;max-width:650px}.hero-ctas{display:flex;gap:18px;flex-wrap:wrap}
-        .visual-stage{position:relative;min-height:460px;display:grid;place-items:center}.halo{position:absolute;width:510px;height:510px;border-radius:50%;background:radial-gradient(circle at 50% 50%,rgba(76,179,255,.22),transparent 18%),radial-gradient(circle at 50% 50%,transparent 36%,rgba(92,216,255,.82) 37%,rgba(92,216,255,.18) 38%,transparent 39%),radial-gradient(circle at 50% 50%,rgba(146,242,94,.15),transparent 65%);filter:drop-shadow(0 0 26px rgba(55,175,255,.45));animation:pulse 4.2s ease-in-out infinite}
-        .sphere-fallback{position:absolute;width:310px;height:310px;border-radius:50%;background:radial-gradient(circle at 62% 26%,#b9efff 0 8%,#2466ab 22%,#0b2f66 42%,#143b35 58%,#f4b930 74%,#0d1830 100%);box-shadow:inset -28px -34px 60px rgba(0,0,0,.45),0 0 50px rgba(54,170,255,.55)}.sphere-fallback:after{content:"";position:absolute;left:12%;top:6%;width:62%;height:34%;border-radius:80% 20% 80% 25%;background:linear-gradient(145deg,#caff8e,#4fa341);transform:rotate(-20deg);box-shadow:inset 0 -8px 15px rgba(0,0,0,.22)}
-        .orkio-sphere{position:relative;z-index:2;width:330px;height:330px;object-fit:contain;filter:drop-shadow(0 0 38px rgba(68,178,255,.55)) drop-shadow(0 18px 42px rgba(0,0,0,.78));animation:float 6s ease-in-out infinite}.network{position:absolute;right:-58px;width:520px;height:390px;opacity:.88;background:linear-gradient(90deg,transparent,rgba(52,170,255,.22),transparent),repeating-linear-gradient(12deg,transparent 0 28px,rgba(85,200,255,.22) 29px 30px);mask-image:linear-gradient(90deg,transparent,black 16%,black 74%,transparent);filter:drop-shadow(0 0 20px rgba(67,177,255,.25))}
-        .pedestal{position:absolute;bottom:42px;width:270px;height:48px;border-radius:50%;border:1px solid rgba(75,194,255,.55);background:radial-gradient(ellipse at center,rgba(72,177,255,.24),transparent 68%);filter:drop-shadow(0 0 20px rgba(75,194,255,.3))}.systems-list{position:absolute;right:-22px;top:77px;display:grid;gap:15px;z-index:3}.sys{display:flex;align-items:center;gap:12px;color:#eaf8ff;font-size:14px}.sys i{width:42px;height:42px;border-radius:50%;border:1px solid rgba(99,230,255,.64);display:grid;place-items:center;background:rgba(2,12,20,.8);box-shadow:0 0 18px rgba(99,230,255,.18)}
-        .dashboard-card{position:relative;border:1px solid rgba(99,230,255,.2);background:linear-gradient(180deg,rgba(4,17,28,.82),rgba(2,8,15,.9));border-radius:18px;padding:18px;box-shadow:0 0 44px rgba(54,168,255,.09)}.dashboard-title{text-align:center;font-size:13px;letter-spacing:.08em;font-weight:900;color:#eaffff;margin-bottom:12px}.dashboard-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.metric-card{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);border-radius:12px;padding:14px}.rings{display:flex;gap:12px}.ring{width:60px;height:60px;border-radius:50%;border:6px solid rgba(146,242,94,.28);border-top-color:var(--green);display:grid;place-items:center;font-size:13px;font-weight:900}.line-chart{height:82px;background:linear-gradient(135deg,transparent 20%,rgba(71,169,255,.1));border-bottom:1px solid rgba(83,200,255,.25);position:relative;overflow:hidden}.line-chart:before{content:"";position:absolute;inset:28px 0 18px 0;border-top:3px solid #56c7ff;transform:skewY(-14deg)}.mini-flow{height:82px;display:grid;place-items:center;color:rgba(255,255,255,.75);font-size:13px}.insight{grid-column:1/3;font-size:12px;color:rgba(255,255,255,.62)}
-        .pill-row{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08);padding:22px 0;margin:8px 0 28px}.pill{display:flex;gap:14px;padding:0 20px;border-right:1px solid rgba(255,255,255,.12);align-items:center}.pill:last-child{border-right:0}.ico{width:46px;height:46px;border-radius:14px;border:1px solid currentColor;display:grid;place-items:center;color:#8df95a;filter:drop-shadow(0 0 10px currentColor)}.ico svg{width:24px;height:24px}.pill strong{display:block;font-size:17px;margin-bottom:6px}.pill span{color:rgba(255,255,255,.66);font-size:14px;line-height:1.35}.section-title{text-align:center;font-size:22px;letter-spacing:.12em;margin:28px 0;color:rgba(255,255,255,.75)}.section-title b{color:var(--green)}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;padding-bottom:68px}.card{border:1px solid rgba(255,255,255,.1);border-radius:20px;background:linear-gradient(180deg,rgba(7,17,30,.72),rgba(4,9,16,.86));padding:28px;min-height:190px;box-shadow:0 0 35px rgba(0,0,0,.28);position:relative;overflow:hidden}.card h3{font-size:22px;margin:18px 0 10px}.card p{color:rgba(255,255,255,.68);line-height:1.55;margin:0}.num-ico{font-size:28px;font-weight:900}.arrow-line{position:absolute;right:-24px;top:50%;color:var(--green);font-size:38px;z-index:4}
-        .floating-assistant{position:fixed;right:28px;bottom:24px;z-index:8;width:68px;height:68px;border-radius:50%;border:1px solid rgba(110,226,255,.65);background:radial-gradient(circle at 50% 35%,#2ed4ff 0 16%,#10243a 55%,#030810 100%);box-shadow:0 0 28px rgba(68,205,255,.45);cursor:pointer}.floating-assistant:before,.floating-assistant:after{content:"";position:absolute;top:27px;width:7px;height:10px;background:#d7fbff;border-radius:50%;box-shadow:0 0 10px #8ff}.floating-assistant:before{left:22px}.floating-assistant:after{right:22px}.floating-assistant span{position:absolute;left:24px;top:42px;width:20px;height:10px;border-bottom:2px solid #d9fbff;border-radius:0 0 20px 20px}
-        .prechat-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.62);backdrop-filter:blur(10px);z-index:30;display:grid;place-items:center;padding:20px}.prechat-panel{width:min(720px,100%);max-height:min(88vh,850px);overflow:auto;border:1px solid rgba(120,220,255,.25);border-radius:24px;background:linear-gradient(180deg,rgba(6,18,31,.96),rgba(2,6,12,.98));box-shadow:0 0 70px rgba(52,170,255,.22);padding:22px;position:relative}.prechat-close{position:absolute;right:18px;top:14px;background:transparent;color:white;border:0;font-size:30px;cursor:pointer}.prechat-avatar{display:flex;gap:18px;align-items:center;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:18px}.digital-face{width:108px;height:120px;border-radius:45% 45% 42% 42%;background:linear-gradient(180deg,#dcefff,#6e8196 38%,#111925 74%);box-shadow:inset 0 0 25px rgba(255,255,255,.26),0 0 26px rgba(76,179,255,.45);position:relative;flex:0 0 auto}.digital-face:before{content:"";position:absolute;left:-16px;top:50px;width:18px;height:40px;border-radius:12px;background:linear-gradient(180deg,#ffd45b,#462c92);box-shadow:140px 0 0 #6a38dc}.digital-face.listening{animation:pulse 1.1s infinite}.face-eye{position:absolute;top:62px;width:13px;height:13px;background:#8e54ff;border-radius:50%;box-shadow:0 0 16px #9f55ff}.face-eye.left{left:31px}.face-eye.right{right:31px}.face-smile{position:absolute;left:38px;top:91px;width:32px;height:15px;border-bottom:3px solid rgba(255,255,255,.82);border-radius:0 0 30px 30px}.prechat-avatar h3{font-size:24px;margin:0 0 6px}.prechat-avatar p{margin:0;color:rgba(255,255,255,.66);line-height:1.4}.prechat-feed{display:grid;gap:12px;padding:18px 0;max-height:310px;overflow:auto}.bubble{padding:13px 15px;border-radius:16px;line-height:1.45;max-width:88%;font-size:15px}.bubble.orkio{background:rgba(88,183,55,.12);border:1px solid rgba(146,242,94,.22);justify-self:start}.bubble.user{background:rgba(50,169,255,.12);border:1px solid rgba(50,169,255,.22);justify-self:end}.prechat-input{display:grid;grid-template-columns:auto 1fr auto;gap:10px}.prechat-input input{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);color:white;border-radius:12px;padding:13px 14px}.prechat-input button,.voice-btn{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:white;border-radius:12px;padding:12px 14px;cursor:pointer}.voice-btn.active{background:rgba(146,242,94,.18);border-color:rgba(146,242,94,.55)}.prechat-actions{display:grid;gap:10px;margin-top:16px}.link-btn{background:transparent;color:rgba(255,255,255,.65);border:0;cursor:pointer;text-decoration:underline}.plan-strip{margin-top:18px;border-top:1px solid rgba(255,255,255,.08);padding-top:14px}.plan-strip strong{display:block;margin-bottom:10px}.plan-strip div{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.plan-strip span{border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px;color:rgba(255,255,255,.65);font-size:12px}.plan-strip b{display:block;color:#fff;margin-bottom:6px}
-        @keyframes pulse{0%,100%{transform:scale(.98);opacity:.85}50%{transform:scale(1.03);opacity:1}}@keyframes float{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-16px) rotate(2deg)}}
-        @media(max-width:1180px){.hero{grid-template-columns:1fr;gap:22px}.visual-stage{min-height:420px}.pill-row,.cards{grid-template-columns:1fr 1fr}.pill{border-right:0;border-bottom:1px solid rgba(255,255,255,.1);padding:18px}.nav{display:none}.dashboard-card{max-width:720px;margin:auto}}
-        @media(max-width:720px){.container{width:min(100% - 28px,1480px)}.topbar{height:auto;padding:18px 0}.actions{display:none}.brand-main{font-size:30px}.brand img{width:56px;height:56px}.hero{padding-top:28px}.hero-ctas{flex-direction:column}.btn{width:100%}.halo{width:330px;height:330px}.orkio-sphere,.sphere-fallback{width:250px;height:250px}.systems-list{position:relative;right:auto;top:auto;grid-template-columns:1fr 1fr}.dashboard-grid,.plan-strip div{grid-template-columns:1fr}.pill-row,.cards{grid-template-columns:1fr}}`}</style>
+        :root{--green:#8cf451;--blue:#22a9ff;--cyan:#5fe7ff;--gold:#f6b91d;--purple:#9d35ff;--line:rgba(255,255,255,.12)}
+        *{box-sizing:border-box}body{margin:0;background:#02070d;color:#f7fbff;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input{font:inherit}
+        .orkio-page{min-height:100vh;background:radial-gradient(circle at 57% 32%,rgba(33,160,255,.21),transparent 29%),radial-gradient(circle at 38% 60%,rgba(246,185,29,.13),transparent 25%),linear-gradient(180deg,#020812,#02060c 60%,#010306);overflow:hidden}
+        .wrap{width:min(1510px,calc(100% - 64px));margin:0 auto}.topbar{height:96px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.08);gap:24px}.logo{display:flex;align-items:center;gap:14px;background:transparent;border:0;color:white;cursor:pointer}.logo img{width:62px;height:62px;object-fit:contain;filter:drop-shadow(0 0 22px rgba(74,174,255,.45))}.logo span{font-size:42px;font-weight:850;letter-spacing:.04em}.logo small{font-size:23px;color:var(--green);font-weight:800;margin-left:4px}.nav{display:flex;gap:40px}.nav button{background:transparent;border:0;color:rgba(255,255,255,.84);cursor:pointer}.actions{display:flex;gap:16px;align-items:center}.btn{border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.035);color:white;padding:14px 23px;cursor:pointer;display:inline-flex;gap:10px;align-items:center;justify-content:center;text-decoration:none;transition:.22s}.btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.07)}.green{color:var(--green)}.blue{color:var(--blue)}.btn.green{background:linear-gradient(135deg,#a7f96a,#54b73e);color:#051006;border-color:rgba(159,250,97,.5);box-shadow:0 0 26px rgba(140,244,81,.22)}.btn.purple{background:linear-gradient(135deg,#5728da,#b613d8);border-color:rgba(201,93,255,.68);box-shadow:0 0 30px rgba(157,53,255,.23);width:100%}.btn.outline{background:rgba(3,12,21,.55)}.lang{border:1px solid rgba(255,255,255,.15);border-radius:999px;padding:10px 12px;background:rgba(255,255,255,.04);color:white;cursor:pointer}
+        .hero{display:grid;grid-template-columns:minmax(390px,.88fr) minmax(480px,.95fr) minmax(360px,.8fr);gap:38px;align-items:center;padding:58px 0 34px}.eyebrow{display:inline-flex;border:1px solid rgba(140,244,81,.52);border-radius:999px;color:var(--green);background:rgba(140,244,81,.05);padding:10px 18px;font-weight:800;letter-spacing:.065em;font-size:14px;margin-bottom:27px}h1{font-size:clamp(44px,4.1vw,72px);line-height:1.08;letter-spacing:-.058em;margin:0}.copy p{color:rgba(255,255,255,.78);font-size:18px;line-height:1.65;max-width:590px;margin:28px 0 31px}.row{display:flex;gap:18px;flex-wrap:wrap}
+        .sphere-stage{position:relative;min-height:470px;display:grid;place-items:center}.sphere-stage::before{content:"";position:absolute;width:550px;height:550px;border-radius:50%;background:radial-gradient(circle,rgba(39,167,255,.18),transparent 56%)}.sphere-stage::after{content:"";position:absolute;bottom:33px;width:360px;height:44px;border-radius:50%;border:1px solid rgba(246,185,29,.4);box-shadow:0 0 52px rgba(246,185,29,.22)}.sphere{position:relative;width:315px;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;filter:drop-shadow(0 0 55px rgba(37,166,255,.35));animation:float 4.8s ease-in-out infinite}.sphere img{width:100%;height:100%;object-fit:contain}.orb-fallback{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 65% 23%,#85c9ff,#0f4671 38%,#f3c331 70%,#263d15);display:none}.network i{position:absolute;left:55%;top:50%;width:380px;height:1px;background:linear-gradient(90deg,rgba(44,175,255,.75),transparent);transform:rotate(calc((var(--i) - 3) * 11deg));transform-origin:left;box-shadow:0 0 12px #2caeff}.integration-list{position:absolute;right:-25px;top:80px;display:grid;gap:16px}.integration-list span{display:flex;align-items:center;gap:12px}.integration-list b{width:50px;height:50px;border-radius:50%;border:1px solid rgba(95,231,255,.6);display:grid;place-items:center;color:var(--cyan);box-shadow:0 0 24px rgba(39,167,255,.18)}
+        .dashboard{border:1px solid rgba(51,173,255,.26);border-radius:22px;background:rgba(3,15,27,.76);padding:20px;box-shadow:0 0 45px rgba(34,169,255,.1)}.dashboard h3{margin:0 0 18px}.dashboard h3 span{font-size:11px;color:rgba(255,255,255,.55)}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.metric{aspect-ratio:1;border-radius:50%;border:1px solid rgba(140,244,81,.38);display:grid;place-items:center;color:var(--green);font-weight:850;background:radial-gradient(circle,rgba(140,244,81,.15),transparent 65%)}.panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}.panel-grid div{height:86px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:linear-gradient(135deg,rgba(255,255,255,.06),rgba(34,169,255,.04))}.insight{font-size:13px;color:rgba(255,255,255,.65);line-height:1.45}
+        .prechat-card{border:1px solid rgba(68,178,255,.28);border-radius:24px;background:linear-gradient(180deg,rgba(8,18,31,.75),rgba(4,9,17,.78));padding:20px;min-height:470px;box-shadow:0 0 60px rgba(34,169,255,.12)}.prechat-card h3{font-size:24px;margin:16px 0 8px}.prechat-card p{color:rgba(255,255,255,.75);line-height:1.5}.orkio-avatar{position:relative;height:220px;border-radius:18px;background:radial-gradient(circle at 50% 35%,rgba(54,174,255,.22),transparent 40%),linear-gradient(180deg,#04111f,#070914);overflow:hidden;display:grid;place-items:center}.avatar-grid{position:absolute;inset:0;background:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px);background-size:100% 20px;opacity:.2}.digital-halo{position:absolute;width:198px;height:198px;border-radius:50%;border:1px solid rgba(72,184,255,.4);box-shadow:0 0 42px rgba(52,174,255,.24);animation:pulse 3.4s infinite}.female-head{position:absolute;top:33px;width:102px;height:130px;border-radius:50% 50% 44% 44%;background:linear-gradient(145deg,#cbd9e8,#27394f 45%,#0a111e);box-shadow:inset 18px 0 32px rgba(255,255,255,.2),0 0 34px rgba(80,176,255,.24)}.eye{position:absolute;top:61px;width:11px;height:11px;border-radius:50%;background:#a358ff;box-shadow:0 0 16px #a358ff}.eye.left{left:32px}.eye.right{right:32px}.smile{position:absolute;left:36px;top:98px;width:31px;height:11px;border-bottom:2px solid rgba(255,255,255,.78);border-radius:50%}.digital-neck{position:absolute;top:158px;width:34px;height:35px;background:linear-gradient(#192b40,#07111d)}.digital-body{position:absolute;bottom:-25px;width:178px;height:100px;border-radius:82px 82px 0 0;background:linear-gradient(145deg,#17263d,#050811 62%);border:1px solid rgba(255,255,255,.08)}.digital-body span{position:absolute;top:20px;left:50%;transform:translateX(-50%);width:39px;height:39px;border-radius:50%;background:radial-gradient(circle,#ffef9a,#d69f19 42%,transparent 72%);box-shadow:0 0 26px rgba(246,185,29,.65)}.voice-rings i{position:absolute;inset:24px;border:1px solid rgba(95,231,255,.18);border-radius:50%;animation:pulse 3s infinite}.voice-rings i:nth-child(2){inset:48px;animation-delay:.4s}.voice-rings i:nth-child(3){inset:72px;animation-delay:.8s}.orkio-avatar.listening .digital-halo,.orkio-avatar.speaking .digital-halo{border-color:rgba(140,244,81,.7);box-shadow:0 0 45px rgba(140,244,81,.28)}.orkio-avatar.speaking .digital-body span{animation:pulse 1.2s infinite}
+        .chatbox{margin-top:14px}.msgs{max-height:190px;overflow:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px}.msg{padding:11px 12px;border-radius:13px;line-height:1.35;font-size:14px}.msg.orkio{background:rgba(34,169,255,.1);border:1px solid rgba(34,169,255,.16)}.msg.user{background:rgba(140,244,81,.1);border:1px solid rgba(140,244,81,.18);align-self:flex-end}.composer{display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-top:12px}.composer input{border:1px solid rgba(255,255,255,.14);border-radius:12px;background:rgba(0,0,0,.26);color:white;padding:12px}.composer button{border:1px solid rgba(255,255,255,.14);border-radius:12px;background:rgba(255,255,255,.06);color:white;padding:0 12px;cursor:pointer}.wide{width:100%;margin-top:12px}
+        .pillars{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid rgba(255,255,255,.1);border-bottom:1px solid rgba(255,255,255,.08)}.pillar{display:flex;gap:14px;padding:24px 22px;border-right:1px solid rgba(255,255,255,.09)}.pillar:last-child{border-right:0}.icon-circle{min-width:48px;height:48px;border-radius:16px;border:1px solid currentColor;color:var(--green);display:grid;place-items:center}.pillar:nth-child(2) .icon-circle{color:var(--cyan)}.pillar:nth-child(3) .icon-circle{color:var(--gold)}.pillar:nth-child(4) .icon-circle{color:var(--green)}.pillar b{display:block}.pillar span span{display:block;color:rgba(255,255,255,.66);line-height:1.42;margin-top:5px}.section-title{text-align:center;color:rgba(255,255,255,.75);letter-spacing:.12em;margin:32px 0 22px}.section-title b{color:var(--green)}.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding-bottom:58px}.step{position:relative;min-height:220px;border:1px solid rgba(255,255,255,.1);border-radius:20px;background:linear-gradient(180deg,rgba(7,18,31,.85),rgba(3,7,13,.85));padding:28px}.step h3{margin:20px 0 10px}.step p{color:rgba(255,255,255,.68);line-height:1.5}.step:after{content:"→";position:absolute;right:-22px;top:48%;font-size:34px;color:var(--green);filter:drop-shadow(0 0 10px rgba(140,244,81,.55))}.step:last-child:after{display:none}
+        @keyframes float{50%{transform:translateY(-12px)}}@keyframes pulse{50%{transform:scale(1.04);opacity:.72}}
+        @media (max-width:1220px){.hero{grid-template-columns:1fr}.nav{display:none}.sphere-stage{min-height:400px}.integration-list{position:static;grid-template-columns:1fr 1fr;margin-top:18px}.pillars{grid-template-columns:1fr 1fr}.steps{grid-template-columns:1fr 1fr}.dashboard{max-width:520px}.prechat-card{max-width:560px}.topbar{height:auto;padding:22px 0}}
+        @media (max-width:720px){.wrap{width:min(100% - 28px,1510px)}.actions .outline{display:none}.logo span{font-size:31px}.logo img{width:50px;height:50px}h1{font-size:39px}.sphere{width:240px}.network i{width:220px}.pillars,.steps{grid-template-columns:1fr}.pillar{border-right:0;border-bottom:1px solid rgba(255,255,255,.08)}.step:after{display:none}.composer{grid-template-columns:1fr}.hero{padding-top:30px}}
+      `}</style>
 
-      <div className="container">
+      <div className="wrap">
         <header className="topbar">
-          <button className="brand" onClick={() => go("/orkio")} aria-label="Orkio home">
-            <img src={A + "orkio-sphere-only.png"} alt="" onError={(e) => { e.currentTarget.style.display = "none"; }} />
-            <span className="brand-main">ORKIO<sup style={{ fontSize: 14, marginLeft: 4 }}>™</sup><span className="brand-os">OS</span></span>
+          <button className="logo" onClick={()=>navigate("/")}>
+            <img src={A + "orkio-sphere-only.png"} alt="" onError={(e)=>{e.currentTarget.style.display="none"}} />
+            <span>ORKIO</span><small>OS</small>
           </button>
-          <nav className="nav">
-            {t.nav.map((n) => (
-              <button key={n} onClick={() => scroll(n.toLowerCase().includes("como") || n.toLowerCase().includes("how") ? "como-funciona" : "orkio-recursos")}>{n}</button>
-            ))}
-          </nav>
+          <nav className="nav">{t.nav.map((n,i)=><button key={n} onClick={()=> i===1 ? document.getElementById("como-funciona")?.scrollIntoView({behavior:"smooth"}) : document.getElementById("orkio-recursos")?.scrollIntoView({behavior:"smooth"})}>{n}</button>)}</nav>
           <div className="actions">
-            <button className="btn btn-secondary" onClick={specialist}>{t.specialist}</button>
-            <button className="btn btn-primary" onClick={demo}>{t.primary} →</button>
-            <button className="lang" onClick={() => setLang(lang === "pt" ? "en" : "pt")}>{lang === "pt" ? "EN" : "PT"}</button>
+            <button className="btn outline" onClick={()=>document.querySelector(".prechat-card")?.scrollIntoView({behavior:"smooth"})}>Falar com especialista</button>
+            <button className="btn green" onClick={()=>navigate("/auth?mode=register&trial=7&source=orkio-landing")}>{t.demo} →</button>
+            <button className="lang" onClick={()=>setLang(lang==="pt"?"en":"pt")}>{lang==="pt"?"EN":"PT"}</button>
           </div>
         </header>
 
         <section className="hero">
-          <div>
-            <div className="eyebrow">{t.eyebrow}</div>
+          <div className="copy">
+            <span className="eyebrow">{t.eyebrow}</span>
             <h1>{t.title}</h1>
             <p>{t.subtitle}</p>
-            <div className="hero-ctas">
-              <button className="btn btn-primary" onClick={demo}>{t.primary} →</button>
-              <button className="btn btn-secondary" onClick={demo}>{t.secondary} ▶</button>
+            <div className="row">
+              <button className="btn green" onClick={()=>navigate("/auth?mode=register&trial=7&source=orkio-landing")}>{t.demo} →</button>
+              <button className="btn outline" onClick={()=>document.querySelector(".prechat-card")?.scrollIntoView({behavior:"smooth"})}>{t.action} ▶</button>
             </div>
           </div>
 
-          <div className="visual-stage" aria-label="Orkio sphere and integrations">
-            <div className="halo" />
-            <div className="network" />
-            <div className="sphere-fallback" />
-            <img className="orkio-sphere" src={A + "orkio-sphere-only.png"} alt="Orkio sphere" onError={(e) => { e.currentTarget.style.opacity = 0; }} />
-            <div className="pedestal" />
-            <div className="systems-list">
-              {t.systems.map((s, idx) => <div className="sys" key={s}><i>{["◎", "◌", "$", "☏", "▥", "<>"][idx]}</i><span>{s}</span></div>)}
+          <div className="sphere-stage">
+            <div className="network">{integrations.map((_,i)=><i key={i} style={{"--i":i}} />)}</div>
+            <div className="sphere">
+              <img src={A + "orkio-sphere-only.png"} alt="Orkio" onError={(e)=>{e.currentTarget.style.display="none"; e.currentTarget.nextSibling.style.display="block"}} />
+              <span className="orb-fallback" />
             </div>
+            <div className="integration-list">{integrations.map((x,i)=><span key={x}><b>{i+1}</b>{x}</span>)}</div>
           </div>
 
-          <aside className="dashboard-card">
-            <div className="dashboard-title">{t.ecosystem}</div>
-            <div className="dashboard-grid">
-              <div className="metric-card">
-                <strong>Painel Orkio OS</strong>
-                <div className="rings"><span className="ring">92%</span><span className="ring">85%</span><span className="ring">78%</span></div>
-              </div>
-              <div className="metric-card"><strong>Atividades em tempo real</strong><div className="mini-flow">Planos executados · Tarefas automatizadas · Alertas inteligentes</div></div>
-              <div className="metric-card"><strong>Fluxo de Operações</strong><div className="mini-flow">multiagentes conectados</div></div>
-              <div className="metric-card"><strong>Performance Geral</strong><div className="line-chart" /></div>
-              <div className="metric-card insight">Insights inteligentes: oportunidade de otimização identificada no processo operacional.</div>
-            </div>
-          </aside>
+          <PreChat t={t} lang={lang} />
         </section>
 
-        <section id="orkio-recursos" className="pill-row">
-          {t.pillars.map(([i, h, d]) => <div className="pill" key={h}><span className="ico"><Icon name={i} /></span><div><strong>{h}</strong><span>{d}</span></div></div>)}
+        <section id="orkio-recursos" className="pillars">
+          {t.plans.map(([h,d],i)=><div className="pillar" key={h}><IconCircle>{["⌁","⚙","↗","⌘","◒"][i]}</IconCircle><span><b>{h}</b><span>{d}</span></span></div>)}
         </section>
+
+        <aside className="dashboard" style={{margin:"30px auto", maxWidth:720}}>
+          <h3>Painel Orkio OS <span>em tempo real</span></h3>
+          <div className="metrics"><div className="metric">92%</div><div className="metric">85%</div><div className="metric">78%</div></div>
+          <div className="panel-grid"><div/><div/><div/><div/></div>
+          <div className="insight">Insights inteligentes: oportunidade de otimização identificada no processo operacional.</div>
+        </aside>
 
         <h2 id="como-funciona" className="section-title">COMO O <b>ORKIO</b> FUNCIONA</h2>
-        <section className="cards">
-          {t.steps.map(([i, h, d], idx) => <article className="card" key={h}><span className="ico num-ico">{i}</span><h3>{h}</h3><p>{d}</p>{idx < 3 && <span className="arrow-line">→</span>}</article>)}
+        <section className="steps">
+          {t.steps.map(([h,d])=><article className="step" key={h}><IconCircle>◇</IconCircle><h3>{h}</h3><p>{d}</p></article>)}
         </section>
       </div>
-
-      <button className="floating-assistant" onClick={() => setChatOpen(true)} aria-label="Conversar com Orkio"><span /></button>
-      {chatOpen && <OrkioPreChat lang={lang} onClose={() => setChatOpen(false)} />}
     </main>
   );
 }
