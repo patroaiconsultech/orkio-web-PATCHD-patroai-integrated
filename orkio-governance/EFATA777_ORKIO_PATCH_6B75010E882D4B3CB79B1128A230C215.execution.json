@@ -1,0 +1,30 @@
+{
+  "status": "execution_artifact_created_no_source_change",
+  "org_slug": "public",
+  "thread_id": "a4cdc1fc24a24686849eafd9c78e62d6",
+  "approval_id": "apr_3e6199e86515",
+  "patch_id": "EFATA777_ORKIO_PATCH_6B75010E882D4B3CB79B1128A230C215",
+  "audit_receipt_id": "6b75010e882d4b3cb79b1128a230c215",
+  "patch_mode": "approved_apply",
+  "human_approved": true,
+  "write_allowed": true,
+  "target_files": [
+    "src/routes/AppConsole.jsx"
+  ],
+  "target_functions": [],
+  "requested_actions": [
+    "create_branch",
+    "apply_patch",
+    "prepare_commit",
+    "open_pr"
+  ],
+  "source_files_modified": [
+    "src/routes/AppConsole.jsx"
+  ],
+  "executable_artifact_ready": true,
+  "patch_artifact_id": "fe3429d06a4aca00",
+  "diff_hash": "fe3429d06a4aca0095257620d111f6b84ab4bfb2677694f7a6ddee8bee8af23f",
+  "governance_note": "Executable source files were committed after human approval.",
+  "trace_id": "a74ec0a729654febbb7d0cc7b38264d5",
+  "created_at": 1778847305
+}
