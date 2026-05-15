@@ -436,7 +436,10 @@ export async function chatStream({
           Accept: "text/event-stream",
         },
       }),
-      credentials: "include",
+      // METATRON: bearer-token auth only; do not force cross-origin cookies on SSE.
+      // Keeping this aligned with apiFetch avoids credentialed-CORS edge cases
+      // where preflight succeeds but the browser never proceeds cleanly to POST.
+      credentials: "same-origin",
       signal,
       body: JSON.stringify({
         thread_id,
