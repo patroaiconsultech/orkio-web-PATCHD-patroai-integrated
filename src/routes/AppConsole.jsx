@@ -17,8 +17,14 @@ const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.
 const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || import.meta.env.VITE_SPEECH_RECOGNITION_LANG || "pt-BR").trim() || "pt-BR");
 
 
-// AO-01 FORCE DIRECT RAIL: disable SSE stream in web until /api/chat/stream POST is stable.
-const ORKIO_CHAT_STREAM_PRIMARY = false;
+// METATRON_CHAT_FORCE_STREAM_AND_TIMEOUT
+// Stream is the primary rail again. Direct /api/chat is kept only as a controlled
+// fallback because Chrome can leave the direct POST stuck after a successful CORS preflight.
+const ORKIO_CHAT_STREAM_PRIMARY = (
+  String(ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import.meta.env.VITE_CHAT_STREAM_PRIMARY || "true")
+    .trim()
+    .toLowerCase() !== "false"
+);
 const CHAT_STREAM_TIMEOUT_MS = Math.max(
   15000,
   Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 45000) || 45000
@@ -2506,38 +2512,52 @@ async function sendMessage(presetMsg = null, opts = {}) {
       const destinationContract = buildDestinationContract(msg, agentIdToSend);
       void refreshOrionSquadPreview(finalMsg);
 
-      const allocDirectRailSignal = () => {
-        const directCtl = new AbortController();
-        streamCtlRef.current = directCtl;
-        return directCtl.signal;
-      };
-
       const describeDirectRailError = (err) => {
-        if (err?.code === "CHAT_DIRECT_TIMEOUT") return "O fallback direto excedeu o tempo limite.";
+        if (err?.code === "CHAT_DIRECT_TIMEOUT") return "O fallback direto excedeu o tempo limite e foi abortado.";
         if (err?.code === "NETWORK_FETCH_FAILED") return "Falha de rede ao executar a resposta direta.";
         if (err?.code === "FETCH_ABORTED") return "A resposta direta foi abortada antes da conclusão.";
         return err?.message || "Não foi possível concluir a resposta direta.";
       };
 
-      const runDirectChat = async () => withTimeout(
-        chat({
-          token,
-          org: tenant,
-          thread_id: threadId,
-          message: finalMsg,
-          agent_id: destinationContract.agent_id,
-          trace_id: traceId,
-          client_message_id: clientMessageId,
-          agent_ids: destinationContract.agent_ids,
-          dest_mode: destinationContract.dest_mode,
-          visible_agent: destinationContract.visible_agent,
-          target_agent_slug: destinationContract.target_agent_slug,
-          requested_agent_names: destinationContract.requested_agent_names,
-          signal: allocDirectRailSignal(),
-        }),
-        CHAT_STREAM_TIMEOUT_MS,
-        "CHAT_DIRECT_TIMEOUT"
-      );
+      const runDirectChat = async () => {
+        const directCtl = new AbortController();
+        streamCtlRef.current = directCtl;
+
+        let timeoutId = null;
+        try {
+          timeoutId = window.setTimeout(() => {
+            try {
+              directCtl.abort();
+            } catch {}
+          }, CHAT_STREAM_TIMEOUT_MS);
+
+          return await chat({
+            token,
+            org: tenant,
+            thread_id: threadId,
+            message: finalMsg,
+            agent_id: destinationContract.agent_id,
+            trace_id: traceId,
+            client_message_id: clientMessageId,
+            agent_ids: destinationContract.agent_ids,
+            dest_mode: destinationContract.dest_mode,
+            visible_agent: destinationContract.visible_agent,
+            target_agent_slug: destinationContract.target_agent_slug,
+            requested_agent_names: destinationContract.requested_agent_names,
+            signal: directCtl.signal,
+          });
+        } catch (err) {
+          if (directCtl.signal.aborted) {
+            const wrapped = err instanceof Error ? err : new Error(String(err || "CHAT_DIRECT_TIMEOUT"));
+            wrapped.code = "CHAT_DIRECT_TIMEOUT";
+            wrapped.wasAborted = true;
+            throw wrapped;
+          }
+          throw err;
+        } finally {
+          if (timeoutId) window.clearTimeout(timeoutId);
+        }
+      };
 
 
       const optimisticUserId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2604,7 +2624,9 @@ async function sendMessage(presetMsg = null, opts = {}) {
         {
           kind: "status",
           label: "Enviando para o runtime do Orkio",
-          detail: "Aguardando resposta do trilho principal.",
+          detail: ORKIO_CHAT_STREAM_PRIMARY
+            ? "Aguardando resposta do stream principal."
+            : "Aguardando resposta do trilho direto com timeout controlado.",
         },
       ]);
 
@@ -2616,6 +2638,12 @@ async function sendMessage(presetMsg = null, opts = {}) {
 
       if (ORKIO_CHAT_STREAM_PRIMARY) {
         try {
+          appendExecutionTrace({
+            kind: "system",
+            label: "Stream principal acionado",
+            detail: "Enviando via /api/chat/stream.",
+          });
+
           const streamResp = await withTimeout(chatStream({
             token,
             org: tenant,
@@ -2915,6 +2943,11 @@ async function sendMessage(presetMsg = null, opts = {}) {
 
       } else {
         try {
+          appendExecutionTrace({
+            kind: "system",
+            label: "Trilho direto acionado",
+            detail: "Enviando via /api/chat com timeout e abort controlados.",
+          });
           resp = await runDirectChat();
         } catch (directErr) {
           appendExecutionTrace({
