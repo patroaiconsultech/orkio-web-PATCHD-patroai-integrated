@@ -457,6 +457,81 @@ function normalizeMessageSpeaker(messageLike) {
   };
 }
 
+// METATRON_CHAT_ORDER_STABILITY
+// Mantém a ordem visual pergunta -> resposta mesmo quando o backend retorna mensagens
+// fora de ordem, com timestamps empatados ou quando a reconciliação pós-stream substitui
+// o histórico local pelo histórico persistido.
+function coerceMessageTimestamp(value) {
+  if (value == null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    // Backend pode retornar segundos; frontend local pode usar milissegundos.
+    return value > 10_000_000_000 ? value : value * 1000;
+  }
+
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+
+  const asNumber = Number(raw);
+  if (Number.isFinite(asNumber)) {
+    return asNumber > 10_000_000_000 ? asNumber : asNumber * 1000;
+  }
+
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function roleOrderForChat(role) {
+  const normalized = String(role || "").toLowerCase();
+  if (normalized === "user") return 10;
+  if (normalized === "assistant") return 20;
+  if (normalized === "agent") return 20;
+  if (normalized === "tool") return 30;
+  if (normalized === "system") return 40;
+  return 50;
+}
+
+function getMessageSortTimestamp(message, fallbackIndex = 0) {
+  const candidates = [
+    message?.client_created_at,
+    message?.created_at,
+    message?.createdAt,
+    message?.timestamp,
+    message?.updated_at,
+    message?.updatedAt,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = coerceMessageTimestamp(candidate);
+    if (parsed != null) return parsed;
+  }
+
+  return fallbackIndex;
+}
+
+function orderChatMessages(input) {
+  const list = Array.isArray(input) ? input : [];
+  return list
+    .map((message, index) => ({ message, index }))
+    .sort((a, b) => {
+      const ta = getMessageSortTimestamp(a.message, a.index);
+      const tb = getMessageSortTimestamp(b.message, b.index);
+
+      if (ta !== tb) return ta - tb;
+
+      const roleDelta = roleOrderForChat(a.message?.role) - roleOrderForChat(b.message?.role);
+      if (roleDelta !== 0) return roleDelta;
+
+      const clientOrderA = Number(a.message?.client_order ?? a.message?.clientOrder ?? NaN);
+      const clientOrderB = Number(b.message?.client_order ?? b.message?.clientOrder ?? NaN);
+      if (Number.isFinite(clientOrderA) && Number.isFinite(clientOrderB) && clientOrderA !== clientOrderB) {
+        return clientOrderA - clientOrderB;
+      }
+
+      return a.index - b.index;
+    })
+    .map((entry) => entry.message);
+}
+
 function logRealtimeStep(step, payload = undefined) {
   try {
     const stamp = new Date().toISOString();
@@ -1546,7 +1621,7 @@ useEffect(() => {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [rtcReadyToRespond]);
-  useEffect(() => { messagesRef.current = (messages || []); }, [messages]);
+  useEffect(() => { messagesRef.current = orderChatMessages(messages || []); }, [messages]);
 
 useEffect(() => {
   if (typeof window === "undefined" || !window.visualViewport) return undefined;
@@ -1711,9 +1786,11 @@ useEffect(() => {
         fetchOpts
       );
 
-      const normalized = Array.isArray(data)
-        ? data.map((item) => normalizeMessageSpeaker(item))
-        : [];
+      const normalized = orderChatMessages(
+        Array.isArray(data)
+          ? data.map((item) => normalizeMessageSpeaker(item))
+          : []
+      );
       const sameRequest = requestSeq === messagesLoadRequestRef.current;
       const sameRequestedThread = requestedThreadIdRef.current === targetId;
       const sameActiveThread =
@@ -2465,6 +2542,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
 
       const optimisticUserId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const draftAssistantId = `tmp-ass-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const optimisticBaseTime = Date.now();
 
       const initialDraftAgentName = resolveAssistantDisplayName(
         {
@@ -2483,14 +2561,18 @@ async function sendMessage(presetMsg = null, opts = {}) {
             role: "user",
             content: msg,
             user_name: user?.name || user?.email,
-            created_at: Math.floor(Date.now() / 1000),
+            created_at: optimisticBaseTime,
+            client_created_at: optimisticBaseTime,
+            client_order: optimisticBaseTime,
           },
           {
             id: draftAssistantId,
             role: "assistant",
             content: "⌛ Preparando resposta...",
             agent_name: initialDraftAgentName,
-            created_at: Math.floor(Date.now() / 1000),
+            created_at: optimisticBaseTime + 1,
+            client_created_at: optimisticBaseTime + 1,
+            client_order: optimisticBaseTime + 1,
           },
         ]);
         setText("");
@@ -5438,7 +5520,7 @@ async function stopRealtime(reason = 'client_stop') {
               </div>
             </div>
           ) : (
-            messages.map((m) => (
+            orderChatMessages(messages).map((m) => (
               <div
                 key={m.id}
                 style={{
