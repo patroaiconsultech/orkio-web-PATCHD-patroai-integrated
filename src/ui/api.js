@@ -389,6 +389,9 @@ export const chat = ({
     method: "POST",
     token,
     org: org || tenant,
+    // METATRON_CHAT_SSE_CORS_EDGE_PATCH:
+    // Direct chat is only a diagnostic fallback; never send cookies cross-origin.
+    credentials: "omit",
     signal,
     body: {
       thread_id,
@@ -436,10 +439,11 @@ export async function chatStream({
           Accept: "text/event-stream",
         },
       }),
-      // METATRON: bearer-token auth only; do not force cross-origin cookies on SSE.
-      // Keeping this aligned with apiFetch avoids credentialed-CORS edge cases
-      // where preflight succeeds but the browser never proceeds cleanly to POST.
-      credentials: "same-origin",
+      // METATRON_CHAT_SSE_CORS_EDGE_PATCH:
+      // Cross-origin SSE uses bearer-token auth only. Do not send cookies.
+      // This prevents credentialed-CORS/proxy edge cases where preflight succeeds
+      // but Chrome keeps the POST in provisional/pending state.
+      credentials: "omit",
       signal,
       body: JSON.stringify({
         thread_id,
