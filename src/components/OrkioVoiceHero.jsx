@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import OrkioSphereMark from "../ui/OrkioSphereMark.jsx";
 import PricingCheckoutModal from "../ui/PricingCheckoutModal.jsx";
-import { coerceVoiceId } from "../lib/voices.js";
+import { ORKIO_DEFAULT_VOICE_ID, coerceTtsSpeed, coerceVoiceId } from "../lib/voices.js";
 
 const COPY = {
   "pt-BR": {
@@ -25,7 +25,7 @@ const COPY = {
       "Mostre a prioridade mais importante desta semana",
     ],
     speech:
-      "Bem-vindo ao Orkio. Estou pronto para organizar clareza, direção e próximos passos com você.",
+      "Olá, eu sou a Orkio. Respira comigo por um instante. Eu estou aqui para trazer clareza, direção e próximos passos — com calma, presença e precisão.",
   },
   "en-US": {
     kicker: "PatroAI presents Orkio",
@@ -48,7 +48,7 @@ const COPY = {
       "Show me the most important priority this week",
     ],
     speech:
-      "Welcome to Orkio. I’m ready to bring clarity, direction, and the next best steps into focus.",
+      "Hello, I’m Orkio. Take a breath with me. I’m here to bring clarity, direction, and the next best steps — calmly, clearly, and with presence.",
   },
 };
 
@@ -86,8 +86,13 @@ export default function OrkioVoiceHero({
   const resolvedVoice = useMemo(() => {
     const env = typeof window !== "undefined" && window.__ORKIO_ENV__ ? window.__ORKIO_ENV__ : {};
     return coerceVoiceId(
-      (env.VITE_ORKIO_VOICE_ID || import.meta.env.VITE_ORKIO_VOICE_ID || env.VITE_REALTIME_VOICE || import.meta.env.VITE_REALTIME_VOICE || "cedar").trim()
+      (env.VITE_ORKIO_VOICE_ID || import.meta.env.VITE_ORKIO_VOICE_ID || env.VITE_REALTIME_VOICE || import.meta.env.VITE_REALTIME_VOICE || ORKIO_DEFAULT_VOICE_ID).trim()
     );
+  }, []);
+
+  const resolvedTtsSpeed = useMemo(() => {
+    const env = typeof window !== "undefined" && window.__ORKIO_ENV__ ? window.__ORKIO_ENV__ : {};
+    return coerceTtsSpeed(env.VITE_ORKIO_TTS_SPEED || import.meta.env.VITE_ORKIO_TTS_SPEED || 0.92);
   }, []);
 
   async function speak() {
@@ -107,7 +112,7 @@ export default function OrkioVoiceHero({
         body: JSON.stringify({
           text: copy.speech,
           voice: resolvedVoice,
-          speed: 1.0,
+          speed: resolvedTtsSpeed,
         }),
       });
       if (!res.ok) throw new Error(`TTS ${res.status}`);
