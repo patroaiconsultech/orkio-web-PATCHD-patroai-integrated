@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, uploadFile, chat, chatStream, transcribeAudio, requestFounderHandoff, getRealtimeClientSecret, startRealtimeSession, startSummitSession, postRealtimeEventsBatch, endRealtimeSession, getRealtimeSession, getSummitSessionScore, submitSummitSessionReview, downloadRealtimeAta as downloadRealtimeAtaFile, guardRealtimeTranscript, getOrionSquadHealth, getOrionSquadPreview, getAgentCapabilities } from "../ui/api.js";
 import { clearSession, getTenant, getToken, getUser, isAdmin, isApproved, setSession, logout } from "../lib/auth.js";
-import { ORKIO_VOICES, coerceVoiceId } from "../lib/voices.js";
+import { ORKIO_DEFAULT_TTS_SPEED, ORKIO_DEFAULT_VOICE_ID, ORKIO_VOICES, coerceTtsSpeed, coerceVoiceId } from "../lib/voices.js";
 import TermsModal from "../ui/TermsModal.jsx";
 import PWAInstallPrompt from "../components/PWAInstallPrompt.jsx";
 import OnboardingModal from "../components/OnboardingModal.jsx";
@@ -17,12 +17,8 @@ const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.
 const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || import.meta.env.VITE_SPEECH_RECOGNITION_LANG || "pt-BR").trim() || "pt-BR");
 
 
-// METATRON P0: for controlled self-evolution and agent runtime, the only safe
-// primary rail is SSE `/api/chat/stream`.
-// `/api/chat` is a legacy direct rail and was observed hanging after OPTIONS,
-// so it must not be used as automatic fallback in production.
-const ORKIO_CHAT_STREAM_PRIMARY = true;
-const ORKIO_ALLOW_DIRECT_CHAT_FALLBACK = false;
+// AO-01 FORCE DIRECT RAIL: disable SSE stream in web until /api/chat/stream POST is stable.
+const ORKIO_CHAT_STREAM_PRIMARY = false;
 const CHAT_STREAM_TIMEOUT_MS = Math.max(
   15000,
   Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 45000) || 45000
@@ -178,32 +174,6 @@ async function consumeChatStream(
     if (doneSeen) break;
   }
   if (!doneSeen && buf.trim()) flushBlock(buf);
-
-  // METATRON PATCH:
-  // Never leave the UI in "Gerando resposta..." when the SSE connection closes
-  // without an explicit `event: done`. This is a UI guard only; it does not
-  // pretend that runtime execution succeeded. It finalizes the turn and lets
-  // the normal reconcile/loadMessages path pull any persisted assistant answer.
-  if (!doneSeen) {
-    const syntheticDone = {
-      thread_id: lastThreadId || null,
-      trace_id: lastTraceId || null,
-      final_text: draftText || "",
-      done: true,
-      assistant_persisted: false,
-      synthetic_done: true,
-      code: "STREAM_CLOSED_WITHOUT_DONE",
-      runtime_hints: {
-        routing: {
-          stream_closed_without_done: true,
-          event_count: eventCount,
-        },
-      },
-    };
-    donePayload = syntheticDone;
-    try { onDone?.(syntheticDone); } catch {}
-  }
-
   return {
     thread_id: donePayload?.thread_id || lastThreadId,
     trace_id: donePayload?.trace_id || lastTraceId,
@@ -236,18 +206,18 @@ function resolveRealtimeIdleDisplayName(userObj) {
 }
 
 
-function normalizeAgentVoiceId(raw, fallback = "cedar") {
+function normalizeAgentVoiceId(raw, fallback = ORKIO_DEFAULT_VOICE_ID) {
   const voice = String(raw || "").trim().toLowerCase();
   const aliases = {
     marine: "marin",
     marin: "marin",
-    nova: "cedar",
+    nova: "shimmer",
     onyx: "echo",
     fable: "sage",
   };
   const valid = new Set(["alloy","ash","ballad","cedar","coral","echo","fable","marin","nova","onyx","sage","shimmer","verse"]);
   const normalized = aliases[voice] || voice;
-  return valid.has(normalized) ? normalized : (String(fallback || "cedar").trim().toLowerCase() || "cedar");
+  return valid.has(normalized) ? normalized : (String(fallback || ORKIO_DEFAULT_VOICE_ID).trim().toLowerCase() || ORKIO_DEFAULT_VOICE_ID);
 }
 
 
@@ -390,7 +360,7 @@ function resolveAgentVoice(agentLike) {
     chris: (window.__ORKIO_ENV__?.VITE_CHRIS_VOICE_ID || import.meta.env.VITE_CHRIS_VOICE_ID || "").trim(),
     orion: (window.__ORKIO_ENV__?.VITE_ORION_VOICE_ID || import.meta.env.VITE_ORION_VOICE_ID || "").trim(),
   };
-  const defaultVoice = (window.__ORKIO_ENV__?.VITE_REALTIME_VOICE || import.meta.env.VITE_REALTIME_VOICE || "cedar").trim() || "cedar";
+  const defaultVoice = (window.__ORKIO_ENV__?.VITE_REALTIME_VOICE || import.meta.env.VITE_REALTIME_VOICE || ORKIO_DEFAULT_VOICE_ID).trim() || ORKIO_DEFAULT_VOICE_ID;
   return normalizeAgentVoiceId(dbVoice || envMap[name] || defaultVoice, defaultVoice);
 }
 
@@ -1229,7 +1199,7 @@ const messagesEndRef = useRef(null);
   const voiceModeRef = useRef(SUMMIT_VOICE_MODE === "stt_tts");
   const [ttsPlaying, setTtsPlaying] = useState(false);
   const ttsAudioRef = useRef(null);
-  const [ttsVoice, setTtsVoice] = useState(localStorage.getItem('orkio_tts_voice') || 'nova');
+  const [ttsVoice, setTtsVoice] = useState(localStorage.getItem('orkio_tts_voice') || ORKIO_DEFAULT_VOICE_ID);
   const lastSpokenMsgRef = useRef('');
   const lastSpokenMessageIdRef = useRef(null);
   const micRestartTimeoutRef = useRef(null);
@@ -1256,7 +1226,7 @@ const messagesEndRef = useRef(null);
   const [rtcReadyToRespond, setRtcReadyToRespond] = useState(false);
   const rtcLastFinalTranscriptRef = useRef("");
   const rtcMagicEnabledRef = useRef(true);
-  const rtcVoiceRef = useRef("cedar");
+  const rtcVoiceRef = useRef(ORKIO_DEFAULT_VOICE_ID);
   const rtcAudioTranscriptBufRef = useRef("");
   const rtcLastAssistantFinalRef = useRef("");
   const rtcAssistantFinalCommittedRef = useRef(false);
@@ -2466,40 +2436,31 @@ async function sendMessage(presetMsg = null, opts = {}) {
       };
 
       const describeDirectRailError = (err) => {
-        if (err?.code === "CHAT_DIRECT_FALLBACK_DISABLED") return "Fallback direto /api/chat bloqueado por governança; o fluxo deve usar /api/chat/stream.";
         if (err?.code === "CHAT_DIRECT_TIMEOUT") return "O fallback direto excedeu o tempo limite.";
         if (err?.code === "NETWORK_FETCH_FAILED") return "Falha de rede ao executar a resposta direta.";
         if (err?.code === "FETCH_ABORTED") return "A resposta direta foi abortada antes da conclusão.";
         return err?.message || "Não foi possível concluir a resposta direta.";
       };
 
-      const runDirectChat = async () => {
-        if (!ORKIO_ALLOW_DIRECT_CHAT_FALLBACK) {
-          const err = new Error("Fallback direto /api/chat bloqueado. Use o trilho governado /api/chat/stream.");
-          err.code = "CHAT_DIRECT_FALLBACK_DISABLED";
-          err.status = 409;
-          throw err;
-        }
-        return withTimeout(
-          chat({
-            token,
-            org: tenant,
-            thread_id: threadId,
-            message: finalMsg,
-            agent_id: destinationContract.agent_id,
-            trace_id: traceId,
-            client_message_id: clientMessageId,
-            agent_ids: destinationContract.agent_ids,
-            dest_mode: destinationContract.dest_mode,
-            visible_agent: destinationContract.visible_agent,
-            target_agent_slug: destinationContract.target_agent_slug,
-            requested_agent_names: destinationContract.requested_agent_names,
-            signal: allocDirectRailSignal(),
-          }),
-          CHAT_STREAM_TIMEOUT_MS,
-          "CHAT_DIRECT_TIMEOUT"
-        );
-      };
+      const runDirectChat = async () => withTimeout(
+        chat({
+          token,
+          org: tenant,
+          thread_id: threadId,
+          message: finalMsg,
+          agent_id: destinationContract.agent_id,
+          trace_id: traceId,
+          client_message_id: clientMessageId,
+          agent_ids: destinationContract.agent_ids,
+          dest_mode: destinationContract.dest_mode,
+          visible_agent: destinationContract.visible_agent,
+          target_agent_slug: destinationContract.target_agent_slug,
+          requested_agent_names: destinationContract.requested_agent_names,
+          signal: allocDirectRailSignal(),
+        }),
+        CHAT_STREAM_TIMEOUT_MS,
+        "CHAT_DIRECT_TIMEOUT"
+      );
 
 
       const optimisticUserId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -3731,10 +3692,10 @@ function scheduleRealtimeIdleFollowup() {
       const magicEnabled = (ORKIO_ENV.VITE_REALTIME_MAGICWORDS || import.meta.env.VITE_REALTIME_MAGICWORDS || "true").toString().trim().toLowerCase() !== "false";
       rtcMagicEnabledRef.current = magicEnabled;
 
-      // Voice priority: agent.voice_id (Admin) > env default > fallback ("cedar")
+      // Voice priority: agent.voice_id (Admin) > env default > fallback Orkio warmth preset
       const selectedAgentObj = (agents || []).find(a => String(a.id) === String(agentIdToSend));
       const agentVoice = ((selectedAgentObj?.voice_id || selectedAgentObj?.voice || selectedAgentObj?.tts_voice || selectedAgentObj?.voiceId || "")).toString().trim();
-      const rtVoice = coerceVoiceId(agentVoice || envVoice || "cedar");
+      const rtVoice = coerceVoiceId(agentVoice || envVoice || ORKIO_DEFAULT_VOICE_ID);
       rtcVoiceRef.current = rtVoice;
 
       // PATCH stage-quality: explicit Summit mode without hardcoding contracts in-component
@@ -4564,6 +4525,11 @@ async function stopRealtime(reason = 'client_stop') {
       };
       if (effectiveTrace) ttsHeaders['X-Trace-Id'] = effectiveTrace;
 
+      const ORKIO_ENV = (typeof window !== "undefined" && window.__ORKIO_ENV__) ? window.__ORKIO_ENV__ : {};
+      const ttsSpeed = coerceTtsSpeed(
+        ORKIO_ENV.VITE_ORKIO_TTS_SPEED || import.meta.env.VITE_ORKIO_TTS_SPEED || ORKIO_DEFAULT_TTS_SPEED
+      );
+
       const res = await fetch(`${apiUrl}/api/tts`, {
         method: 'POST',
         headers: ttsHeaders,
@@ -4572,7 +4538,7 @@ async function stopRealtime(reason = 'client_stop') {
         body: JSON.stringify({
           text: clean,
           voice: voiceOverride ? resolveAgentVoice({ voice_id: voiceOverride }) : ((forceAuto || messageId) ? null : (ttsVoice === "auto" ? null : ttsVoice)),
-          speed: 1.0,
+          speed: ttsSpeed,
           agent_id: messageId ? null : (agentId || null),
           message_id: messageId || null,
         }),
