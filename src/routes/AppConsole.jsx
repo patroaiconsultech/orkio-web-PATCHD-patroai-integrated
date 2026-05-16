@@ -17,14 +17,11 @@ const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.
 const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || import.meta.env.VITE_SPEECH_RECOGNITION_LANG || "pt-BR").trim() || "pt-BR");
 
 
-// METATRON_CHAT_FORCE_STREAM_AND_TIMEOUT
-// Stream is the primary rail again. Direct /api/chat is kept only as a controlled
-// fallback because Chrome can leave the direct POST stuck after a successful CORS preflight.
-const ORKIO_CHAT_STREAM_PRIMARY = (
-  String(ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import.meta.env.VITE_CHAT_STREAM_PRIMARY || "true")
-    .trim()
-    .toLowerCase() !== "false"
-);
+// METATRON_CHAT_FORCE_STREAM_AND_TIMEOUT_HARD
+// Stream is forced as the primary rail. Do not read VITE_CHAT_STREAM_PRIMARY here:
+// production currently has a stale/runtime value that keeps sending normal chat
+// turns to /api/chat, where Chrome leaves the POST stuck after a successful preflight.
+const ORKIO_CHAT_STREAM_PRIMARY = true;
 const CHAT_STREAM_TIMEOUT_MS = Math.max(
   15000,
   Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 45000) || 45000
