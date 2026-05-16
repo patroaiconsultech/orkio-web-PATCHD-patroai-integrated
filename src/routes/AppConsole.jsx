@@ -17,22 +17,26 @@ const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.
 const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || import.meta.env.VITE_SPEECH_RECOGNITION_LANG || "pt-BR").trim() || "pt-BR");
 
 
-// METATRON_CHAT_FORCE_STREAM_AND_TIMEOUT_HARD
-// Stream is forced as the primary rail. Do not read VITE_CHAT_STREAM_PRIMARY here:
-// production currently has a stale/runtime value that keeps sending normal chat
-// turns to /api/chat, where Chrome leaves the POST stuck after a successful preflight.
-const ORKIO_CHAT_STREAM_PRIMARY = true;
+// METATRON_CHAT_FORCE_STREAM_AND_TIMEOUT
+// Auditoria 16/05: o stream estava sendo abortado cedo demais pelo connect timeout
+// de 15s. Mantemos /api/chat/stream como rail primário e ampliamos a janela de
+// conexão/turno para permitir respostas multiagente sem cancelar prematuramente.
+const ORKIO_CHAT_STREAM_PRIMARY = (
+  String(ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import.meta.env.VITE_CHAT_STREAM_PRIMARY || "true")
+    .trim()
+    .toLowerCase() !== "false"
+);
 const CHAT_STREAM_TIMEOUT_MS = Math.max(
-  15000,
-  Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 45000) || 45000
+  30000,
+  Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 120000) || 120000
 );
 const CHAT_STREAM_CONNECT_TIMEOUT_MS = Math.max(
-  5000,
-  Number(ORKIO_ENV.VITE_CHAT_STREAM_CONNECT_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_CONNECT_TIMEOUT_MS || 15000) || 15000
+  30000,
+  Number(ORKIO_ENV.VITE_CHAT_STREAM_CONNECT_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_CONNECT_TIMEOUT_MS || 90000) || 90000
 );
 const CHAT_TURN_RECONCILE_ATTEMPTS = Math.max(
   1,
-  Number(ORKIO_ENV.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || import.meta.env.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || 3) || 3
+  Number(ORKIO_ENV.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || import.meta.env.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || 2) || 2
 );
 
 const WALLET_UI_ENABLED = false;
