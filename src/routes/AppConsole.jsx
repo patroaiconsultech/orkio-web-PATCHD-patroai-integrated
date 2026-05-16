@@ -39,6 +39,12 @@ const CHAT_TURN_RECONCILE_ATTEMPTS = Math.max(
   Number(ORKIO_ENV.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || import.meta.env.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || 2) || 2
 );
 
+// METATRON_CHAT_SSE_CORS_EDGE_PATCH
+// Auditoria atual: o fallback /api/chat mascara o erro real do SSE e pode ficar
+// pending depois de preflight. Durante a validação, o chat deve usar somente
+// /api/chat/stream; se o stream falhar, a UI deve liberar o input e mostrar erro.
+const ORKIO_CHAT_DIRECT_FALLBACK_ENABLED = false;
+
 const WALLET_UI_ENABLED = false;
 
 const EMPTY_STATE_PREVIEW_STEPS = [
@@ -2520,6 +2526,26 @@ async function sendMessage(presetMsg = null, opts = {}) {
         return err?.message || "Não foi possível concluir a resposta direta.";
       };
 
+      const failStreamWithoutDirectFallback = (reason = "CHAT_STREAM_FAILED_NO_DIRECT_FALLBACK") => {
+        const err = new Error(reason);
+        err.code = reason;
+        appendExecutionTrace({
+          kind: "error",
+          label: "Stream não estabilizou",
+          detail: "Fallback /api/chat desativado para auditoria. Corrija CORS/proxy/SSE antes de reativar o trilho direto.",
+        });
+        setMessages((prev) => (Array.isArray(prev) ? prev : []).map((m) => (
+          m.id === draftAssistantId
+            ? {
+                ...m,
+                content: "O stream principal não estabilizou. O fallback direto está temporariamente desativado para não mascarar o erro real. Revise Network/CORS e tente novamente.",
+                agent_name: "Orkio",
+              }
+            : m
+        )));
+        throw err;
+      };
+
       const runDirectChat = async () => {
         const directCtl = new AbortController();
         streamCtlRef.current = directCtl;
@@ -2846,6 +2872,9 @@ async function sendMessage(presetMsg = null, opts = {}) {
                 },
               };
             } else {
+              if (!ORKIO_CHAT_DIRECT_FALLBACK_ENABLED) {
+                failStreamWithoutDirectFallback("CHAT_STREAM_FAILED_NO_DIRECT_FALLBACK");
+              }
               appendExecutionTrace({
                 kind: "system",
                 label: "Alternando para resposta direta",
@@ -2924,6 +2953,9 @@ async function sendMessage(presetMsg = null, opts = {}) {
             }
             return;
           } else {
+            if (!ORKIO_CHAT_DIRECT_FALLBACK_ENABLED) {
+              failStreamWithoutDirectFallback("CHAT_STREAM_DEGRADED_NO_DIRECT_FALLBACK");
+            }
             appendExecutionTrace({
               kind: "system",
               label: "Alternando para resposta direta",
@@ -2943,6 +2975,9 @@ async function sendMessage(presetMsg = null, opts = {}) {
         }
 
       } else {
+        if (!ORKIO_CHAT_DIRECT_FALLBACK_ENABLED) {
+          failStreamWithoutDirectFallback("CHAT_STREAM_PRIMARY_DISABLED_DIRECT_FALLBACK_DISABLED");
+        }
         try {
           appendExecutionTrace({
             kind: "system",
@@ -3176,6 +3211,15 @@ async function sendMessage(presetMsg = null, opts = {}) {
         }
         setV2vPhase(null);
         setV2vError(null);
+        return;
+      }
+      if (
+        e?.code === "CHAT_STREAM_FAILED_NO_DIRECT_FALLBACK" ||
+        e?.code === "CHAT_STREAM_DEGRADED_NO_DIRECT_FALLBACK" ||
+        e?.code === "CHAT_STREAM_PRIMARY_DISABLED_DIRECT_FALLBACK_DISABLED"
+      ) {
+        setV2vPhase("error");
+        setV2vError("Stream não estabilizou. Fallback direto está desativado para auditoria.");
         return;
       }
       if (e?.status === 429 || e?.code === "RATE_LIMITED" || e?.isRateLimited) {
