@@ -188,7 +188,7 @@ export default function PatroaiLanding() {
         .float-whatsapp{position:fixed;right:22px;bottom:22px;width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:#1bd741;color:#041008;text-decoration:none;font-weight:900;box-shadow:0 0 32px rgba(27,215,65,.38);z-index:40}.float-whatsapp::before{content:"☎";font-size:25px}
         @keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{50%{transform:scale(1.035);opacity:.8}}@keyframes blink{0%,96%,100%{transform:scaleY(1)}98%{transform:scaleY(.25)}}
         @media (max-width:1180px){.hero,.orkio-grid,.contact{grid-template-columns:1fr}.nav{display:none}.core-wrap{min-height:440px}.pillar-row,.cards{grid-template-columns:1fr 1fr}.avatar-card{max-width:480px}.orkio-nav{flex-wrap:wrap}.topbar{height:auto;padding:22px 0}.site::before{display:none}}
-        @media (max-width:720px){.site{width:min(100% - 28px,1510px)}.brand-word strong{font-size:29px}.brand img{width:54px;height:54px}.top-actions{gap:8px}.top-actions .btn.outline{display:none}.hero{padding-top:28px}.copy h1{font-size:38px}.core-mark{width:360px}.core-particles i{transform:rotate(var(--r)) translateY(-165px)}.core-mark strong{font-size:48px}.pillar-row,.cards,.contact-form{grid-template-columns:1fr}.pillar{border-right:0;border-bottom:1px solid rgba(255,255,255,.08)}.orkio-nav nav{display:none}.orkio-logo span{font-size:30px}.contact{padding-bottom:90px}}
+        @media (max-width:720px){.site{width:min(100% - 28px,1510px)}.brand-word strong{font-size:29px}.brand img{width:54px;height:54px}.top-actions{gap:8px;flex-wrap:wrap;justify-content:flex-end}.top-actions .login-top-btn{display:inline-flex;padding:12px 16px}.top-actions .topbar-demo-btn{display:none}.hero{padding-top:28px}.copy h1{font-size:38px}.core-mark{width:360px}.core-particles i{transform:rotate(var(--r)) translateY(-165px)}.core-mark strong{font-size:48px}.pillar-row,.cards,.contact-form{grid-template-columns:1fr}.pillar{border-right:0;border-bottom:1px solid rgba(255,255,255,.08)}.orkio-nav nav{display:none}.orkio-logo span{font-size:30px}.contact{padding-bottom:90px}}
       `}</style>
 
       <div className="site">
@@ -203,8 +203,8 @@ export default function PatroaiLanding() {
             ))}
           </nav>
           <div className="top-actions">
-            <button className="btn outline" onClick={() => go("/auth?mode=login")}>Login</button>
-            <button className="btn gold" onClick={() => setContactOpen(true)}>{t.primary} →</button>
+            <button className="btn outline login-top-btn" onClick={() => go("/auth?mode=login&source=patroai-landing")}>Login</button>
+            <button className="btn gold topbar-demo-btn" onClick={() => setContactOpen(true)}>{t.primary} →</button>
             <button className="lang" onClick={() => setLang(lang === "pt" ? "en" : "pt")}>{lang === "pt" ? "EN" : "PT"}</button>
           </div>
         </header>
@@ -216,6 +216,7 @@ export default function PatroaiLanding() {
             <p>{t.subtitle}</p>
             <div className="row-actions">
               <button className="btn gold" onClick={() => setContactOpen(true)}>{t.primary} →</button>
+              <button className="btn outline login-hero-btn" onClick={() => go("/auth?mode=login&source=patroai-landing")}>{lang === "pt" ? "Entrar" : "Login"}</button>
               <button className="btn outline" onClick={() => document.getElementById("platform")?.scrollIntoView({behavior:"smooth"})}>{t.secondary} ▶</button>
             </div>
           </div>
