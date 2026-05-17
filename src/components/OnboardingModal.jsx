@@ -2,33 +2,33 @@ import React, { useMemo, useState } from "react";
 import { getTenant, getToken } from "../lib/auth.js";
 
 const USER_TYPES = [
-  { value: "founder", label: "Founder" },
-  { value: "investor", label: "Investor" },
-  { value: "operator", label: "Operator" },
-  { value: "partner", label: "Partner" },
-  { value: "other", label: "Other" },
+  { value: "founder", label: "Fundador(a)" },
+  { value: "investor", label: "Investidor(a)" },
+  { value: "operator", label: "Operador(a)" },
+  { value: "partner", label: "Parceiro(a)" },
+  { value: "other", label: "Outro" },
 ];
 
 const INTENTS = [
-  { value: "explore", label: "Explore the platform" },
-  { value: "meeting", label: "Schedule a conversation" },
-  { value: "pilot", label: "Evaluate a pilot" },
-  { value: "funding", label: "Discuss investment" },
-  { value: "enterprise", label: "Enterprise / White Label / Integrations" },
-  { value: "other", label: "Other" },
+  { value: "explore", label: "Explorar a plataforma" },
+  { value: "meeting", label: "Agendar uma conversa" },
+  { value: "pilot", label: "Avaliar um piloto" },
+  { value: "funding", label: "Discutir investimento" },
+  { value: "enterprise", label: "Enterprise / White Label / Integrações" },
+  { value: "other", label: "Outro" },
 ];
 
 const COUNTRIES = [
-  { value: "BR", label: "Brazil" },
-  { value: "US", label: "United States" },
-  { value: "ES", label: "Spain" },
+  { value: "BR", label: "Brasil" },
+  { value: "US", label: "Estados Unidos" },
+  { value: "ES", label: "Espanha" },
   { value: "PT", label: "Portugal" },
   { value: "AR", label: "Argentina" },
-  { value: "MX", label: "Mexico" },
-  { value: "CO", label: "Colombia" },
+  { value: "MX", label: "México" },
+  { value: "CO", label: "Colômbia" },
   { value: "CL", label: "Chile" },
-  { value: "UY", label: "Uruguay" },
-  { value: "OTHER", label: "Other" },
+  { value: "UY", label: "Uruguai" },
+  { value: "OTHER", label: "Outro" },
 ];
 
 const LANGUAGES = [
@@ -264,7 +264,7 @@ const optionStyle = {
   color: "#0f172a",
 };
 
-export default function OnboardingModal({ user, onComplete }) {
+export default function OnboardingModal({ user, onComplete, onClose }) {
   const prechat = useMemo(() => readPrechatContext(), []);
   const [form, setForm] = useState(() => sanitizeOnboardingPayload(user, prechat));
   const [busy, setBusy] = useState(false);
@@ -345,7 +345,7 @@ export default function OnboardingModal({ user, onComplete }) {
 
       onComplete?.(nextUser);
     } catch (err) {
-      setError(err?.message || "Could not save onboarding.");
+      setError(err?.message || "Não foi possível salvar o onboarding.");
     } finally {
       setBusy(false);
     }
@@ -434,7 +434,7 @@ export default function OnboardingModal({ user, onComplete }) {
           }}
         >
           <label>
-            <span style={labelStyle}>Company</span>
+            <span style={labelStyle}>Empresa</span>
             <input
               style={fieldStyle}
               value={form.company}
@@ -444,7 +444,7 @@ export default function OnboardingModal({ user, onComplete }) {
           </label>
 
           <label>
-            <span style={labelStyle}>Role</span>
+            <span style={labelStyle}>Cargo</span>
             <input
               style={fieldStyle}
               value={form.role}
@@ -484,7 +484,7 @@ export default function OnboardingModal({ user, onComplete }) {
           </label>
 
           <label>
-            <span style={labelStyle}>Country</span>
+            <span style={labelStyle}>País</span>
             <select
               style={fieldStyle}
               value={form.country}
@@ -506,7 +506,7 @@ export default function OnboardingModal({ user, onComplete }) {
           </label>
 
           <label>
-            <span style={labelStyle}>Language</span>
+            <span style={labelStyle}>Idioma</span>
             <select
               style={fieldStyle}
               value={form.language}
@@ -521,7 +521,7 @@ export default function OnboardingModal({ user, onComplete }) {
           </label>
 
           <label style={{ gridColumn: "1 / -1" }}>
-            <span style={labelStyle}>WhatsApp / phone</span>
+            <span style={labelStyle}>WhatsApp / telefone</span>
             <input
               style={fieldStyle}
               value={form.whatsapp}
@@ -531,12 +531,12 @@ export default function OnboardingModal({ user, onComplete }) {
           </label>
 
           <label style={{ gridColumn: "1 / -1" }}>
-            <span style={labelStyle}>Context notes</span>
+            <span style={labelStyle}>Observações de contexto</span>
             <textarea
               style={{ ...fieldStyle, minHeight: 138, resize: "vertical", lineHeight: 1.5 }}
               value={form.notes}
               onChange={(e) => setField("notes", e.target.value)}
-              placeholder="Business context, goals, integrations, white-label needs..."
+              placeholder="Contexto do negócio, objetivos, integrações e necessidades de white-label..."
             />
           </label>
         </div>
@@ -584,6 +584,21 @@ export default function OnboardingModal({ user, onComplete }) {
           }}
         >
           <button
+            type="button"
+            onClick={() => onClose?.()}
+            style={{
+              border: "1px solid #cbd5e1",
+              borderRadius: 14,
+              background: "#ffffff",
+              color: "#0f172a",
+              padding: "14px 18px",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            Fechar por agora
+          </button>
+          <button
             type="submit"
             disabled={busy}
             style={{
@@ -599,7 +614,7 @@ export default function OnboardingModal({ user, onComplete }) {
               boxShadow: "0 12px 28px rgba(37,99,235,0.22)",
             }}
           >
-            {busy ? "Saving..." : "Continue inside Orkio OS"}
+            {busy ? "Salvando..." : "Continuar no Orkio OS"}
           </button>
         </div>
       </form>
