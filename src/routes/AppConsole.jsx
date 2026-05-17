@@ -171,8 +171,23 @@ async function consumeChatStream(
     if (ev === "keepalive") onKeepalive?.(payload);
     if (ev === "error") {
       onError?.(payload);
+
+      // METATRON_CHAT_STREAM_TERMINAL_GUARD_CLIENT
+      // O backend pode emitir um erro operacional recuperável e, em seguida,
+      // enviar chunk/agent_done/done para liberar a UI com mensagem segura.
+      // Não devemos abortar o parser nesses códigos; devemos continuar lendo
+      // até o event: done.
+      const recoverableCodes = new Set([
+        "CHAT_STREAM_TERMINAL_TIMEOUT",
+        "CHAT_STREAM_RUNTIME_TIMEOUT",
+        "CHAT_STREAM_RECOVERY_DONE",
+        "STREAM_RECOVERED_WITH_OPERATIONAL_MESSAGE",
+      ]);
+
       const agentScopedRecoverableError = !!payload?.agent_id && payload?.code !== "SERVER_BUSY";
-      if (!agentScopedRecoverableError) {
+      const terminalRecoverableError = recoverableCodes.has(String(payload?.code || ""));
+
+      if (!agentScopedRecoverableError && !terminalRecoverableError) {
         throw new StreamSemanticError(payload);
       }
     }
