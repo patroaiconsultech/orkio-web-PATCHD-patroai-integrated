@@ -1047,6 +1047,7 @@ const [onboardingStatus, setOnboardingStatus] = useState("");
 const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingForm(user));
   const [health, setHealth] = useState("checking");
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth <= 820 : false);
+  const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
 
   const [threads, setThreads] = useState([]);
   const [threadId, setThreadId] = useState("");
@@ -1555,6 +1556,12 @@ useEffect(() => {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileThreadsOpen(false);
+    }
+  }, [isMobile]);
 
   useEffect(() => {
     if (SUMMIT_VOICE_MODE === "stt_tts") {
@@ -4918,6 +4925,44 @@ async function stopRealtime(reason = 'client_stop') {
       padding: "16px",
       gap: "12px",
     },
+    mobileSidebarBackdrop: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(3,6,12,0.56)",
+      backdropFilter: "blur(6px)",
+      zIndex: 80,
+    },
+    mobileSidebar: {
+      position: "fixed",
+      top: 0,
+      left: 0,
+      bottom: 0,
+      width: "min(92vw, 360px)",
+      borderRight: "1px solid rgba(255,255,255,0.08)",
+      background: "linear-gradient(180deg, rgba(5,6,10,0.98), rgba(3,3,10,0.98))",
+      display: "flex",
+      flexDirection: "column",
+      padding: "16px",
+      gap: "12px",
+      zIndex: 81,
+      boxShadow: "0 28px 80px rgba(0,0,0,0.45)",
+    },
+    mobileSidebarHeader: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: "12px",
+    },
+    mobileTopbarBtn: {
+      border: "1px solid rgba(255,255,255,0.14)",
+      background: "rgba(255,255,255,0.08)",
+      color: "#fff",
+      minHeight: 40,
+      padding: "8px 12px",
+      borderRadius: 12,
+      fontWeight: 700,
+      cursor: "pointer",
+    },
     brand: { fontSize: "18px", fontWeight: 800, letterSpacing: "-0.02em" },
     badge: {
       display: "inline-flex",
@@ -5259,6 +5304,50 @@ async function stopRealtime(reason = 'client_stop') {
     return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#0f1115", color: "#fff", fontFamily: "system-ui" }}>Carregando sua experiência...</div>;
   }
 
+  function renderThreadList(handleSelectThread) {
+    if (threads.length === 0) {
+      return <div style={styles.emptyThreads}>Nenhuma conversa ainda.</div>;
+    }
+
+    return threads.map((t) => (
+      <button
+        key={t.id}
+        onClick={() => handleSelectThread(String(t?.id || ""))}
+        style={{
+          ...styles.threadItem,
+          ...(t.id === threadId ? styles.threadItemActive : {}),
+        }}
+      >
+        <IconMessage />
+        <span style={styles.threadTitle}>{t.title}</span>
+        <button
+          style={styles.threadEditBtn}
+          onClick={(e) => { e.stopPropagation(); renameThread(t.id); }}
+          title="Renomear conversa"
+        >
+          <IconEdit />
+        </button>
+        <button
+          style={styles.threadEditBtn}
+          onClick={(e) => { e.stopPropagation(); deleteThread(t.id); }}
+          title="Deletar conversa"
+        >
+          <IconTrash />
+        </button>
+      </button>
+    ));
+  }
+
+  function openThreadFromList(nextId) {
+    if (!nextId) return;
+    if (nextId !== String(activeThreadIdRef.current || threadId || "")) {
+      activateThread(nextId, { clearMessages: true, persist: true, lockMs: 15000 });
+    }
+    if (isMobile) {
+      setMobileThreadsOpen(false);
+    }
+  }
+
   return (
     <>
     <PWAInstallPrompt />
@@ -5337,42 +5426,7 @@ async function stopRealtime(reason = 'client_stop') {
         </div>
 
         <div style={styles.threads}>
-          {threads.length === 0 ? (
-            <div style={styles.emptyThreads}>Nenhuma conversa ainda.</div>
-          ) : (
-            threads.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => {
-                  const nextId = String(t?.id || "");
-                  if (nextId && nextId !== String(activeThreadIdRef.current || threadId || "")) {
-                    activateThread(nextId, { clearMessages: true, persist: true, lockMs: 15000 });
-                  }
-                }}
-                style={{
-                  ...styles.threadItem,
-                  ...(t.id === threadId ? styles.threadItemActive : {}),
-                }}
-              >
-                <IconMessage />
-                <span style={styles.threadTitle}>{t.title}</span>
-                <button
-                  style={styles.threadEditBtn}
-                  onClick={(e) => { e.stopPropagation(); renameThread(t.id); }}
-                  title="Renomear conversa"
-                >
-                  <IconEdit />
-                </button>
-                <button
-                  style={styles.threadEditBtn}
-                  onClick={(e) => { e.stopPropagation(); deleteThread(t.id); }}
-                  title="Deletar conversa"
-                >
-                  <IconTrash />
-                </button>
-              </button>
-            ))
-          )}
+          {renderThreadList(openThreadFromList)}
         </div>
 
         <div style={styles.userSection}>
@@ -5402,6 +5456,39 @@ async function stopRealtime(reason = 'client_stop') {
         </div>
       </div>
 
+      {isMobile && mobileThreadsOpen ? (
+        <>
+          <div style={styles.mobileSidebarBackdrop} onClick={() => setMobileThreadsOpen(false)} />
+          <div style={styles.mobileSidebar}>
+            <div style={styles.mobileSidebarHeader}>
+              <div>
+                <div style={styles.brand}>Conversas</div>
+                <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <span style={styles.badge}>org: {tenant}</span>
+                  <span style={styles.badge}>{health === "ok" ? "ready" : health}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileThreadsOpen(false)}
+                style={styles.mobileTopbarBtn}
+                title="Fechar"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <button style={styles.newThreadBtn} onClick={() => { createThread(); setMobileThreadsOpen(false); }} title="Nova conversa">
+              <IconPlus /> Novo
+            </button>
+
+            <div style={styles.threads}>
+              {renderThreadList(openThreadFromList)}
+            </div>
+          </div>
+        </>
+      ) : null}
+
       {/* Main */}
       <div style={styles.main}>
         <div style={{ ...styles.topbar, padding: isMobile ? "12px 14px" : styles.topbar.padding }}>
@@ -5412,23 +5499,24 @@ async function stopRealtime(reason = 'client_stop') {
 
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: isMobile ? "wrap" : "nowrap", justifyContent: "flex-end" }}>
             {isMobile ? (
-              <button
-                type="button"
-                onClick={doLogout}
-                style={{
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.08)",
-                  color: "#fff",
-                  minHeight: 40,
-                  padding: "8px 12px",
-                  borderRadius: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-                title="Sair"
-              >
-                Sair
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setMobileThreadsOpen(true)}
+                  style={styles.mobileTopbarBtn}
+                  title="Abrir conversas"
+                >
+                  Chats
+                </button>
+                <button
+                  type="button"
+                  onClick={doLogout}
+                  style={styles.mobileTopbarBtn}
+                  title="Sair"
+                >
+                  Sair
+                </button>
+              </>
             ) : null}
             <select
               style={styles.select}
