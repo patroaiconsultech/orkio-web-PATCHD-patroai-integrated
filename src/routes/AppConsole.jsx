@@ -156,6 +156,9 @@ async function consumeChatStream(
     if (dataLines.length) {
       try { payload = JSON.parse(dataLines.join("\n")); } catch { payload = { raw: dataLines.join("\n") }; }
     }
+    try {
+      console.log("SSE_EVENT", ev, payload);
+    } catch {}
     if (signal?.aborted || isStale?.()) abortStream();
     if (payload?.thread_id) lastThreadId = payload.thread_id;
     if (payload?.trace_id) lastTraceId = payload.trace_id;
@@ -180,7 +183,10 @@ async function consumeChatStream(
       const recoverableCodes = new Set([
         "CHAT_STREAM_TERMINAL_TIMEOUT",
         "CHAT_STREAM_RUNTIME_TIMEOUT",
+        "CHAT_STREAM_BACKEND_TIMEOUT",
         "CHAT_STREAM_RECOVERY_DONE",
+        "CHAT_STREAM_RECOVERY_SHIM_FAILED",
+        "CHAT_STREAM_FATAL",
         "STREAM_RECOVERED_WITH_OPERATIONAL_MESSAGE",
       ]);
 
