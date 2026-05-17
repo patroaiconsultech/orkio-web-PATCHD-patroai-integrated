@@ -1045,10 +1045,9 @@ const [onboardingOpen, setOnboardingOpen] = useState(false);
 const [onboardingBusy, setOnboardingBusy] = useState(false);
 const [onboardingStatus, setOnboardingStatus] = useState("");
 const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingForm(user));
-  const CHAT_SIDEBAR_BREAKPOINT = 920;
   const [health, setHealth] = useState("checking");
-  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth <= CHAT_SIDEBAR_BREAKPOINT : false);
-  const [chatSidebarOpen, setChatSidebarOpen] = useState(typeof window !== "undefined" ? window.innerWidth > CHAT_SIDEBAR_BREAKPOINT : true);
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth <= 820 : false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const [threads, setThreads] = useState([]);
   const [threadId, setThreadId] = useState("");
@@ -1551,27 +1550,16 @@ useEffect(() => {
 
   useEffect(() => {
     const onResize = () => {
-      try {
-        const nextMobile = window.innerWidth <= CHAT_SIDEBAR_BREAKPOINT;
-        setIsMobile(nextMobile);
-        setChatSidebarOpen((prev) => (nextMobile ? prev : true));
-      } catch {}
+      try { setIsMobile(window.innerWidth <= 820); } catch {}
     };
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [CHAT_SIDEBAR_BREAKPOINT]);
+  }, []);
 
   useEffect(() => {
-    if (!chatSidebarOpen || !isMobile || typeof window === "undefined") return undefined;
-    const onKeyDown = (ev) => {
-      if (ev.key === "Escape") {
-        setChatSidebarOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [chatSidebarOpen, isMobile]);
+    if (!isMobile) setMobileSidebarOpen(false);
+  }, [isMobile]);
 
   useEffect(() => {
     if (SUMMIT_VOICE_MODE === "stt_tts") {
@@ -4927,38 +4915,13 @@ async function stopRealtime(reason = 'client_stop') {
       color: "#fff",
       fontFamily: "system-ui",
     },
-    sidebarShell: {
-      width: isMobile ? "min(86vw, 360px)" : "330px",
-      minWidth: isMobile ? "min(86vw, 360px)" : "330px",
-      maxWidth: isMobile ? "min(86vw, 360px)" : "330px",
-      borderRight: "1px solid rgba(255,255,255,0.08)",
-      background: "rgba(5,6,10,0.92)",
-      backdropFilter: "blur(14px)",
-      display: "flex",
-      flexDirection: "column",
-      position: isMobile ? "fixed" : "sticky",
-      top: 0,
-      left: 0,
-      bottom: 0,
-      height: "100dvh",
-      zIndex: isMobile ? 120 : 20,
-      boxShadow: isMobile ? "0 30px 80px rgba(2,6,23,0.48)" : "none",
-    },
     sidebar: {
-      width: "100%",
-      borderRight: "none",
+      width: "330px",
+      borderRight: "1px solid rgba(255,255,255,0.08)",
       display: "flex",
       flexDirection: "column",
       padding: "16px",
       gap: "12px",
-      height: "100%",
-      minHeight: 0,
-    },
-    sidebarBackdrop: {
-      position: "fixed",
-      inset: 0,
-      background: "rgba(2,6,23,0.58)",
-      zIndex: 110,
     },
     brand: { fontSize: "18px", fontWeight: 800, letterSpacing: "-0.02em" },
     badge: {
@@ -5138,28 +5101,7 @@ async function stopRealtime(reason = 'client_stop') {
       lineHeight: 1.3,
     },
 
-    main: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column" },
-    mobileSidebarToggle: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: "8px",
-      minHeight: 40,
-      padding: "8px 12px",
-      borderRadius: 12,
-      border: "1px solid rgba(255,255,255,0.14)",
-      background: "rgba(255,255,255,0.08)",
-      color: "#fff",
-      fontWeight: 800,
-      cursor: "pointer",
-      whiteSpace: "nowrap",
-    },
-    mobileTopbarLead: {
-      display: "flex",
-      alignItems: "center",
-      gap: "10px",
-      minWidth: 0,
-      flex: 1,
-    },
+    main: { flex: 1, display: "flex", flexDirection: "column" },
     topbar: {
       padding: "16px 18px",
       borderBottom: "1px solid rgba(255,255,255,0.08)",
@@ -5318,109 +5260,6 @@ async function stopRealtime(reason = 'client_stop') {
 
   const pendingApprovedPatchExecution = findPendingApprovedPatchExecution(messages);
 
-  const closeChatSidebar = () => setChatSidebarOpen(false);
-  const openChatSidebar = () => setChatSidebarOpen(true);
-
-  const handleSidebarCreateThread = async () => {
-    await createThread();
-    if (isMobile) {
-      closeChatSidebar();
-    }
-  };
-
-  const handleSidebarActivateThread = (candidateThreadId) => {
-    const nextId = String(candidateThreadId || "");
-    if (nextId && nextId !== String(activeThreadIdRef.current || threadId || "")) {
-      activateThread(nextId, { clearMessages: true, persist: true, lockMs: 15000 });
-    }
-    if (isMobile) {
-      closeChatSidebar();
-    }
-  };
-
-  const renderChatSidebar = () => (
-    <div style={styles.sidebar}>
-      <div style={styles.topRow}>
-        <div>
-          <div style={styles.brand}>Orkio</div>
-          <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <span style={styles.badge}>org: {tenant}</span>
-            <span style={styles.badge}>{health === "ok" ? "ready" : health}</span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          style={styles.newThreadBtn}
-          onClick={() => { void handleSidebarCreateThread(); }}
-          title="Nova conversa"
-        >
-          <IconPlus /> Novo
-        </button>
-      </div>
-
-      <div style={styles.threads}>
-        {threads.length === 0 ? (
-          <div style={styles.emptyThreads}>Nenhuma conversa ainda.</div>
-        ) : (
-          threads.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => handleSidebarActivateThread(t?.id)}
-              style={{
-                ...styles.threadItem,
-                ...(t.id === threadId ? styles.threadItemActive : {}),
-              }}
-            >
-              <IconMessage />
-              <span style={styles.threadTitle}>{t.title}</span>
-              <button
-                style={styles.threadEditBtn}
-                onClick={(e) => { e.stopPropagation(); renameThread(t.id); }}
-                title="Renomear conversa"
-              >
-                <IconEdit />
-              </button>
-              <button
-                style={styles.threadEditBtn}
-                onClick={(e) => { e.stopPropagation(); deleteThread(t.id); }}
-                title="Deletar conversa"
-              >
-                <IconTrash />
-              </button>
-            </button>
-          ))
-        )}
-      </div>
-
-      <div style={styles.userSection}>
-        <div style={styles.userInfo}>
-          <div style={styles.userAvatar}>{meName.charAt(0).toUpperCase()}</div>
-          <div style={styles.userDetails}>
-            <div style={styles.userName}>{user?.name || "Usuário"}</div>
-            <div style={styles.userEmail}>{user?.email || ""}</div>
-          </div>
-        </div>
-
-        <div style={styles.userActions}>
-          {WALLET_UI_ENABLED ? (
-            <button style={styles.iconBtn} onClick={() => nav("/wallet")} title={walletLowBalance ? "Recarregar wallet" : "Wallet & usage"}>
-              💳
-            </button>
-          ) : null}
-          {canAccessAdmin && (
-            <button style={styles.iconBtn} onClick={() => nav("/admin")} title="Admin Console">
-              <IconSettings />
-            </button>
-          )}
-          <button style={styles.iconBtn} onClick={doLogout} title="Sair">
-            <IconLogout />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   if (!onboardingChecked && !bootstrapFailOpen) {
     return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#0f1115", color: "#fff", fontFamily: "system-ui" }}>Carregando sua experiência...</div>;
   }
@@ -5486,58 +5325,171 @@ async function stopRealtime(reason = 'client_stop') {
       />
     )}
     <div style={styles.layout}>
+      {isMobile && mobileSidebarOpen ? (
+        <div
+          onClick={() => setMobileSidebarOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 39,
+            background: "rgba(2,6,14,0.62)",
+            backdropFilter: "blur(4px)",
+          }}
+        />
+      ) : null}
       {/* Sidebar */}
-      {!isMobile ? (
-        <aside style={styles.sidebarShell}>
-          {renderChatSidebar()}
-        </aside>
-      ) : null}
+      <div style={{ ...styles.sidebar, display: (!isMobile || mobileSidebarOpen) ? "flex" : "none", position: isMobile ? "fixed" : styles.sidebar.position, inset: isMobile ? "0 auto 0 0" : "auto", width: isMobile ? "min(88vw, 360px)" : styles.sidebar.width, zIndex: isMobile ? 40 : styles.sidebar.zIndex, boxShadow: isMobile ? "0 24px 80px rgba(0,0,0,0.45)" : styles.sidebar.boxShadow, borderRight: isMobile ? "1px solid rgba(255,255,255,0.08)" : styles.sidebar.borderRight }}>
+        <div style={styles.topRow}>
+          <div>
+            <div style={styles.brand}>Orkio</div>
+            <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <span style={styles.badge}>org: {tenant}</span>
+              <span style={styles.badge}>{health === "ok" ? "ready" : health}</span>
+            </div>
+          </div>
 
-      {isMobile && chatSidebarOpen ? (
-        <>
-          <div style={styles.sidebarBackdrop} onClick={closeChatSidebar} />
-          <aside style={styles.sidebarShell}>
-            {renderChatSidebar()}
-          </aside>
-        </>
-      ) : null}
+          <button style={styles.newThreadBtn} onClick={() => { createThread(); if (isMobile) setMobileSidebarOpen(false); }} title="Nova conversa">
+            <IconPlus /> Novo
+          </button>
+        </div>
+
+        <div style={styles.threads}>
+          {threads.length === 0 ? (
+            <div style={styles.emptyThreads}>Nenhuma conversa ainda.</div>
+          ) : (
+            threads.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  const nextId = String(t?.id || "");
+                  if (nextId && nextId !== String(activeThreadIdRef.current || threadId || "")) {
+                    activateThread(nextId, { clearMessages: true, persist: true, lockMs: 15000 });
+                    if (isMobile) setMobileSidebarOpen(false);
+                  }
+                }}
+                style={{
+                  ...styles.threadItem,
+                  ...(t.id === threadId ? styles.threadItemActive : {}),
+                }}
+              >
+                <IconMessage />
+                <span style={styles.threadTitle}>{t.title}</span>
+                <button
+                  style={styles.threadEditBtn}
+                  onClick={(e) => { e.stopPropagation(); renameThread(t.id); }}
+                  title="Renomear conversa"
+                >
+                  <IconEdit />
+                </button>
+                <button
+                  style={styles.threadEditBtn}
+                  onClick={(e) => { e.stopPropagation(); deleteThread(t.id); }}
+                  title="Deletar conversa"
+                >
+                  <IconTrash />
+                </button>
+              </button>
+            ))
+          )}
+        </div>
+
+        <div style={styles.userSection}>
+          <div style={styles.userInfo}>
+            <div style={styles.userAvatar}>{meName.charAt(0).toUpperCase()}</div>
+            <div style={styles.userDetails}>
+              <div style={styles.userName}>{user?.name || "Usuário"}</div>
+              <div style={styles.userEmail}>{user?.email || ""}</div>
+            </div>
+          </div>
+
+          <div style={styles.userActions}>
+            {WALLET_UI_ENABLED ? (
+              <button style={styles.iconBtn} onClick={() => nav("/wallet")} title={walletLowBalance ? "Recarregar wallet" : "Wallet & usage"}>
+                💳
+              </button>
+            ) : null}
+            {canAccessAdmin && (
+              <button style={styles.iconBtn} onClick={() => nav("/admin")} title="Admin Console">
+                <IconSettings />
+              </button>
+            )}
+            {!user?.onboarding_completed ? (
+              <button
+                style={styles.iconBtn}
+                onClick={() => setOnboardingOpen(true)}
+                title="Completar cadastro"
+              >
+                ✨
+              </button>
+            ) : null}
+            <button style={styles.iconBtn} onClick={doLogout} title="Sair">
+              <IconLogout />
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Main */}
       <div style={styles.main}>
         <div style={{ ...styles.topbar, padding: isMobile ? "12px 14px" : styles.topbar.padding }}>
-          <div style={isMobile ? styles.mobileTopbarLead : undefined}>
-            {isMobile ? (
-              <button
-                type="button"
-                onClick={openChatSidebar}
-                style={styles.mobileSidebarToggle}
-                title="Abrir conversas"
-              >
-                ☰ Chats
-              </button>
-            ) : null}
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.title}>{threads.find((t) => t.id === threadId)?.title || "Conversa"}</div>
-              <div style={styles.health}>Destino: {destMode === "team" ? "Team" : destMode === "single" ? "Agente" : "Multi"} • @Team / @Orkio / @Chris / @Orion</div>
-            </div>
+          <div>
+            <div style={styles.title}>{threads.find((t) => t.id === threadId)?.title || "Conversa"}</div>
+            <div style={styles.health}>Destino: {destMode === "team" ? "Team" : destMode === "single" ? "Agente" : "Multi"} • @Team / @Orkio / @Chris / @Orion</div>
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: isMobile ? "wrap" : "nowrap", justifyContent: "flex-end" }}>
             {isMobile ? (
-              <button
-                type="button"
-                onClick={() => { void handleSidebarCreateThread(); }}
-                style={styles.mobileSidebarToggle}
-                title="Nova conversa"
-              >
-                ＋ Novo
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setMobileSidebarOpen((v) => !v)}
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.08)",
+                    color: "#fff",
+                    minHeight: 40,
+                    padding: "8px 12px",
+                    borderRadius: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                  title="Abrir conversas"
+                >
+                  ☰ Chats
+                </button>
+                <button
+                  type="button"
+                  onClick={createThread}
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "linear-gradient(90deg, rgba(124,92,255,0.32), rgba(255,211,110,0.18))",
+                    color: "#fff",
+                    minHeight: 40,
+                    padding: "8px 12px",
+                    borderRadius: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                  title="Nova conversa"
+                >
+                  ＋ Novo
+                </button>
+              </>
             ) : null}
             {isMobile ? (
               <button
                 type="button"
                 onClick={doLogout}
-                style={styles.mobileSidebarToggle}
+                style={{
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.08)",
+                  color: "#fff",
+                  minHeight: 40,
+                  padding: "8px 12px",
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
                 title="Sair"
               >
                 Sair
@@ -6211,7 +6163,7 @@ async function stopRealtime(reason = 'client_stop') {
                 style={styles.attachBtn}
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadProgress || !!pendingApprovedPatchExecution}
-                title="Attach file (PDF, DOCX, TXT)"
+                title="Anexar arquivo (PDF, DOCX, TXT)"
               >
                 <IconPaperclip />
               </button>
@@ -6221,7 +6173,7 @@ async function stopRealtime(reason = 'client_stop') {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={pendingApprovedPatchExecution ? "Execução aprovada pendente — use o botão governado acima." : "Type your message..."}
+              placeholder={pendingApprovedPatchExecution ? "Execução aprovada pendente — use o botão governado acima." : "Escreva sua mensagem..."}
               style={styles.textarea}
               rows={1}
               disabled={sending || !!pendingApprovedPatchExecution}
@@ -6232,7 +6184,7 @@ async function stopRealtime(reason = 'client_stop') {
                 type="button"
                 style={{ ...styles.micBtn, opacity: speechSupported ? 1 : 0.6 }}
                 onClick={toggleMic}
-                title={micEnabled ? "Stop voice input" : "Start voice input"}
+                title={micEnabled ? "Parar entrada por voz" : "Iniciar entrada por voz"}
               >
                 🎙️
               </button>
@@ -6248,7 +6200,7 @@ async function stopRealtime(reason = 'client_stop') {
                   cursor: "pointer",
                 }}
                 onClick={toggleRealtimeMode}
-                title={realtimeMode ? "Disable realtime voice" : "Enable realtime voice"}
+                title={realtimeMode ? "Desativar voz em tempo real" : "Ativar voz em tempo real"}
               >
                 <span style={{ fontSize: "16px" }}>⚡</span>
                 {realtimeMode && <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "8px", height: "8px", borderRadius: "50%", background: "#50a0ff", animation: "pulse 1.5s infinite" }} />}
@@ -6265,7 +6217,7 @@ async function stopRealtime(reason = 'client_stop') {
                 }}
                 onClick={() => rtcReadyToRespond && triggerRealtimeResponse("manual")}
                 disabled={!rtcReadyToRespond}
-                title={rtcReadyToRespond ? "Respond now (realtime)" : "Waiting for speech to finish"}
+                title={rtcReadyToRespond ? "Responder agora (tempo real)" : "Aguardando a fala terminar"}
               >
                 ▶️
               </button>
@@ -6276,7 +6228,7 @@ async function stopRealtime(reason = 'client_stop') {
               style={{ ...styles.micBtn, opacity: handoffBusy ? 0.7 : 1 }}
               onClick={handleFounderHandoff}
               disabled={handoffBusy}
-              title="Talk to founder"
+              title="Falar com fundador"
             >
               🤝
             </button>
@@ -6290,7 +6242,7 @@ async function stopRealtime(reason = 'client_stop') {
           ) : null}
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-              AI-generated responses may contain inaccuracies. Always verify important information before relying on them.
+              Respostas geradas por IA podem conter imprecisões. Sempre valide informações importantes antes de tomar decisões.
             </div>
             <div style={{ display: isMobile ? "none" : "flex", gap: 8 }}>
               <button
