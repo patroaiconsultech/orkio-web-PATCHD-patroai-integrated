@@ -4,17 +4,17 @@
 // Realtime voices supported in current Orkio environment:
 // alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar
 export const ORKIO_DEFAULT_VOICE_ID = "shimmer";
-export const ORKIO_DEFAULT_TTS_SPEED = 0.92;
+export const ORKIO_DEFAULT_TTS_SPEED = 0.9;
 
 // Curadoria de experiência:
-// - shimmer: padrão Orkio, mais leve e acolhedor para avatar/PWA
-// - sage/coral/marin: alternativas boas para conversa guiada
+// - shimmer: padrão Orkio, feminina, suave e acolhedora para avatar/PWA
+// - marin/coral/sage: boas alternativas naturais e próximas
 // - cedar/echo: mantidas para perfis mais graves, mas não são default
 export const ORKIO_VOICES = [
-  { id: "shimmer", label: "Shimmer (Orkio, acolhedora)" },
-  { id: "sage", label: "Sage (calma, consultiva)" },
-  { id: "coral", label: "Coral (clara, próxima)" },
+  { id: "shimmer", label: "Shimmer (Orkio, feminina e acolhedora)" },
   { id: "marin", label: "Marin (natural, suave)" },
+  { id: "coral", label: "Coral (clara, próxima)" },
+  { id: "sage", label: "Sage (calma, consultiva)" },
   { id: "verse", label: "Verse (expressiva)" },
   { id: "ballad", label: "Ballad (narrativa)" },
   { id: "alloy", label: "Alloy (neutra)" },
@@ -25,14 +25,13 @@ export const ORKIO_VOICES = [
 
 // Backward-compatible aliases (legacy -> supported)
 const VOICE_ALIASES = {
-  // Legados do stack anterior → vozes atuais mais naturais.
   nova: "shimmer",
   onyx: "echo",
   fable: "sage",
   marine: "marin",
 };
 
-export const ORKIO_VOICE_IDS = new Set(ORKIO_VOICES.map(v => v.id));
+export const ORKIO_VOICE_IDS = new Set(ORKIO_VOICES.map((v) => v.id));
 
 export function coerceVoiceId(value, fallback = ORKIO_DEFAULT_VOICE_ID) {
   const v0 = (value || "").toString().trim().toLowerCase();
