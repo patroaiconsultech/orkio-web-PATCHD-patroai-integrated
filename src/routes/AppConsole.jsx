@@ -39,11 +39,12 @@ const CHAT_TURN_RECONCILE_ATTEMPTS = Math.max(
   Number(ORKIO_ENV.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || import.meta.env.VITE_CHAT_TURN_RECONCILE_ATTEMPTS || 2) || 2
 );
 
-// METATRON_CHAT_SSE_CORS_EDGE_PATCH
-// Auditoria atual: o fallback /api/chat mascara o erro real do SSE e pode ficar
-// pending depois de preflight. Durante a validação, o chat deve usar somente
-// /api/chat/stream; se o stream falhar, a UI deve liberar o input e mostrar erro.
-const ORKIO_CHAT_DIRECT_FALLBACK_ENABLED = false;
+// METATRON_CHAT_RECOVERY_DIRECT_FALLBACK
+// Recuperação operacional 17/05:
+// /api/chat/stream permanece como rail primário, mas o fallback /api/chat volta a ficar
+// habilitado para restaurar a plataforma quando o SSE não estabilizar.
+// O fallback segue com AbortController + timeout para não travar a UI.
+const ORKIO_CHAT_DIRECT_FALLBACK_ENABLED = true;
 
 const WALLET_UI_ENABLED = false;
 
@@ -2532,13 +2533,13 @@ async function sendMessage(presetMsg = null, opts = {}) {
         appendExecutionTrace({
           kind: "error",
           label: "Stream não estabilizou",
-          detail: "Fallback /api/chat desativado para auditoria. Corrija CORS/proxy/SSE antes de reativar o trilho direto.",
+          detail: "Fallback /api/chat indisponível. A UI liberou o input sem travar.",
         });
         setMessages((prev) => (Array.isArray(prev) ? prev : []).map((m) => (
           m.id === draftAssistantId
             ? {
                 ...m,
-                content: "O stream principal não estabilizou. O fallback direto está temporariamente desativado para não mascarar o erro real. Revise Network/CORS e tente novamente.",
+                content: "O stream principal não estabilizou e o fallback direto não está disponível neste build. Tente novamente após o redeploy de recuperação.",
                 agent_name: "Orkio",
               }
             : m
@@ -2670,6 +2671,10 @@ async function sendMessage(presetMsg = null, opts = {}) {
             label: "Stream principal acionado",
             detail: "Enviando via /api/chat/stream.",
           });
+
+          try {
+            console.info("ORKIO_CHAT_STREAM_DISPATCH", { traceId, threadId, destMode: destinationContract.dest_mode });
+          } catch {}
 
           const streamResp = await withTimeout(chatStream({
             token,
@@ -2822,7 +2827,11 @@ async function sendMessage(presetMsg = null, opts = {}) {
           if (streamMeta?.thread_id) newThreadId = streamMeta.thread_id;
         } catch (streamErr) {
           if (streamErr instanceof StreamSemanticError) {
-            throw streamErr;
+            appendExecutionTrace({
+              kind: "warning",
+              label: "Stream retornou erro semântico",
+              detail: streamErr?.payload?.message || streamErr?.message || "Acionando recuperação pelo trilho direto.",
+            });
           }
 
           if (isAbortLikeError(streamErr)) {
@@ -2878,7 +2887,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
               appendExecutionTrace({
                 kind: "system",
                 label: "Alternando para resposta direta",
-                detail: "O histórico ainda não tinha resposta persistida. O Orkio vai tentar o rail direto seguro.",
+                detail: "O histórico ainda não tinha resposta persistida. O Orkio vai tentar /api/chat com timeout controlado.",
               });
               try {
                 resp = await runDirectChat();
@@ -2959,7 +2968,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             appendExecutionTrace({
               kind: "system",
               label: "Alternando para resposta direta",
-              detail: "O stream foi degradado e o Orkio seguiu pelo fallback seguro.",
+              detail: "O stream foi degradado. O Orkio vai tentar /api/chat com timeout controlado.",
             });
             try {
               resp = await runDirectChat();
@@ -3219,7 +3228,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
         e?.code === "CHAT_STREAM_PRIMARY_DISABLED_DIRECT_FALLBACK_DISABLED"
       ) {
         setV2vPhase("error");
-        setV2vError("Stream não estabilizou. Fallback direto está desativado para auditoria.");
+        setV2vError("Stream não estabilizou e o fallback direto não estava disponível neste build.");
         return;
       }
       if (e?.status === 429 || e?.code === "RATE_LIMITED" || e?.isRateLimited) {
