@@ -21,11 +21,13 @@ const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || impo
 // Auditoria 16/05: o stream estava sendo abortado cedo demais pelo connect timeout
 // de 15s. Mantemos /api/chat/stream como rail primário e ampliamos a janela de
 // conexão/turno para permitir respostas multiagente sem cancelar prematuramente.
-const ORKIO_CHAT_STREAM_PRIMARY = (
-  String(ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import.meta.env.VITE_CHAT_STREAM_PRIMARY || "true")
-    .trim()
-    .toLowerCase() !== "false"
-);
+// METATRON_PLATFORM_RECOVERY_HARD_STREAM
+// Recuperação operacional 17/05:
+// O runtime/env estava conseguindo desligar o stream e empurrar o chat direto
+// para /api/chat, caminho que fica preso em preflight/provisional headers.
+// Para restabelecer a plataforma, o chat textual SEMPRE tenta /api/chat/stream
+// como trilho primário. O env não pode desativar esse trilho.
+const ORKIO_CHAT_STREAM_PRIMARY = true;
 const CHAT_STREAM_TIMEOUT_MS = Math.max(
   30000,
   Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 120000) || 120000
@@ -44,7 +46,17 @@ const CHAT_TURN_RECONCILE_ATTEMPTS = Math.max(
 // /api/chat/stream permanece como rail primário, mas o fallback /api/chat volta a ficar
 // habilitado para restaurar a plataforma quando o SSE não estabilizar.
 // O fallback segue com AbortController + timeout para não travar a UI.
-const ORKIO_CHAT_DIRECT_FALLBACK_ENABLED = true;
+// METATRON_PLATFORM_RECOVERY_HARD_STREAM
+// /api/chat direto está comprovadamente instável neste deploy: preflight 200,
+// POST pendente/provisional headers. Mantemos o fallback DESLIGADO por padrão
+// para não trocar um erro de stream por um travamento indefinido.
+// Só habilite com VITE_CHAT_DIRECT_FALLBACK_ENABLED=true após o POST /api/chat
+// aparecer como 200 nos logs da API.
+const ORKIO_CHAT_DIRECT_FALLBACK_ENABLED = (
+  String(ORKIO_ENV.VITE_CHAT_DIRECT_FALLBACK_ENABLED || import.meta.env.VITE_CHAT_DIRECT_FALLBACK_ENABLED || "false")
+    .trim()
+    .toLowerCase() === "true"
+);
 
 const WALLET_UI_ENABLED = false;
 
@@ -2533,13 +2545,13 @@ async function sendMessage(presetMsg = null, opts = {}) {
         appendExecutionTrace({
           kind: "error",
           label: "Stream não estabilizou",
-          detail: "Fallback /api/chat indisponível. A UI liberou o input sem travar.",
+          detail: "O trilho direto /api/chat está desativado neste deploy porque fica pendente em provisional headers. A UI liberou o input sem travar.",
         });
         setMessages((prev) => (Array.isArray(prev) ? prev : []).map((m) => (
           m.id === draftAssistantId
             ? {
                 ...m,
-                content: "O stream principal não estabilizou e o fallback direto não está disponível neste build. Tente novamente após o redeploy de recuperação.",
+                content: "Não consegui concluir a resposta pelo stream nesta tentativa. A tentativa foi encerrada com segurança; tente novamente.",
                 agent_name: "Orkio",
               }
             : m
@@ -2557,7 +2569,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             try {
               directCtl.abort();
             } catch {}
-          }, CHAT_STREAM_TIMEOUT_MS);
+          }, Math.min(CHAT_STREAM_TIMEOUT_MS, 20000));
 
           return await chat({
             token,
