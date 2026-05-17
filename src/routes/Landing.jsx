@@ -273,7 +273,7 @@ export default function Landing() {
         .pillars{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid rgba(255,255,255,.1);border-bottom:1px solid rgba(255,255,255,.08)}.pillar{display:flex;gap:14px;padding:24px 22px;border-right:1px solid rgba(255,255,255,.09)}.pillar:last-child{border-right:0}.icon-circle{min-width:48px;height:48px;border-radius:16px;border:1px solid currentColor;color:var(--green);display:grid;place-items:center}.pillar:nth-child(2) .icon-circle{color:var(--cyan)}.pillar:nth-child(3) .icon-circle{color:var(--gold)}.pillar:nth-child(4) .icon-circle{color:var(--green)}.pillar b{display:block}.pillar span span{display:block;color:rgba(255,255,255,.66);line-height:1.42;margin-top:5px}.section-title{text-align:center;color:rgba(255,255,255,.75);letter-spacing:.12em;margin:32px 0 22px}.section-title b{color:var(--green)}.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding-bottom:58px}.step{position:relative;min-height:220px;border:1px solid rgba(255,255,255,.1);border-radius:20px;background:linear-gradient(180deg,rgba(7,18,31,.85),rgba(3,7,13,.85));padding:28px}.step h3{margin:20px 0 10px}.step p{color:rgba(255,255,255,.68);line-height:1.5}.step:after{content:"→";position:absolute;right:-22px;top:48%;font-size:34px;color:var(--green);filter:drop-shadow(0 0 10px rgba(140,244,81,.55))}.step:last-child:after{display:none}
         @keyframes float{50%{transform:translateY(-12px)}}@keyframes pulse{50%{transform:scale(1.04);opacity:.72}}
         @media (max-width:1220px){.hero{grid-template-columns:1fr}.nav{display:none}.sphere-stage{min-height:400px}.integration-list{position:static;grid-template-columns:1fr 1fr;margin-top:18px}.pillars{grid-template-columns:1fr 1fr}.steps{grid-template-columns:1fr 1fr}.dashboard{max-width:520px}.prechat-card{max-width:560px}.topbar{height:auto;padding:22px 0}}
-        @media (max-width:720px){.wrap{width:min(100% - 28px,1510px)}.actions .outline{display:none}.logo span{font-size:31px}.logo img{width:50px;height:50px}h1{font-size:39px}.sphere{width:240px}.network i{width:220px}.pillars,.steps{grid-template-columns:1fr}.pillar{border-right:0;border-bottom:1px solid rgba(255,255,255,.08)}.step:after{display:none}.composer{grid-template-columns:1fr}.hero{padding-top:30px}}
+        @media (max-width:720px){.wrap{width:min(100% - 28px,1510px)}.actions{gap:8px;flex-wrap:wrap;justify-content:flex-end}.actions .action-specialist{display:none}.actions .action-login{display:inline-flex;padding:12px 16px}.row .action-login-hero{display:inline-flex}.logo span{font-size:31px}.logo img{width:50px;height:50px}h1{font-size:39px}.sphere{width:240px}.network i{width:220px}.pillars,.steps{grid-template-columns:1fr}.pillar{border-right:0;border-bottom:1px solid rgba(255,255,255,.08)}.step:after{display:none}.composer{grid-template-columns:1fr}.hero{padding-top:30px}}
       `}</style>
 
       <div className="wrap">
@@ -284,7 +284,8 @@ export default function Landing() {
           </button>
           <nav className="nav">{t.nav.map((n,i)=><button key={n} onClick={()=> i===1 ? document.getElementById("como-funciona")?.scrollIntoView({behavior:"smooth"}) : document.getElementById("orkio-recursos")?.scrollIntoView({behavior:"smooth"})}>{n}</button>)}</nav>
           <div className="actions">
-            <button className="btn outline" onClick={()=>document.querySelector(".prechat-card")?.scrollIntoView({behavior:"smooth"})}>Falar com especialista</button>
+            <button className="btn outline action-specialist" onClick={()=>document.querySelector(".prechat-card")?.scrollIntoView({behavior:"smooth"})}>Falar com especialista</button>
+            <button className="btn outline action-login" onClick={()=>navigate("/auth?mode=login&source=orkio-landing")}>{lang==="pt"?"Entrar":"Login"}</button>
             <button className="btn green" onClick={()=>navigate("/auth?mode=register&trial=7&source=orkio-landing")}>{t.demo} →</button>
             <button className="lang" onClick={()=>setLang(lang==="pt"?"en":"pt")}>{lang==="pt"?"EN":"PT"}</button>
           </div>
@@ -297,6 +298,7 @@ export default function Landing() {
             <p>{t.subtitle}</p>
             <div className="row">
               <button className="btn green" onClick={()=>navigate("/auth?mode=register&trial=7&source=orkio-landing")}>{t.demo} →</button>
+              <button className="btn outline action-login-hero" onClick={()=>navigate("/auth?mode=login&source=orkio-landing")}>{lang==="pt"?"Entrar":"Login"}</button>
               <button className="btn outline" onClick={()=>document.querySelector(".prechat-card")?.scrollIntoView({behavior:"smooth"})}>{t.action} ▶</button>
             </div>
           </div>
