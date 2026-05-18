@@ -5417,7 +5417,7 @@ async function stopRealtime(reason = 'client_stop') {
           setOnboardingEntrySource("standard");
           setOnboardingStatus("");
           clearAvatarOnboardingBoot();
-          setUploadStatus("✅ Onboarding concluído.");
+          setUploadStatus("✅ Contexto salvo. O Orkio usará isso no chat.");
           setTimeout(() => setUploadStatus(""), 1800);
         }}
       />
@@ -5756,12 +5756,11 @@ async function stopRealtime(reason = 'client_stop') {
 
               <div style={styles.premiumAside}>
                 <div style={styles.premiumAsideCard}>
-                  <div style={styles.premiumAsideEyebrow}>Continuity preserved</div>
-                  <div style={styles.premiumAsideTitle}>A mudança agora precisa ser impossível de ignorar</div>
+                  <div style={styles.premiumAsideEyebrow}>Contexto preservado</div>
+                  <div style={styles.premiumAsideTitle}>Comece com uma pergunta de valor</div>
                   <div style={styles.premiumAsideText}>
-                    O shell principal continua preservado, mas o centro do console passa a comunicar
-                    direção, valor e próxima ação com mais intensidade. A ideia não é trocar a rota:
-                    é transformar a primeira percepção do produto.
+                    O console está pronto para transformar contexto em plano, análise ou roteiro.
+                    Use os cards centrais para entender os agentes e iniciar o primeiro teste com clareza.
                   </div>
 
                   <div style={styles.premiumStatusRow}>
@@ -5774,22 +5773,22 @@ async function stopRealtime(reason = 'client_stop') {
                       <div style={styles.premiumStatusValue}>{canAccessAdmin ? "Admin + usuário" : "Usuário ativo"}</div>
                     </div>
                     <div style={styles.premiumStatusCard}>
-                      <div style={styles.premiumStatusLabel}>Jornada</div>
-                      <div style={styles.premiumStatusValue}>Premium in-shell</div>
+                      <div style={styles.premiumStatusLabel}>Beta</div>
+                      <div style={styles.premiumStatusValue}>Controlado</div>
                     </div>
                   </div>
                 </div>
 
                 <div style={styles.premiumAsideCard}>
-                  <div style={styles.premiumAsideEyebrow}>Execution preview</div>
+                  <div style={styles.premiumAsideEyebrow}>Roteiro sugerido</div>
                   <ExecutionTimeline steps={EMPTY_STATE_PREVIEW_STEPS} />
                 </div>
 
                 <div style={styles.premiumAsideCard}>
-                  <div style={styles.premiumAsideEyebrow}>Telemetria executiva</div>
+                  <div style={styles.premiumAsideEyebrow}>Feedback beta</div>
                   <div style={styles.premiumAsideText}>
-                    Antes mesmo da primeira mensagem, o usuário já vê sinais concretos de prontidão,
-                    continuidade funcional e leitura executiva mais madura.
+                    Durante o beta, registre rapidamente se a resposta foi útil, fraca, visualmente confusa,
+                    travou ou gerou uma sugestão de melhoria.
                   </div>
                   <div style={styles.premiumLogList}>
                     {EMPTY_STATE_PREVIEW_LOGS.map((entry) => (
