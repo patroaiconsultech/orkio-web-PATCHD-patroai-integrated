@@ -1102,7 +1102,32 @@ const [onboardingAutoSpeak, setOnboardingAutoSpeak] = useState(false);
   const storageBootstrapInitializedRef = useRef(false);
   const THREAD_STORAGE_KEY = "orkio_active_thread_id";
   const AVATAR_ONBOARDING_BOOT_KEY = "orkio_avatar_onboarding_boot";
-  const AVATAR_ONBOARDING_CONTEXT_KEY = "orkio_avatar_onboarding_context";
+
+  function readAvatarOnboardingBoot() {
+    if (typeof window === "undefined") return null;
+    const candidates = [];
+    try { candidates.push(window.localStorage?.getItem(AVATAR_ONBOARDING_BOOT_KEY) || ""); } catch {}
+    try { candidates.push(window.sessionStorage?.getItem(AVATAR_ONBOARDING_BOOT_KEY) || ""); } catch {}
+
+    for (const raw of candidates) {
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") continue;
+        const createdAt = Number(parsed.createdAt || 0) || 0;
+        const ttlMs = Number(parsed.ttlMs || 0) || 0;
+        if (createdAt && ttlMs && Date.now() - createdAt > ttlMs) continue;
+        return parsed;
+      } catch {}
+    }
+    return null;
+  }
+
+  function clearAvatarOnboardingBoot() {
+    if (typeof window === "undefined") return;
+    try { window.localStorage?.removeItem(AVATAR_ONBOARDING_BOOT_KEY); } catch {}
+    try { window.sessionStorage?.removeItem(AVATAR_ONBOARDING_BOOT_KEY); } catch {}
+  }
 
   function readStoredThreadId() {
     if (typeof window === "undefined") return "";
@@ -1131,41 +1156,6 @@ const [onboardingAutoSpeak, setOnboardingAutoSpeak] = useState(false);
     storageBootstrapConsumedRef.current = true;
     initialStoredThreadIdRef.current = String(nextId || "").trim();
   }
-
-  function readAvatarOnboardingBootstrap() {
-    if (typeof window === "undefined") return null;
-    try {
-      const raw = window.localStorage?.getItem(AVATAR_ONBOARDING_BOOT_KEY)
-        || window.sessionStorage?.getItem(AVATAR_ONBOARDING_BOOT_KEY)
-        || "";
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" ? parsed : null;
-    } catch {
-      return null;
-    }
-  }
-
-  function consumeAvatarOnboardingBootstrap() {
-    const payload = readAvatarOnboardingBootstrap();
-    if (typeof window !== "undefined") {
-      try { window.localStorage?.removeItem(AVATAR_ONBOARDING_BOOT_KEY); } catch {}
-      try { window.sessionStorage?.removeItem(AVATAR_ONBOARDING_BOOT_KEY); } catch {}
-    }
-    return payload;
-  }
-
-  function persistAvatarOnboardingContext(payload = null) {
-    if (typeof window === "undefined") return;
-    try {
-      if (payload && typeof payload === "object") {
-        window.localStorage?.setItem(AVATAR_ONBOARDING_CONTEXT_KEY, JSON.stringify(payload));
-      } else {
-        window.localStorage?.removeItem(AVATAR_ONBOARDING_CONTEXT_KEY);
-      }
-    } catch {}
-  }
-
 
   function lockThreadSelection(nextId = "", ttlMs = 15000) {
     const safeId = String(nextId || "").trim();
@@ -1588,27 +1578,32 @@ useEffect(() => {
           return;
         }
 
-        const avatarBootstrap = consumeAvatarOnboardingBootstrap();
-        if (avatarBootstrap) {
-          persistAvatarOnboardingContext({
-            source: "avatar",
-            started_at: avatarBootstrap?.started_at || Date.now(),
-            mode: avatarBootstrap?.mode || "guided",
-            trigger: avatarBootstrap?.trigger || "landing_avatar",
-          });
-          setOnboardingForm((prev) => sanitizeOnboardingForm({
-            ...mergedUser,
-            company: mergedUser?.company || prev?.company || "",
-          }));
-          setOnboardingEntrySource("avatar");
-          setOnboardingAutoSpeak(true);
-          setOnboardingOpen(true);
-        } else if (!mergedUser?.onboarding_completed) {
+        if (!mergedUser?.onboarding_completed) {
           setOnboardingForm(sanitizeOnboardingForm(mergedUser));
+          const avatarBoot = readAvatarOnboardingBoot();
+          const searchEntry =
+            typeof window !== "undefined"
+              ? new URLSearchParams(window.location.search || "").get("entry")
+              : "";
+          const avatarTriggered =
+            String(searchEntry || "").trim().toLowerCase() === "avatar"
+            || String(avatarBoot?.source || "").trim().toLowerCase() === "avatar";
+
+          if (avatarTriggered) {
+            setOnboardingEntrySource("avatar");
+            setOnboardingAutoSpeak(avatarBoot?.autoSpeak !== false);
+            setOnboardingOpen(true);
+            clearAvatarOnboardingBoot();
+          } else {
+            setOnboardingEntrySource("standard");
+            setOnboardingAutoSpeak(false);
+            // PATCH27_2_CLEAN: onboarding is fluid/non-blocking. Keep data available but do not force modal open.
+            setOnboardingOpen(false);
+          }
+        } else {
+          clearAvatarOnboardingBoot();
           setOnboardingEntrySource("standard");
           setOnboardingAutoSpeak(false);
-          // PATCH27_2_CLEAN: onboarding is fluid/non-blocking. Keep data available but do not force modal open.
-          setOnboardingOpen(false);
         }
 
         if (!mergedUser?.terms_accepted_at) {
@@ -5383,6 +5378,15 @@ async function stopRealtime(reason = 'client_stop') {
 {onboardingOpen && (
       <OnboardingModal
         user={user}
+        entrySource={onboardingEntrySource}
+        autoSpeak={onboardingAutoSpeak}
+        onClose={() => {
+          setOnboardingOpen(false);
+          setOnboardingAutoSpeak(false);
+          setOnboardingEntrySource("standard");
+          setOnboardingStatus("");
+          clearAvatarOnboardingBoot();
+        }}
         onComplete={(nextUser) => {
           const refreshedToken = nextUser?.access_token || token;
           const mergedUser = {
@@ -5409,7 +5413,10 @@ async function stopRealtime(reason = 'client_stop') {
             setToken(refreshedToken);
           } catch {}
           setOnboardingOpen(false);
+          setOnboardingAutoSpeak(false);
+          setOnboardingEntrySource("standard");
           setOnboardingStatus("");
+          clearAvatarOnboardingBoot();
           setUploadStatus("✅ Onboarding concluído.");
           setTimeout(() => setUploadStatus(""), 1800);
         }}
