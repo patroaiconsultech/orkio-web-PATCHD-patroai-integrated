@@ -1,393 +1,281 @@
-import React, { useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
+import AvatarOracleCard from "../components/AvatarOracleCard.jsx";
 import AvatarPrechatModal from "../components/AvatarPrechatModal.jsx";
 import OrkioVoiceHero from "../components/OrkioVoiceHero.jsx";
 
-function navigateTo(path) {
-  window.location.href = path;
+function rememberAppRedirect() {
+  try {
+    window.localStorage?.setItem("post_auth_redirect", "/app");
+    window.sessionStorage?.setItem("post_auth_redirect", "/app");
+  } catch {}
 }
 
-function navigateToAuth(params = {}) {
+function safeNavigateToAuth(params = {}) {
+  rememberAppRedirect();
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value == null || value === "") return;
     query.set(key, String(value));
   });
-  navigateTo(`/auth${query.toString() ? `?${query.toString()}` : ""}`);
+  window.location.href = `/auth${query.toString() ? `?${query.toString()}` : ""}`;
 }
 
-function rememberPostAuthRedirect(path = "/app") {
-  try {
-    window.sessionStorage?.setItem("post_auth_redirect", path);
-  } catch {}
-}
+const AGENTS = [
+  {
+    name: "Orkio",
+    role: "Copiloto central",
+    text: "Organiza contexto, conversa principal, planos e próximos passos.",
+  },
+  {
+    name: "Chris",
+    role: "Estratégia e negócios",
+    text: "Ajuda a clarear proposta, produto, posicionamento e decisões.",
+  },
+  {
+    name: "Orion",
+    role: "Engenharia e auditoria",
+    text: "Apoia arquitetura, runtime, patches, deploy e diagnóstico técnico.",
+  },
+  {
+    name: "Team",
+    role: "Visão integrada",
+    text: "Coordena múltiplos agentes quando a tarefa precisa de leitura completa.",
+  },
+];
 
 export default function PatroaiLanding() {
   const [prechatOpen, setPrechatOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth <= 860 : false
+
+  const heroSubtitle = useMemo(
+    () =>
+      "Entre, conte rapidamente seu contexto e use Orkio, Chris, Orion e Team para transformar conversas em planos, decisões e testes com continuidade.",
+    []
   );
 
-  useEffect(() => {
-    const onResize = () => {
-      try {
-        setIsMobile(window.innerWidth <= 860);
-      } catch {}
-    };
-    onResize();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
   function handleLogin() {
-    rememberPostAuthRedirect("/app");
-    navigateToAuth({ mode: "login" });
+    safeNavigateToAuth({ mode: "login" });
   }
 
-  function handleCreateAccount() {
-    rememberPostAuthRedirect("/app");
-    navigateToAuth({ mode: "register" });
+  function handleRegister() {
+    safeNavigateToAuth({ mode: "register", beta: 1 });
   }
 
-  function handleOpenApp() {
-    try {
-      if (window.localStorage?.getItem("orkio_token")) {
-        navigateTo("/app");
-        return;
-      }
-    } catch {}
-    handleLogin();
-  }
-
-  function handleAvatarJourney() {
+  function handleStartAvatarJourney() {
     setPrechatOpen(true);
   }
 
   function handleContinueAfterPrechat() {
     setPrechatOpen(false);
-    rememberPostAuthRedirect("/app");
-    navigateToAuth({ mode: "register", entry: "avatar", onboarding: 1, prechat: 1 });
+    safeNavigateToAuth({ entry: "avatar", onboarding: 1, prechat: 1, mode: "register" });
   }
 
-  const palette = {
-    bg: "#030713",
-    text: "#f8fafc",
-    soft: "rgba(248,250,252,0.74)",
-    faint: "rgba(248,250,252,0.54)",
-    line: "rgba(255,255,255,0.10)",
-    gold: "#f7c862",
-    blue: "#6fb7ff",
-    green: "#8af0b1",
-  };
-
-  const wrap = {
-    width: "min(1180px, calc(100% - 32px))",
-    margin: "0 auto",
-  };
-
-  const buttonBase = {
-    minHeight: 44,
-    borderRadius: 999,
-    padding: isMobile ? "11px 14px" : "13px 18px",
+  const primaryButton = {
+    border: 0,
+    borderRadius: 18,
+    padding: "15px 20px",
     fontWeight: 900,
     cursor: "pointer",
-    whiteSpace: "nowrap",
-    border: `1px solid ${palette.line}`,
+    color: "#fff",
+    background: "linear-gradient(135deg, #172554 0%, #2563eb 52%, #7c3aed 100%)",
+    boxShadow: "0 18px 42px rgba(37,99,235,0.28)",
   };
 
-  const card = {
-    borderRadius: 28,
-    border: `1px solid ${palette.line}`,
-    background: "linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.035))",
-    boxShadow: "0 28px 90px rgba(0,0,0,0.28)",
-    backdropFilter: "blur(18px)",
+  const secondaryButton = {
+    border: "1px solid rgba(15,23,42,0.12)",
+    borderRadius: 18,
+    padding: "15px 20px",
+    fontWeight: 850,
+    cursor: "pointer",
+    color: "#0f172a",
+    background: "rgba(255,255,255,0.82)",
   };
-
-  const featureCard = (accent) => ({
-    ...card,
-    padding: 22,
-    borderLeft: `2px solid ${accent}`,
-    boxShadow: "none",
-  });
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        color: palette.text,
         background:
-          "radial-gradient(900px 560px at 8% 0%, rgba(247,200,98,0.16), transparent 56%), radial-gradient(720px 460px at 92% 8%, rgba(111,183,255,0.18), transparent 50%), linear-gradient(180deg, #030713 0%, #050914 58%, #02040a 100%)",
-        fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+          "radial-gradient(circle at 12% 0%, rgba(37,99,235,0.16), transparent 30%), radial-gradient(circle at 90% 10%, rgba(124,58,237,0.18), transparent 32%), linear-gradient(180deg, #f8fafc 0%, #eef2ff 58%, #f8fafc 100%)",
+        color: "#0f172a",
       }}
     >
-      <header
+      <section
         style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 30,
-          borderBottom: `1px solid ${palette.line}`,
-          background: "rgba(3,7,19,0.78)",
-          backdropFilter: "blur(20px)",
+          maxWidth: 1240,
+          margin: "0 auto",
+          padding: "38px 20px 70px",
+          display: "grid",
+          gap: 30,
         }}
       >
-        <div
+        <header
           style={{
-            ...wrap,
             display: "flex",
-            alignItems: "center",
             justifyContent: "space-between",
-            gap: 14,
-            padding: isMobile ? "12px 0" : "15px 0",
+            gap: 16,
+            alignItems: "center",
+            flexWrap: "wrap",
           }}
         >
-          <button
-            type="button"
-            onClick={() => navigateTo("/")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              border: 0,
-              background: "transparent",
-              color: palette.text,
-              cursor: "pointer",
-              padding: 0,
-              textAlign: "left",
-            }}
-            aria-label="Ir para a landing PatroAI"
-          >
-            <div
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: "50%",
-                background:
-                  "radial-gradient(circle at 35% 30%, #fff7d6 0%, #f8d46c 20%, #9a6a22 46%, #172033 76%)",
-                boxShadow: "0 0 32px rgba(247,200,98,0.32)",
-              }}
-            />
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 950, letterSpacing: "0.08em" }}>PATROAI</div>
-              <div style={{ color: palette.gold, fontSize: 11, letterSpacing: "0.22em", fontWeight: 800 }}>
-                AGENTES + ORKIO OS
-              </div>
+          <div style={{ display: "grid", gap: 4 }}>
+            <div style={{ fontSize: 13, letterSpacing: "0.16em", fontWeight: 950, color: "#1e3a8a", textTransform: "uppercase" }}>
+              PatroAI · Orkio
             </div>
-          </button>
+            <div style={{ color: "#64748b", fontSize: 13, fontWeight: 700 }}>
+              Beta controlado · copiloto de agentes
+            </div>
+          </div>
 
-          {!isMobile ? (
-            <nav style={{ display: "flex", gap: 22, color: palette.soft, fontWeight: 700 }}>
-              <a href="#agentes" style={{ color: "inherit", textDecoration: "none" }}>Agentes</a>
-              <a href="#fintech" style={{ color: "inherit", textDecoration: "none" }}>Fintech</a>
-              <a href="#governanca" style={{ color: "inherit", textDecoration: "none" }}>Governança</a>
-              <a href="#orkio" style={{ color: "inherit", textDecoration: "none" }}>Orkio</a>
-            </nav>
-          ) : null}
-
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button
-              type="button"
-              onClick={handleLogin}
-              style={{
-                ...buttonBase,
-                background: "rgba(255,255,255,0.04)",
-                color: palette.text,
-              }}
-            >
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button type="button" onClick={handleLogin} style={secondaryButton}>
               Entrar
             </button>
-            {!isMobile ? (
-              <button
-                type="button"
-                onClick={handleCreateAccount}
-                style={{
-                  ...buttonBase,
-                  border: 0,
-                  background: "linear-gradient(90deg, #a46712, #f7c862 58%, #ffe29c)",
-                  color: "#101010",
-                  boxShadow: "0 18px 44px rgba(247,200,98,0.22)",
-                }}
-              >
-                Criar conta
-              </button>
-            ) : null}
+            <button type="button" onClick={handleRegister} style={primaryButton}>
+              Criar acesso beta
+            </button>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main style={{ ...wrap, padding: isMobile ? "34px 0 70px" : "56px 0 86px" }}>
-        <section
+        <div
           style={{
             display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.06fr) minmax(360px, 0.94fr)",
-            gap: 24,
-            alignItems: "stretch",
+            gridTemplateColumns: "minmax(0, 1.08fr) minmax(320px, 0.92fr)",
+            gap: 28,
+            alignItems: "center",
           }}
         >
-          <div style={{ ...card, padding: isMobile ? 24 : 34 }}>
+          <div style={{ display: "grid", gap: 22, maxWidth: 760 }}>
             <div
               style={{
                 display: "inline-flex",
+                width: "fit-content",
                 alignItems: "center",
-                gap: 8,
-                padding: "10px 14px",
+                gap: 10,
                 borderRadius: 999,
-                border: "1px solid rgba(247,200,98,0.28)",
-                background: "rgba(247,200,98,0.08)",
-                color: "#ffe29c",
+                padding: "9px 13px",
+                background: "rgba(37,99,235,0.09)",
+                border: "1px solid rgba(37,99,235,0.16)",
+                color: "#1d4ed8",
                 fontSize: 12,
-                fontWeight: 900,
-                letterSpacing: "0.10em",
+                fontWeight: 950,
+                letterSpacing: "0.08em",
                 textTransform: "uppercase",
               }}
             >
-              Plataforma institucional PatroAI
+              <span style={{ width: 8, height: 8, borderRadius: 999, background: "#22c55e", boxShadow: "0 0 0 6px rgba(34,197,94,0.14)" }} />
+              Teste fechado com contexto preservado
             </div>
 
             <h1
               style={{
-                margin: "22px 0 16px",
-                fontSize: "clamp(42px, 7vw, 78px)",
-                lineHeight: 0.98,
+                margin: 0,
+                fontSize: "clamp(42px, 6.4vw, 78px)",
+                lineHeight: 0.96,
                 letterSpacing: "-0.055em",
+                maxWidth: 900,
               }}
             >
-              Agentes inteligentes para transformar visão em operação.
+              Orkio é seu copiloto de agentes para organizar decisões, testes e evolução da sua empresa.
             </h1>
 
-            <p style={{ margin: 0, color: palette.soft, fontSize: 20, lineHeight: 1.68, maxWidth: 820 }}>
-              A PatroAI une estratégia, tecnologia e governança para criar agentes personalizados,
-              estruturar negócios e acelerar jornadas comerciais, financeiras e operacionais com o Orkio.
+            <p style={{ margin: 0, maxWidth: 760, fontSize: 19, lineHeight: 1.72, color: "#334155" }}>
+              {heroSubtitle}
             </p>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 28 }}>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <button type="button" onClick={handleLogin} style={{ ...primaryButton, fontSize: 16 }}>
+                Entrar no Orkio
+              </button>
+              <button type="button" onClick={handleRegister} style={{ ...secondaryButton, fontSize: 16 }}>
+                Criar acesso beta
+              </button>
               <button
                 type="button"
-                onClick={handleLogin}
+                onClick={handleStartAvatarJourney}
                 style={{
-                  ...buttonBase,
                   border: 0,
-                  background: "linear-gradient(90deg, #a46712, #f7c862 58%, #ffe29c)",
-                  color: "#101010",
-                  boxShadow: "0 18px 44px rgba(247,200,98,0.22)",
-                }}
-              >
-                Entrar na plataforma
-              </button>
-              <button
-                type="button"
-                onClick={handleCreateAccount}
-                style={{
-                  ...buttonBase,
-                  background: "rgba(255,255,255,0.06)",
-                  color: palette.text,
-                }}
-              >
-                Criar conta
-              </button>
-              <button
-                type="button"
-                onClick={handleAvatarJourney}
-                style={{
-                  ...buttonBase,
-                  background: "rgba(111,183,255,0.10)",
-                  color: "#d9ecff",
+                  background: "transparent",
+                  color: "#475569",
+                  fontWeight: 850,
+                  cursor: "pointer",
+                  padding: "12px 6px",
                 }}
               >
                 Conversar com avatar
               </button>
             </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 10,
+                marginTop: 8,
+              }}
+            >
+              {["Entre em menos de 1 minuto", "Receba contexto no primeiro chat", "Teste com plano e checklist"].map((item) => (
+                <div
+                  key={item}
+                  style={{
+                    borderRadius: 18,
+                    border: "1px solid rgba(15,23,42,0.09)",
+                    background: "rgba(255,255,255,0.72)",
+                    padding: "13px 14px",
+                    color: "#334155",
+                    fontSize: 13,
+                    fontWeight: 800,
+                  }}
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div id="orkio" style={{ minWidth: 0 }}>
-            <OrkioVoiceHero
-              tenant="public"
-              kicker="Orkio • Sistema operacional de execução"
-              title="Do plano à execução governada."
-              subtitle="Entre direto na plataforma, crie sua conta ou faça uma conversa inicial opcional com o avatar. Login e onboarding ficam separados."
-              speech="Olá. Eu sou o Orkio. A PatroAI usa agentes inteligentes para transformar estratégia em execução com clareza, governança e continuidade."
-              primaryLabel="Entrar"
-              secondaryLabel="Criar conta"
-              tertiaryLabel="Conversar com avatar"
-              quickTitle="Perguntas rápidas"
-              quickPrompts={[
-                "Como a PatroAI cria agentes personalizados?",
-                "Como o Orkio apoia execução e governança?",
-                "Como a plataforma pode apoiar uma fintech?",
-              ]}
-              onPrimaryAction={handleLogin}
-              onSecondaryAction={handleCreateAccount}
-              onTertiaryAction={handleAvatarJourney}
+          <div style={{ display: "grid", gap: 16 }}>
+            <OrkioVoiceHero onPrimaryAction={handleLogin} />
+            <AvatarOracleCard
+              title="Onboarding com avatar"
+              subtitle="Opcional para o beta: use quando quiser uma entrada mais guiada antes do cadastro."
+              ctaLabel="Iniciar conversa com avatar"
+              onAction={handleStartAvatarJourney}
             />
           </div>
-        </section>
+        </div>
 
-        <section
-          id="agentes"
+        <div
           style={{
             display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
-            gap: 16,
-            marginTop: 24,
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 14,
           }}
         >
-          <div style={featureCard(palette.gold)}>
-            <div style={{ color: "#ffe29c", fontWeight: 950, marginBottom: 10 }}>Agentes personalizados</div>
-            <div style={{ color: palette.soft, lineHeight: 1.72 }}>
-              Criação de agentes sob medida para atendimento, análise, originação, relacionamento e execução.
+          {AGENTS.map((agent) => (
+            <div
+              key={agent.name}
+              style={{
+                borderRadius: 24,
+                border: "1px solid rgba(15,23,42,0.10)",
+                background: "rgba(255,255,255,0.78)",
+                boxShadow: "0 18px 48px rgba(15,23,42,0.08)",
+                padding: 18,
+              }}
+            >
+              <div style={{ fontSize: 18, fontWeight: 950, color: "#0f172a" }}>{agent.name}</div>
+              <div style={{ marginTop: 4, color: "#2563eb", fontSize: 13, fontWeight: 900 }}>{agent.role}</div>
+              <p style={{ margin: "10px 0 0", color: "#475569", fontSize: 14, lineHeight: 1.55 }}>
+                {agent.text}
+              </p>
             </div>
-          </div>
-          <div id="fintech" style={featureCard(palette.blue)}>
-            <div style={{ color: "#cbe8ff", fontWeight: 950, marginBottom: 10 }}>Fintech e crédito estruturado</div>
-            <div style={{ color: palette.soft, lineHeight: 1.72 }}>
-              Base para operações estruturadas, home equity, análise de risco, originação e relacionamento institucional.
-            </div>
-          </div>
-          <div id="governanca" style={featureCard(palette.green)}>
-            <div style={{ color: "#caffdd", fontWeight: 950, marginBottom: 10 }}>Governança operacional</div>
-            <div style={{ color: palette.soft, lineHeight: 1.72 }}>
-              Fluxos rastreáveis, separação de responsabilidades, auditoria e continuidade entre chats, agentes e decisões.
-            </div>
-          </div>
-        </section>
-
-        <section
-          style={{
-            ...card,
-            marginTop: 24,
-            padding: isMobile ? 22 : 28,
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "1fr auto",
-            gap: 18,
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div style={{ color: palette.gold, fontWeight: 950, marginBottom: 8 }}>Acesso direto preservado</div>
-            <div style={{ color: palette.soft, lineHeight: 1.7 }}>
-              Usuários existentes podem entrar sem passar pelo onboarding. A conversa com avatar continua disponível,
-              mas como jornada opcional de encantamento e coleta de contexto.
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleOpenApp}
-            style={{
-              ...buttonBase,
-              border: 0,
-              background: "linear-gradient(135deg, #2563eb, #0f172a)",
-              color: "#ffffff",
-              boxShadow: "0 18px 44px rgba(37,99,235,0.20)",
-            }}
-          >
-            Abrir Orkio
-          </button>
-        </section>
-      </main>
+          ))}
+        </div>
+      </section>
 
       <AvatarPrechatModal
         open={prechatOpen}
         onClose={() => setPrechatOpen(false)}
         onContinue={handleContinueAfterPrechat}
-        autoSpeak={true}
+        autoSpeak={false}
       />
     </div>
   );
