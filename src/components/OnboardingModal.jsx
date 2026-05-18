@@ -14,7 +14,9 @@ const INTENTS = [
   { value: "meeting", label: "Agendar uma conversa" },
   { value: "pilot", label: "Avaliar um piloto" },
   { value: "funding", label: "Discutir investimento" },
-  { value: "enterprise", label: "Enterprise / White Label / Integrações" },
+  // AO09: o backend atual rejeita intent="enterprise".
+  // Mantemos a experiência Enterprise na UI, mas enviamos um intent compatível no POST.
+  { value: "enterprise_request", label: "Enterprise / White Label / Integrações" },
   { value: "other", label: "Outro" },
 ];
 
@@ -92,10 +94,13 @@ function normalizeIntent(value) {
     company_eval: "pilot",
     funding: "funding",
     investment: "funding",
-    enterprise: "enterprise",
-    white_label: "enterprise",
-    integrations: "enterprise",
-    integration: "enterprise",
+    // AO09: aliases de Enterprise viram sinal de interesse comercial,
+    // mas o intent salvo no backend será normalizado para "pilot".
+    enterprise: "enterprise_request",
+    white_label: "enterprise_request",
+    integrations: "enterprise_request",
+    integration: "enterprise_request",
+    enterprise_request: "enterprise_request",
     other: "other",
   };
   return aliases[raw] || "";
@@ -103,6 +108,25 @@ function normalizeIntent(value) {
 
 function normalizeWhatsapp(value) {
   return String(value || "").replace(/[^\d+]/g, "").trim();
+}
+
+function isEnterpriseIntent(value) {
+  return String(value || "").trim().toLowerCase() === "enterprise_request";
+}
+
+function toBackendIntent(value) {
+  const normalized = normalizeIntent(value);
+  // AO09: /api/user/onboarding rejeita intent="enterprise".
+  // "pilot" é o valor seguro e compatível para avaliação/implantação enterprise.
+  if (isEnterpriseIntent(normalized)) return "pilot";
+  return normalized || "explore";
+}
+
+function appendEnterpriseContext(notes) {
+  const current = String(notes || "").trim();
+  const marker = "Interesse Enterprise / White Label / Integrações: sim.";
+  if (current.toLowerCase().includes("enterprise / white label")) return current;
+  return [current, marker].filter(Boolean).join("\n");
 }
 
 function suggestLanguage(country) {
@@ -136,7 +160,7 @@ function sanitizeOnboardingPayload(payload, prechat) {
     company: String(payload?.company || answers.company || "").trim(),
     role: String(payload?.role || payload?.profile_role || "").trim(),
     user_type: normalizeUserType(payload?.user_type) || "operator",
-    intent: normalizeIntent(payload?.intent) || (enterpriseIntent ? "enterprise" : "explore"),
+    intent: enterpriseIntent ? "enterprise_request" : (normalizeIntent(payload?.intent) || "explore"),
     country,
     language: String(payload?.language || "").trim() || suggestLanguage(country),
     whatsapp: normalizeWhatsapp(payload?.whatsapp || ""),
@@ -186,13 +210,59 @@ function buildHeaders(token, org) {
   return headers;
 }
 
+function formatMissingField(field) {
+  const map = {
+    company: "Empresa/projeto",
+    profile_role: "Cargo",
+    role: "Cargo",
+    user_type: "Perfil",
+    intent: "Objetivo principal",
+    country: "País",
+    language: "Idioma",
+    whatsapp: "WhatsApp / telefone",
+    whatsapp_number: "WhatsApp / telefone",
+  };
+  return map[String(field || "").trim()] || String(field || "").trim();
+}
+
+function formatErrorMessage(value) {
+  if (!value) return "";
+  if (typeof value === "string") {
+    if (/invalid\s+intent/i.test(value)) {
+      return "Não consegui salvar este objetivo no formato atual. Ajustei para avaliação enterprise/piloto; tente salvar novamente.";
+    }
+    return value;
+  }
+  if (value instanceof Error) return formatErrorMessage(value.message);
+
+  if (Array.isArray(value)) {
+    const fields = value
+      .map((item) => item?.loc?.slice?.(-1)?.[0] || item?.field || item?.name || "")
+      .filter(Boolean)
+      .map(formatMissingField);
+    if (fields.length) return `Revise os campos: ${Array.from(new Set(fields)).join(", ")}.`;
+    return "Revise os campos do onboarding e tente novamente.";
+  }
+
+  if (typeof value === "object") {
+    const missing = Array.isArray(value.missing_fields) ? value.missing_fields.map(formatMissingField) : [];
+    if (missing.length) return `Preencha os campos obrigatórios: ${missing.join(", ")}.`;
+    if (value.message) return formatErrorMessage(value.message);
+    if (value.detail) return formatErrorMessage(value.detail);
+    if (value.error) return formatErrorMessage(value.error);
+    return "Não foi possível salvar o onboarding. Revise os campos obrigatórios e tente novamente.";
+  }
+
+  return String(value);
+}
+
 async function readErrorMessage(res) {
   try {
     const data = await res.json();
-    return data?.detail || data?.message || JSON.stringify(data);
+    return formatErrorMessage(data?.detail || data?.message || data);
   } catch {
     try {
-      return await res.text();
+      return formatErrorMessage(await res.text());
     } catch {
       return `${res.status} ${res.statusText}`;
     }
@@ -264,7 +334,7 @@ const optionStyle = {
   color: "#0f172a",
 };
 
-export default function OnboardingModal({ user, onComplete, onClose, entrySource = "standard", autoSpeak = false }) {
+export default function OnboardingModal({ user, onComplete, onClose, entrySource = "standard", autoSpeak = false, allowSkip = true }) {
   const prechat = useMemo(() => readPrechatContext(), []);
   const [form, setForm] = useState(() => sanitizeOnboardingPayload(user, prechat));
   const [busy, setBusy] = useState(false);
@@ -312,20 +382,24 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
   async function handleSubmit(e) {
     e?.preventDefault?.();
 
+    const enterpriseInterest = isEnterpriseIntent(form.intent);
+    const backendIntent = toBackendIntent(form.intent);
+
     const payload = {
-      company: form.company || null,
-      role: form.role || null,
+      company: String(form.company || "").trim(),
+      // Mantemos role e profile_role para compatibilidade entre versões do backend.
+      role: String(form.role || "").trim(),
+      profile_role: String(form.role || "").trim(),
       user_type: form.user_type || "operator",
-      intent: form.intent || "explore",
+      // AO09: nunca enviar "enterprise" para /api/user/onboarding.
+      intent: backendIntent,
       country: form.country || "BR",
       language: form.language || suggestLanguage(form.country || "BR"),
+      preferred_language: form.language || suggestLanguage(form.country || "BR"),
       whatsapp: normalizeWhatsapp(form.whatsapp || ""),
-      notes: form.notes || null,
+      whatsapp_number: normalizeWhatsapp(form.whatsapp || ""),
+      notes: enterpriseInterest ? appendEnterpriseContext(form.notes) : (form.notes || null),
       onboarding_completed: true,
-      imported_prechat_context: hasPrechat,
-      prechat_context: hasPrechat ? prechat : null,
-      trial_days: trialDays,
-      trial_source: hasPrechat ? "orkio_public_prechat" : "standard_onboarding",
     };
 
     setBusy(true);
@@ -337,7 +411,7 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
 
       const result = await saveOnboarding(payload, token, org);
 
-      if (payload.intent === "enterprise") {
+      if (enterpriseInterest) {
         submitEnterpriseLead({
           name: fullName || user?.email || "",
           email: user?.email || "",
@@ -346,7 +420,7 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
           message: payload.notes || "Solicitação Enterprise / White Label / Integrações via onboarding.",
           metadata: {
             prechat_context: prechat,
-            onboarding: payload,
+            onboarding: { ...payload, ui_intent: "enterprise_request" },
           },
           source: "onboarding_modal",
         }, org).catch(() => null);
@@ -371,7 +445,7 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
 
       onComplete?.(nextUser);
     } catch (err) {
-      setError(err?.message || "Não foi possível salvar o onboarding.");
+      setError(formatErrorMessage(err) || "Não foi possível salvar o onboarding.");
     } finally {
       setBusy(false);
     }
@@ -583,7 +657,7 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
           </label>
         </div>
 
-        {form.intent === "enterprise" && (
+        {isEnterpriseIntent(form.intent) && (
           <div
             style={{
               marginTop: 16,
@@ -625,21 +699,27 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
             flexWrap: "wrap",
           }}
         >
-          <button
-            type="button"
-            onClick={() => onClose?.()}
-            style={{
-              border: "1px solid #cbd5e1",
-              borderRadius: 14,
-              background: "#ffffff",
-              color: "#0f172a",
-              padding: "14px 18px",
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
-            Fechar por agora
-          </button>
+          {allowSkip ? (
+            <button
+              type="button"
+              onClick={() => onClose?.()}
+              style={{
+                border: "1px solid #cbd5e1",
+                borderRadius: 14,
+                background: "#ffffff",
+                color: "#0f172a",
+                padding: "14px 18px",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              Fechar por agora
+            </button>
+          ) : (
+            <div style={{ alignSelf: "center", color: "#475569", fontSize: 13, fontWeight: 700, marginRight: "auto" }}>
+              Salve o contexto para liberar a primeira conversa.
+            </div>
+          )}
           <button
             type="submit"
             disabled={busy}
