@@ -1046,6 +1046,7 @@ export default function AppConsole() {
   const [token, setToken] = useState(getToken());
   const [user, setUser] = useState(getUser());
   const canAccessAdmin = hasAdminAccess(user);
+  const onboardingRequired = Boolean(user && !user?.onboarding_completed);
 
   // Summit presence heartbeat (single source of truth).
   // EFATA777 v12: the app must not keep an inline heartbeat loop in parallel with
@@ -1597,8 +1598,11 @@ useEffect(() => {
           } else {
             setOnboardingEntrySource("standard");
             setOnboardingAutoSpeak(false);
-            // PATCH27_2_CLEAN: onboarding is fluid/non-blocking. Keep data available but do not force modal open.
-            setOnboardingOpen(false);
+            // AO08_ONBOARDING_GATE:
+            // O contexto inicial não deve ficar escondido no botão ✨.
+            // Para usuário sem onboarding concluído, abrimos o modal automaticamente
+            // e bloqueamos a primeira conversa até salvar o contexto mínimo.
+            setOnboardingOpen(true);
           }
         } else {
           clearAvatarOnboardingBoot();
@@ -5380,7 +5384,14 @@ async function stopRealtime(reason = 'client_stop') {
         user={user}
         entrySource={onboardingEntrySource}
         autoSpeak={onboardingAutoSpeak}
+        allowSkip={!onboardingRequired}
         onClose={() => {
+          if (onboardingRequired) {
+            setUploadStatus("Complete o contexto inicial para iniciar a conversa.");
+            setTimeout(() => setUploadStatus(""), 1800);
+            setOnboardingOpen(true);
+            return;
+          }
           setOnboardingOpen(false);
           setOnboardingAutoSpeak(false);
           setOnboardingEntrySource("standard");
@@ -5513,11 +5524,18 @@ async function stopRealtime(reason = 'client_stop') {
             )}
             {!user?.onboarding_completed ? (
               <button
-                style={styles.iconBtn}
+                style={{
+                  ...styles.iconBtn,
+                  width: "auto",
+                  minWidth: 98,
+                  padding: "0 12px",
+                  gap: 6,
+                }}
                 onClick={() => setOnboardingOpen(true)}
-                title="Completar cadastro"
+                title="Completar contexto inicial"
               >
-                ✨
+                <span style={{ fontSize: 13 }}>✨</span>
+                <span style={{ fontSize: 12, fontWeight: 900 }}>Contexto</span>
               </button>
             ) : null}
             <button style={styles.iconBtn} onClick={doLogout} title="Sair">
@@ -5744,6 +5762,46 @@ async function stopRealtime(reason = 'client_stop') {
 
         {/* Messages */}
         <div style={{ ...styles.chatArea, padding: isMobile ? "12px 12px 18px" : styles.chatArea.padding }}>
+          {onboardingRequired ? (
+            <div
+              style={{
+                marginBottom: 14,
+                borderRadius: 18,
+                border: "1px solid rgba(96,165,250,0.35)",
+                background: "linear-gradient(135deg, rgba(30,64,175,0.18), rgba(124,58,237,0.14))",
+                color: "#dbeafe",
+                padding: "14px 16px",
+                boxShadow: "0 16px 42px rgba(0,0,0,0.18)",
+              }}
+            >
+              <div style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 900, color: "#93c5fd" }}>
+                Contexto inicial pendente
+              </div>
+              <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>
+                Antes de conversar, salve seu contexto para o Orkio usar no chat.
+              </div>
+              <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.5, color: "rgba(219,234,254,0.84)" }}>
+                Essa etapa evita conversa genérica: empresa/projeto, papel, perfil, objetivo, país, idioma e telefone ficam disponíveis para a primeira resposta útil.
+              </div>
+              <button
+                type="button"
+                onClick={() => setOnboardingOpen(true)}
+                style={{
+                  marginTop: 12,
+                  border: 0,
+                  borderRadius: 14,
+                  padding: "10px 14px",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  color: "#0f172a",
+                  background: "linear-gradient(135deg, #bfdbfe, #ffffff)",
+                }}
+              >
+                Completar contexto agora
+              </button>
+            </div>
+          ) : null}
+
           {messages.length === 0 ? (
             <div style={styles.premiumEmptyShell}>
               <EmptyStatePremium
@@ -6270,10 +6328,10 @@ async function stopRealtime(reason = 'client_stop') {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={pendingApprovedPatchExecution ? "Execução aprovada pendente — use o botão governado acima." : "Escreva sua mensagem..."}
+              placeholder={onboardingRequired ? "Complete o contexto inicial para iniciar a conversa." : pendingApprovedPatchExecution ? "Execução aprovada pendente — use o botão governado acima." : "Escreva sua mensagem..."}
               style={styles.textarea}
               rows={1}
-              disabled={sending || !!pendingApprovedPatchExecution}
+              disabled={onboardingRequired || sending || !!pendingApprovedPatchExecution}
             />
 
             {SUMMIT_VOICE_MODE === "stt_tts" ? (
@@ -6330,7 +6388,7 @@ async function stopRealtime(reason = 'client_stop') {
               🤝
             </button>
 
-            <button type="button" style={styles.sendBtn} onMouseDown={(e) => e.preventDefault()} onClick={() => sendMessage()} disabled={sending || !!pendingApprovedPatchExecution} title="Enviar">
+            <button type="button" style={styles.sendBtn} onMouseDown={(e) => e.preventDefault()} onClick={() => onboardingRequired ? setOnboardingOpen(true) : sendMessage()} disabled={sending || !!pendingApprovedPatchExecution} title={onboardingRequired ? "Complete o contexto inicial antes de enviar" : "Enviar"}>
               <IconSend />
             </button>
           </div>
