@@ -1079,6 +1079,8 @@ const [onboardingOpen, setOnboardingOpen] = useState(false);
 const [onboardingBusy, setOnboardingBusy] = useState(false);
 const [onboardingStatus, setOnboardingStatus] = useState("");
 const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingForm(user));
+const [onboardingEntrySource, setOnboardingEntrySource] = useState("standard");
+const [onboardingAutoSpeak, setOnboardingAutoSpeak] = useState(false);
   const [health, setHealth] = useState("checking");
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth <= 820 : false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -1099,6 +1101,8 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const storageBootstrapConsumedRef = useRef(false);
   const storageBootstrapInitializedRef = useRef(false);
   const THREAD_STORAGE_KEY = "orkio_active_thread_id";
+  const AVATAR_ONBOARDING_BOOT_KEY = "orkio_avatar_onboarding_boot";
+  const AVATAR_ONBOARDING_CONTEXT_KEY = "orkio_avatar_onboarding_context";
 
   function readStoredThreadId() {
     if (typeof window === "undefined") return "";
@@ -1127,6 +1131,41 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
     storageBootstrapConsumedRef.current = true;
     initialStoredThreadIdRef.current = String(nextId || "").trim();
   }
+
+  function readAvatarOnboardingBootstrap() {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage?.getItem(AVATAR_ONBOARDING_BOOT_KEY)
+        || window.sessionStorage?.getItem(AVATAR_ONBOARDING_BOOT_KEY)
+        || "";
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function consumeAvatarOnboardingBootstrap() {
+    const payload = readAvatarOnboardingBootstrap();
+    if (typeof window !== "undefined") {
+      try { window.localStorage?.removeItem(AVATAR_ONBOARDING_BOOT_KEY); } catch {}
+      try { window.sessionStorage?.removeItem(AVATAR_ONBOARDING_BOOT_KEY); } catch {}
+    }
+    return payload;
+  }
+
+  function persistAvatarOnboardingContext(payload = null) {
+    if (typeof window === "undefined") return;
+    try {
+      if (payload && typeof payload === "object") {
+        window.localStorage?.setItem(AVATAR_ONBOARDING_CONTEXT_KEY, JSON.stringify(payload));
+      } else {
+        window.localStorage?.removeItem(AVATAR_ONBOARDING_CONTEXT_KEY);
+      }
+    } catch {}
+  }
+
 
   function lockThreadSelection(nextId = "", ttlMs = 15000) {
     const safeId = String(nextId || "").trim();
@@ -1549,8 +1588,25 @@ useEffect(() => {
           return;
         }
 
-        if (!mergedUser?.onboarding_completed) {
+        const avatarBootstrap = consumeAvatarOnboardingBootstrap();
+        if (avatarBootstrap) {
+          persistAvatarOnboardingContext({
+            source: "avatar",
+            started_at: avatarBootstrap?.started_at || Date.now(),
+            mode: avatarBootstrap?.mode || "guided",
+            trigger: avatarBootstrap?.trigger || "landing_avatar",
+          });
+          setOnboardingForm((prev) => sanitizeOnboardingForm({
+            ...mergedUser,
+            company: mergedUser?.company || prev?.company || "",
+          }));
+          setOnboardingEntrySource("avatar");
+          setOnboardingAutoSpeak(true);
+          setOnboardingOpen(true);
+        } else if (!mergedUser?.onboarding_completed) {
           setOnboardingForm(sanitizeOnboardingForm(mergedUser));
+          setOnboardingEntrySource("standard");
+          setOnboardingAutoSpeak(false);
           // PATCH27_2_CLEAN: onboarding is fluid/non-blocking. Keep data available but do not force modal open.
           setOnboardingOpen(false);
         }
