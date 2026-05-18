@@ -268,44 +268,89 @@ function normalizeAgentVoiceId(raw, fallback = ORKIO_DEFAULT_VOICE_ID) {
 }
 
 
+function extractGovernanceField(text, name, { allowDash = false } = {}) {
+  const prefix = allowDash ? "\\s*-?\\s*" : "\\s*";
+  const m = String(text || "").match(new RegExp(`^${prefix}${name}\\s*:\\s*([^\\n]+)`, "im"));
+  return m ? String(m[1] || "").trim() : "";
+}
+
+function hasKnownGovernanceRuntimeCrash(content) {
+  const text = String(content || "");
+  return /name '_extract_known_roster_agents_from_text' is not defined|ModuleNotFoundError|No module named 'app\.warroom_artifact_templates'|NameError:\s*name '_is_governed_frontend_audit_readonly_request' is not defined|NameError:\s*name '_is_institutional_identity_request' is not defined|CHAT_STREAM_INTERNAL_WARROOM_GOVERNED_ARTIFACT_FAILED/i.test(text);
+}
+
+function resolveGovernanceArtifactReady(content) {
+  const text = String(content || "");
+  if (/Artifact executável:\s*[\s\S]{0,240}?ready:\s*true/i.test(text)) return true;
+  if (/Artifact executável:\s*[\s\S]{0,240}?ready:\s*false/i.test(text)) return false;
+  if (/^EXECUTABLE_ARTIFACT:\s*true/im.test(text) || /^ARTIFACT_READY:\s*true/im.test(text)) return true;
+  if (/^EXECUTABLE_ARTIFACT:\s*false/im.test(text) || /^ARTIFACT_READY:\s*false/im.test(text)) return false;
+  return null;
+}
+
+function hasGovernanceExecutableScope(content) {
+  const text = String(content || "");
+  if (/scope não explicitado|Arquivos alvo:\s*-\s*não explicitado|Funções alvo:\s*-\s*não explicitado|nenhum JSON executável seguro foi emitido pelo agente/i.test(text)) {
+    return false;
+  }
+  return true;
+}
+
+function isActionablePatchGovernanceProposal(content) {
+  const text = String(content || "");
+  if (!/PATCH GOVERNANCE RESPONSE/i.test(text)) return false;
+  if (hasKnownGovernanceRuntimeCrash(text)) return false;
+  const artifactReady = resolveGovernanceArtifactReady(text);
+  if (artifactReady === false) return false;
+  if (!hasGovernanceExecutableScope(text)) return false;
+  return artifactReady === true;
+}
+
+function looksLikeGovernedExecutionIntent(content) {
+  const text = String(content || "");
+  return /executar patch aprovado|execute approved patch|aplicar patch aprovado|seguir com o patch aprovado|abrir o fluxo governado aprovado|use o botão executar patch aprovado/i.test(text);
+}
+
 function extractPatchGovernanceMeta(content) {
   const text = String(content || "");
   if (!/PATCH GOVERNANCE RESPONSE/i.test(text)) return null;
-  const get = (name) => {
-    const m = text.match(new RegExp(`^\\s*${name}\\s*:\\s*([^\\n]+)`, "im"));
-    return m ? String(m[1] || "").trim() : "";
-  };
-  const auditReceiptId = get("audit_receipt_id");
-  const patchMode = get("patch_mode");
-  const writeAllowed = get("write_allowed");
+
+  const auditReceiptId = extractGovernanceField(text, "audit_receipt_id");
+  const patchMode = extractGovernanceField(text, "patch_mode");
+  const writeAllowed = extractGovernanceField(text, "write_allowed");
+  const artifactReady = resolveGovernanceArtifactReady(text);
+  const actionable = Boolean(
+    auditReceiptId &&
+    /proposal_only/i.test(patchMode) &&
+    /false/i.test(writeAllowed) &&
+    isActionablePatchGovernanceProposal(text)
+  );
+
   return {
     audit_receipt_id: auditReceiptId,
     patch_mode: patchMode,
     write_allowed: writeAllowed,
-    can_approve: Boolean(auditReceiptId && /proposal_only/i.test(patchMode) && /false/i.test(writeAllowed)),
+    artifact_ready: artifactReady,
+    has_known_runtime_error: hasKnownGovernanceRuntimeCrash(text),
+    can_approve: actionable,
   };
 }
-
 
 function extractPatchApprovalMeta(content) {
   const text = String(content || "");
   const isApprovalResponse = /PATCH APPROVAL RESPONSE/i.test(text);
   const isGovernedExecutionResponse = /GOVERNED PATCH EXECUTION RESPONSE|PATCH EXECUTION RESPONSE/i.test(text);
   if (!isApprovalResponse && !isGovernedExecutionResponse) return null;
+  if (hasKnownGovernanceRuntimeCrash(text)) return null;
 
-  const get = (name) => {
-    const m = text.match(new RegExp(`^\\s*-?\\s*${name}\\s*:\\s*([^\\n]+)`, "im"));
-    return m ? String(m[1] || "").trim() : "";
-  };
-
-  const status = get("status");
-  const auditReceiptId = get("audit_receipt_id");
-  const patchMode = get("patch_mode");
-  const writeAllowed = get("write_allowed");
-  const humanApproved = get("human_approved");
-  const approvalId = get("approval_id");
-  const patchId = get("patch_id");
-  const executionChannel = get("execution_channel");
+  const status = extractGovernanceField(text, "status", { allowDash: true });
+  const auditReceiptId = extractGovernanceField(text, "audit_receipt_id", { allowDash: true });
+  const patchMode = extractGovernanceField(text, "patch_mode", { allowDash: true });
+  const writeAllowed = extractGovernanceField(text, "write_allowed", { allowDash: true });
+  const humanApproved = extractGovernanceField(text, "human_approved", { allowDash: true });
+  const approvalId = extractGovernanceField(text, "approval_id", { allowDash: true });
+  const patchId = extractGovernanceField(text, "patch_id", { allowDash: true });
+  const executionChannel = extractGovernanceField(text, "execution_channel", { allowDash: true });
 
   const terminalExecution = /execution_completed|execution_failed|execution_cancelled|execution_blocked_no_executable_artifact|execution_blocked_executor_not_wired|execution_request_failed|execution_blocked_missing_approval|execution_blocked_invalid_context/i.test(status);
   const approvedPending =
@@ -339,18 +384,15 @@ function findPendingApprovedPatchExecution(items) {
     const id = String(m?.id || "");
     const key = `${ts}:${id}`;
 
-    // PATCH23: any newer proposal supersedes previous approval/execution state.
-    // Without this, an old approved_apply message can keep rendering an execution
-    // button for a stale patch_id/audit_receipt_id after a new proposal appears.
     const isProposal =
       /PATCH GOVERNANCE RESPONSE/i.test(content) &&
       /patch_mode\s*:\s*proposal_only/i.test(content);
     if (isProposal) {
-      const auditMatch = content.match(/^\s*audit_receipt_id\s*:\s*([^\n]+)/im);
       latestProposal = {
         message: m,
         key,
-        audit_receipt_id: auditMatch ? String(auditMatch[1] || "").trim() : "",
+        audit_receipt_id: extractGovernanceField(content, "audit_receipt_id"),
+        actionable: isActionablePatchGovernanceProposal(content),
       };
     }
 
@@ -359,9 +401,6 @@ function findPendingApprovedPatchExecution(items) {
       latestApproval = { message: m, meta: approval, key };
     }
 
-    // A conversational-channel block is NOT a terminal execution result.
-    // It only tells the user to use the governed side-channel button.
-    // Keep the approved execution pending so the "Executar patch aprovado" button remains visible.
     const isExecutionResponse = /GOVERNED PATCH EXECUTION RESPONSE|PATCH EXECUTION RESPONSE/i.test(content);
     const isConversationalBlock = /execution_blocked_conversational_channel/i.test(content);
     const isRealTerminalExecution =
@@ -373,12 +412,7 @@ function findPendingApprovedPatchExecution(items) {
   }
 
   if (!latestApproval) return null;
-
-  // A newer proposal invalidates old approved-apply UI state.
-  if (latestProposal && String(latestProposal.key) > String(latestApproval.key)) {
-    return null;
-  }
-
+  if (latestProposal && String(latestProposal.key) > String(latestApproval.key)) return null;
   if (latestTerminal && String(latestTerminal.key) > String(latestApproval.key)) return null;
   return latestApproval;
 }
@@ -2510,7 +2544,8 @@ async function sendMessage(presetMsg = null, opts = {}) {
     if (!msg || sendingRef.current) return;
 
     const pendingApprovedExecution = findPendingApprovedPatchExecution(messagesRef.current || messages);
-    if (pendingApprovedExecution) {
+    const wantsGovernedExecution = looksLikeGovernedExecutionIntent(msg);
+    if (pendingApprovedExecution && wantsGovernedExecution) {
       const guidance = buildPendingExecutionGuidance();
       setText("");
       setUploadStatus("⚠️ Execução aprovada pendente — use o botão governado.");
