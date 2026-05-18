@@ -180,7 +180,7 @@ function stagePrechatImport(extra = {}) {
 function normalizeAuthErrorMessage(err, fallbackMessage) {
   if (!err) return fallbackMessage;
   if (err?.name === "AbortError" || err?.code === "AUTH_REQUEST_TIMEOUT") {
-    return "The request took too long. Please try again.";
+    return "A solicitação demorou demais. Tente novamente em instantes.";
   }
   return err?.message || fallbackMessage;
 }
