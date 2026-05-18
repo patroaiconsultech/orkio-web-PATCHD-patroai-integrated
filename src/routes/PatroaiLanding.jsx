@@ -2,6 +2,27 @@ import React from "react";
 import { Link } from "react-router-dom";
 import AvatarOracleCard from "../components/AvatarOracleCard.jsx";
 
+const AVATAR_ONBOARDING_BOOT_KEY = "orkio_avatar_onboarding_boot";
+const AVATAR_ONBOARDING_CONTEXT_KEY = "orkio_avatar_onboarding_context";
+
+function persistAvatarJourney() {
+  if (typeof window === "undefined") return;
+  const bootPayload = {
+    source: "avatar",
+    trigger: "landing_avatar",
+    mode: "guided",
+    started_at: Date.now(),
+  };
+  const contextPayload = {
+    source: "avatar",
+    journey: "landing_to_console_onboarding",
+    requested_at: Date.now(),
+  };
+  try { window.localStorage?.setItem(AVATAR_ONBOARDING_BOOT_KEY, JSON.stringify(bootPayload)); } catch {}
+  try { window.sessionStorage?.setItem(AVATAR_ONBOARDING_BOOT_KEY, JSON.stringify(bootPayload)); } catch {}
+  try { window.localStorage?.setItem(AVATAR_ONBOARDING_CONTEXT_KEY, JSON.stringify(contextPayload)); } catch {}
+}
+
 export default function PatroaiLanding() {
   const palette = {
     text: "#ffffff",
@@ -18,13 +39,13 @@ export default function PatroaiLanding() {
   const shell = {
     minHeight: "100vh",
     background:
-      "radial-gradient(900px 540px at 18% 0%, rgba(255,194,73,0.12), transparent 54%), radial-gradient(760px 520px at 78% 12%, rgba(111,132,255,0.16), transparent 48%), linear-gradient(180deg, #02050a 0%, #040812 100%)",
+      "radial-gradient(920px 560px at 16% 0%, rgba(255,194,73,0.14), transparent 54%), radial-gradient(760px 520px at 82% 12%, rgba(111,132,255,0.18), transparent 48%), linear-gradient(180deg, #02050a 0%, #040812 100%)",
     color: palette.text,
     fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
   };
 
   const wrap = {
-    width: "min(1400px, calc(100% - 32px))",
+    width: "min(1440px, calc(100% - 32px))",
     margin: "0 auto",
   };
 
@@ -54,11 +75,16 @@ export default function PatroaiLanding() {
   const featureCard = (accent) => ({
     ...glass,
     padding: 18,
-    minHeight: 112,
+    minHeight: 118,
     borderLeft: `2px solid ${accent}`,
     background: "rgba(255,255,255,0.02)",
     boxShadow: "none",
   });
+
+  const startAvatarJourney = () => {
+    persistAvatarJourney();
+    window.location.href = "/auth?entry=avatar";
+  };
 
   return (
     <div style={shell}>
@@ -80,6 +106,7 @@ export default function PatroaiLanding() {
             justifyContent: "space-between",
             gap: 20,
             padding: "16px 0",
+            flexWrap: "wrap",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -100,7 +127,7 @@ export default function PatroaiLanding() {
             </div>
           </div>
 
-          <nav style={{ display: "flex", gap: 26, color: palette.soft, fontWeight: 600 }}>
+          <nav style={{ display: "flex", gap: 24, color: palette.soft, fontWeight: 600, flexWrap: "wrap" }}>
             <span>Soluções</span>
             <span>Plataforma</span>
             <span>Recursos</span>
@@ -113,8 +140,9 @@ export default function PatroaiLanding() {
             <Link to="/auth" style={{ color: palette.text, textDecoration: "none", fontWeight: 700 }}>
               Login
             </Link>
-            <a
-              href="#demo"
+            <button
+              type="button"
+              onClick={startAvatarJourney}
               style={{
                 textDecoration: "none",
                 color: palette.text,
@@ -123,10 +151,11 @@ export default function PatroaiLanding() {
                 border: "1px solid rgba(247,200,98,0.34)",
                 background: "linear-gradient(180deg, rgba(28,20,7,0.9), rgba(10,10,8,0.9))",
                 fontWeight: 900,
+                cursor: "pointer",
               }}
             >
-              Agendar demo →
-            </a>
+              Entrar com avatar →
+            </button>
           </div>
         </div>
       </header>
@@ -135,16 +164,17 @@ export default function PatroaiLanding() {
         <section
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0, 1.1fr) minmax(380px, 0.9fr)",
+            gridTemplateColumns: "minmax(0, 1.08fr) minmax(380px, 0.92fr)",
             gap: 28,
+            alignItems: "stretch",
           }}
         >
-          <div style={{ ...glass, padding: 28 }}>
+          <div style={{ ...glass, padding: 30 }}>
             <div style={chip}>INOVAÇÃO • ESTRATÉGIA • EXECUÇÃO • ESG</div>
 
             <h1
               style={{
-                fontSize: 70,
+                fontSize: 68,
                 lineHeight: 1.02,
                 letterSpacing: "-0.045em",
                 margin: "22px 0 16px",
@@ -155,26 +185,46 @@ export default function PatroaiLanding() {
             </h1>
 
             <p style={{ color: palette.soft, fontSize: 22, lineHeight: 1.6, maxWidth: 780 }}>
-              A PatroAI cria ecossistemas inteligentes com o Orkio — uma presença de IA
-              auditável, governável e multiagente, capaz de acolher, analisar, planejar e
-              acompanhar a execução com sofisticação, serenidade e valor estratégico.
+              A PatroAI cria ecossistemas inteligentes com o Orkio — uma presença de IA auditável,
+              governável e multiagente, capaz de acolher, analisar, planejar e acompanhar a execução
+              com sofisticação, serenidade e valor estratégico.
             </p>
 
+            <div
+              style={{
+                marginTop: 24,
+                borderRadius: 22,
+                padding: 18,
+                border: "1px solid rgba(255,255,255,0.08)",
+                background: "linear-gradient(135deg, rgba(255,224,156,0.08), rgba(124,93,255,0.08))",
+              }}
+            >
+              <div style={{ color: palette.goldSoft, fontWeight: 900, marginBottom: 8 }}>
+                Nova entrada guiada
+              </div>
+              <div style={{ color: palette.soft, fontSize: 15, lineHeight: 1.7 }}>
+                Agora a jornada começa pelo avatar: ele conduz a entrada, preserva intenção,
+                abre o onboarding no console e prepara uma primeira experiência mais viva e premium.
+              </div>
+            </div>
+
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 30 }}>
-              <a
-                href="#demo"
+              <button
+                type="button"
+                onClick={startAvatarJourney}
                 style={{
-                  textDecoration: "none",
                   padding: "17px 24px",
                   borderRadius: 18,
                   background: "linear-gradient(90deg, #a46712, #f7c862 54%, #ffe29c)",
                   color: "#101010",
                   fontWeight: 900,
                   boxShadow: "0 18px 40px rgba(247,200,98,0.24)",
+                  border: "none",
+                  cursor: "pointer",
                 }}
               >
-                Agendar uma demonstração →
-              </a>
+                Iniciar onboarding guiado →
+              </button>
               <Link
                 to="/auth"
                 style={{
@@ -201,9 +251,7 @@ export default function PatroaiLanding() {
 
           <AvatarOracleCard
             name="Orkio"
-            onStartChat={() => {
-              window.location.href = "/app";
-            }}
+            onStartChat={startAvatarJourney}
           />
         </section>
       </main>
