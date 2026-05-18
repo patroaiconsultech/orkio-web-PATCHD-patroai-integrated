@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 
 const COLORS = {
   surface: "linear-gradient(180deg, rgba(12, 19, 34, 0.98) 0%, rgba(7, 11, 21, 1) 100%)",
@@ -12,32 +12,96 @@ const COLORS = {
   warning: "#f59e0b",
 };
 
-const SUGGESTIONS = [
-  "Quero um diagnóstico executivo da plataforma",
-  "Monte um plano cirúrgico para a próxima melhoria",
-  "Mostre a prioridade mais importante desta semana",
+const AGENTS = [
+  {
+    id: "orkio",
+    name: "Orkio",
+    title: "Copiloto central",
+    description: "Organiza a conversa, preserva contexto e transforma intenção em plano, análise ou roteiro.",
+    prompt: "Orkio, me ajuda a transformar meu contexto em um plano prático para hoje.",
+  },
+  {
+    id: "chris",
+    name: "Chris",
+    title: "Estratégia e negócios",
+    description: "Ajuda com produto, narrativa, posicionamento, clareza comercial e decisões executivas.",
+    prompt: "Chris, analisa minha proposta e sugere o posicionamento mais claro para o beta.",
+  },
+  {
+    id: "orion",
+    name: "Orion",
+    title: "Engenharia e auditoria técnica",
+    description: "Cuida de arquitetura, frontend, backend, runtime, governança, patches e deploy.",
+    prompt: "Orion, revisa a plataforma e monta um checklist técnico de validação.",
+  },
+  {
+    id: "team",
+    name: "Team",
+    title: "Visão integrada",
+    description: "Coordena múltiplos agentes quando a tarefa pede leitura técnica, produto e operação.",
+    prompt: "Team, me entreguem um plano integrado com prioridade, risco e próximo passo.",
+  },
 ];
 
-const ACTIONS = [
-  {
-    id: "primary",
-    title: "Conversa guiada",
-    description: "Entrar no fluxo principal com uma pergunta de alto valor já pronta.",
-  },
-  {
-    id: "secondary",
-    title: "Blueprint",
-    description: "Abrir um plano de estruturação com foco em impacto e sequência.",
-  },
-  {
-    id: "tertiary",
-    title: "Próximos passos",
-    description: "Preencher o prompt com o próximo melhor movimento operacional.",
-  },
+const SUGGESTIONS = [
+  "Orkio, me ajuda a montar um plano de testes para liberar a plataforma para 5 usuários beta?",
+  "Chris, como explico a proposta do Orkio em 30 segundos?",
+  "Orion, quais riscos técnicos eu devo validar antes de ampliar o beta?",
 ];
+
+const FEEDBACK_OPTIONS = [
+  { id: "worked", label: "Funcionou bem", prompt: "Feedback beta: funcionou bem. O que funcionou foi: " },
+  { id: "weak", label: "Resposta fraca", prompt: "Feedback beta: resposta fraca. O que faltou foi: " },
+  { id: "visual", label: "Erro visual", prompt: "Feedback beta: erro visual. Onde aconteceu: " },
+  { id: "stuck", label: "Travou", prompt: "Feedback beta: travou. O fluxo, tela ou mensagem foi: " },
+  { id: "idea", label: "Sugestão", prompt: "Feedback beta: sugestão. Minha ideia é: " },
+];
+
+const USER_TYPE_LABELS = {
+  founder: "Fundador(a)",
+  investor: "Investidor(a)",
+  operator: "Operador(a)",
+  partner: "Parceiro(a)",
+  other: "Outro",
+};
+
+const INTENT_LABELS = {
+  explore: "Explorar a plataforma",
+  meeting: "Agendar conversa",
+  pilot: "Avaliar piloto",
+  funding: "Discutir investimento",
+  enterprise: "Enterprise / integrações",
+  other: "Outro",
+};
 
 function callMaybe(fn, ...args) {
   if (typeof fn === "function") fn(...args);
+}
+
+function clean(value) {
+  return String(value || "").trim();
+}
+
+function truncate(value, max = 120) {
+  const raw = clean(value);
+  if (!raw) return "";
+  return raw.length > max ? `${raw.slice(0, max - 1)}…` : raw;
+}
+
+function resolveContextRows(user) {
+  const rows = [
+    ["Nome", clean(user?.name || user?.full_name || user?.email)],
+    ["Empresa/projeto", clean(user?.company || user?.organization || user?.company_name)],
+    ["Papel", clean(user?.role || user?.profile_role || user?.title)],
+    ["Perfil", USER_TYPE_LABELS[clean(user?.user_type)] || clean(user?.user_type)],
+    ["Objetivo", INTENT_LABELS[clean(user?.intent)] || clean(user?.intent)],
+    ["País/idioma", [clean(user?.country), clean(user?.language)].filter(Boolean).join(" · ")],
+    ["Notas", truncate(user?.notes || user?.onboarding_notes || user?.context_notes, 160)],
+  ].filter(([, value]) => clean(value));
+
+  return rows.length
+    ? rows
+    : [["Contexto", "Recebi seu acesso. Complete o onboarding para personalizar ainda mais a conversa."]];
 }
 
 export default function EmptyStatePremium({
@@ -48,7 +112,9 @@ export default function EmptyStatePremium({
   onTertiaryAction,
   onFillPrompt,
 }) {
-  const firstName = String(user?.name || user?.full_name || user?.email || "Founder")
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const contextRows = useMemo(() => resolveContextRows(user), [user]);
+  const firstName = clean(user?.name || user?.full_name || user?.email || "Founder")
     .split("@")[0]
     .split(" ")[0]
     .trim();
@@ -60,6 +126,10 @@ export default function EmptyStatePremium({
     }
     if (id === "secondary") return callMaybe(onSecondaryAction);
     if (id === "tertiary") return callMaybe(onTertiaryAction);
+  };
+
+  const fillPrompt = (value) => {
+    if (typeof onFillPrompt === "function") onFillPrompt(value);
   };
 
   return (
@@ -103,11 +173,11 @@ export default function EmptyStatePremium({
               gap: 10,
               borderRadius: 999,
               padding: "10px 14px",
-              background: "rgba(124, 58, 237, 0.14)",
-              border: "1px solid rgba(124, 58, 237, 0.22)",
-              color: "#ddd6fe",
+              background: "rgba(34, 197, 94, 0.12)",
+              border: "1px solid rgba(34, 197, 94, 0.22)",
+              color: "#bbf7d0",
               fontSize: 12,
-              fontWeight: 900,
+              fontWeight: 950,
               letterSpacing: "0.06em",
               textTransform: "uppercase",
             }}
@@ -121,47 +191,78 @@ export default function EmptyStatePremium({
                 boxShadow: "0 0 0 6px rgba(34, 197, 94, 0.16)",
               }}
             />
-            Orkio Command Deck
+            Beta controlado · contexto recebido
           </div>
 
-          <div
+          <button
+            type="button"
+            onClick={() => setFeedbackOpen((value) => !value)}
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 10,
+              border: `1px solid ${COLORS.border}`,
+              background: "rgba(255,255,255,0.06)",
+              color: COLORS.text,
               borderRadius: 999,
               padding: "10px 14px",
-              background: "rgba(15, 23, 42, 0.56)",
-              border: `1px solid ${COLORS.border}`,
-              color: COLORS.muted,
               fontSize: 12,
-              fontWeight: 800,
+              fontWeight: 900,
+              cursor: "pointer",
             }}
           >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: COLORS.accent2,
-                boxShadow: "0 0 0 6px rgba(37, 99, 235, 0.14)",
-              }}
-            />
-            Shell preservado · experiência reforçada
-          </div>
+            Reportar feedback beta
+          </button>
         </div>
 
-        <div style={{ maxWidth: 900 }}>
+        {feedbackOpen ? (
+          <div
+            style={{
+              marginBottom: 20,
+              borderRadius: 22,
+              border: "1px solid rgba(245, 158, 11, 0.22)",
+              background: "rgba(245, 158, 11, 0.08)",
+              padding: 14,
+            }}
+          >
+            <div style={{ color: "#fde68a", fontWeight: 950, marginBottom: 10 }}>
+              O que você quer reportar?
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {FEEDBACK_OPTIONS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => fillPrompt(item.prompt)}
+                  style={{
+                    border: "1px solid rgba(253, 230, 138, 0.20)",
+                    background: "rgba(255,255,255,0.06)",
+                    color: "#fffbeb",
+                    borderRadius: 999,
+                    padding: "9px 11px",
+                    fontSize: 12,
+                    fontWeight: 850,
+                    cursor: "pointer",
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ color: "#fef3c7", opacity: 0.78, marginTop: 10, fontSize: 12, lineHeight: 1.45 }}>
+              A opção escolhida preenche o campo de mensagem. Revise, complete e envie.
+            </div>
+          </div>
+        ) : null}
+
+        <div style={{ maxWidth: 920 }}>
           <h1
             style={{
               margin: 0,
               color: COLORS.text,
-              fontSize: 48,
+              fontSize: "clamp(34px, 5vw, 52px)",
               lineHeight: 1.02,
               letterSpacing: "-0.045em",
             }}
           >
-            Bem-vindo, {firstName || "Founder"}
+            {firstName ? `${firstName}, seu Orkio está pronto.` : "Seu Orkio está pronto."}
           </h1>
 
           <p
@@ -170,244 +271,68 @@ export default function EmptyStatePremium({
               marginBottom: 0,
               color: COLORS.muted,
               fontSize: 18,
-              lineHeight: 1.78,
-              maxWidth: 820,
+              lineHeight: 1.72,
+              maxWidth: 860,
             }}
           >
-            A navegação, as threads e os acessos continuam exatamente onde devem estar.
-            O que muda aqui é o centro da experiência: mais clareza, mais direção e uma
-            primeira vitória perceptível já no primeiro olhar.
+            Você chegou, seu contexto foi recebido e a equipe de agentes está organizada para
+            transformar a primeira conversa em plano, análise ou roteiro de teste.
           </p>
         </div>
 
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "2.1fr 1fr",
-            gap: 16,
             marginTop: 24,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+            gap: 12,
           }}
         >
           <div
             style={{
-              borderRadius: 26,
-              padding: 22,
-              background: "linear-gradient(135deg, rgba(124, 58, 237, 0.18) 0%, rgba(37, 99, 235, 0.12) 100%)",
-              border: "1px solid rgba(124, 58, 237, 0.18)",
-            }}
-          >
-            <div
-              style={{
-                color: "#ddd6fe",
-                fontSize: 12,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-                fontWeight: 900,
-                marginBottom: 10,
-              }}
-            >
-              Próxima melhor ação
-            </div>
-            <div
-              style={{
-                color: COLORS.text,
-                fontSize: 28,
-                lineHeight: 1.12,
-                fontWeight: 900,
-                marginBottom: 10,
-              }}
-            >
-              Comece com uma conversa guiada e já entre na trilha executiva certa
-            </div>
-            <div
-              style={{
-                color: COLORS.muted,
-                fontSize: 15,
-                lineHeight: 1.72,
-                maxWidth: 700,
-              }}
-            >
-              Em vez de um vazio contemplativo, o centro do console agora entrega ação,
-              direção e contexto. O usuário percebe valor mais rápido e entende o que fazer em segundos.
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                flexWrap: "wrap",
-                marginTop: 18,
-              }}
-            >
-              <button
-                onClick={() => handleAction("primary")}
-                style={{
-                  border: "none",
-                  background: "linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)",
-                  color: "white",
-                  borderRadius: 16,
-                  padding: "15px 18px",
-                  fontSize: 14,
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  boxShadow: "0 22px 44px rgba(76, 29, 149, 0.34)",
-                }}
-              >
-                Iniciar conversa guiada
-              </button>
-
-              <button
-                onClick={() => handleAction("secondary")}
-                style={{
-                  border: "1px solid rgba(148, 163, 184, 0.18)",
-                  background: "rgba(15, 23, 42, 0.62)",
-                  color: COLORS.text,
-                  borderRadius: 16,
-                  padding: "15px 18px",
-                  fontSize: 14,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                Abrir blueprint
-              </button>
-            </div>
-          </div>
-
-          <div
-            style={{
-              borderRadius: 26,
-              padding: 20,
-              background: "rgba(15, 23, 42, 0.58)",
+              borderRadius: 24,
               border: `1px solid ${COLORS.border}`,
+              background: "rgba(15, 23, 42, 0.56)",
+              padding: 16,
             }}
           >
-            <div
-              style={{
-                color: COLORS.subtle,
-                fontSize: 12,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                fontWeight: 900,
-                marginBottom: 8,
-              }}
-            >
-              Sinal de prontidão
+            <div style={{ color: "#bfdbfe", fontSize: 12, fontWeight: 950, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Contexto recebido
             </div>
-
-            <div
-              style={{
-                color: COLORS.text,
-                fontSize: 22,
-                lineHeight: 1.15,
-                fontWeight: 900,
-                marginBottom: 10,
-              }}
-            >
-              Pronto para operar
-            </div>
-
-            <div
-              style={{
-                color: COLORS.muted,
-                fontSize: 14,
-                lineHeight: 1.7,
-                marginBottom: 14,
-              }}
-            >
-              Threads, usuário, wallet e navegação já estão disponíveis. A camada premium entra como reforço de decisão.
-            </div>
-
-            <div style={{ display: "grid", gap: 10 }}>
-              {[
-                ["Navegação", "Visível"],
-                ["Primeira ação", "Guiada"],
-                ["Leitura", "Executiva"],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  style={{
-                    borderRadius: 18,
-                    padding: "12px",
-                    border: "1px solid rgba(148, 163, 184, 0.12)",
-                    background: "rgba(255,255,255,0.03)",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: COLORS.subtle,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      marginBottom: 6,
-                      fontWeight: 800,
-                    }}
-                  >
+            <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
+              {contextRows.map(([label, value]) => (
+                <div key={`${label}-${value}`} style={{ display: "grid", gap: 2 }}>
+                  <div style={{ color: COLORS.subtle, fontSize: 11, fontWeight: 850, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                     {label}
                   </div>
-                  <div style={{ color: COLORS.text, fontSize: 14, fontWeight: 900 }}>
+                  <div style={{ color: COLORS.text, fontSize: 13, lineHeight: 1.45, fontWeight: 760 }}>
                     {value}
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-            gap: 14,
-            marginTop: 20,
-          }}
-        >
-          {ACTIONS.map((action) => (
+          {AGENTS.map((agent) => (
             <button
-              key={action.id}
-              onClick={() => handleAction(action.id)}
+              key={agent.id}
+              type="button"
+              onClick={() => fillPrompt(agent.prompt)}
               style={{
                 textAlign: "left",
-                background: "rgba(15, 23, 42, 0.52)",
+                borderRadius: 24,
                 border: `1px solid ${COLORS.border}`,
-                borderRadius: 22,
-                padding: 18,
-                cursor: "pointer",
+                background: "linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.035))",
+                padding: 16,
                 color: COLORS.text,
+                cursor: "pointer",
+                boxShadow: "0 18px 44px rgba(2,6,23,0.18)",
               }}
             >
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 36,
-                  height: 36,
-                  borderRadius: 14,
-                  marginBottom: 12,
-                  background: action.id === "primary"
-                    ? "rgba(124, 58, 237, 0.18)"
-                    : action.id === "secondary"
-                    ? "rgba(37, 99, 235, 0.16)"
-                    : "rgba(245, 158, 11, 0.12)",
-                  border: `1px solid ${
-                    action.id === "primary"
-                      ? "rgba(124, 58, 237, 0.24)"
-                      : action.id === "secondary"
-                      ? "rgba(37, 99, 235, 0.24)"
-                      : "rgba(245, 158, 11, 0.18)"
-                  }`,
-                  fontWeight: 900,
-                  fontSize: 14,
-                }}
-              >
-                {action.id === "primary" ? "01" : action.id === "secondary" ? "02" : "03"}
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 900, marginBottom: 8 }}>
-                {action.title}
-              </div>
-              <div style={{ color: COLORS.muted, fontSize: 13, lineHeight: 1.65 }}>
-                {action.description}
+              <div style={{ fontSize: 18, fontWeight: 950 }}>{agent.name}</div>
+              <div style={{ color: "#bfdbfe", marginTop: 4, fontSize: 13, fontWeight: 900 }}>{agent.title}</div>
+              <div style={{ color: COLORS.muted, marginTop: 9, fontSize: 13, lineHeight: 1.5 }}>
+                {agent.description}
               </div>
             </button>
           ))}
@@ -415,46 +340,90 @@ export default function EmptyStatePremium({
 
         <div
           style={{
-            borderRadius: 26,
-            padding: 18,
-            marginTop: 18,
-            background: "rgba(2, 6, 23, 0.34)",
-            border: `1px solid ${COLORS.border}`,
+            marginTop: 24,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 12,
           }}
         >
-          <div
+          {SUGGESTIONS.map((suggestion) => (
+            <button
+              key={suggestion}
+              type="button"
+              onClick={() => fillPrompt(suggestion)}
+              style={{
+                textAlign: "left",
+                borderRadius: 20,
+                border: "1px solid rgba(37, 99, 235, 0.22)",
+                background: "rgba(37, 99, 235, 0.10)",
+                color: "#dbeafe",
+                padding: "13px 14px",
+                fontWeight: 850,
+                cursor: "pointer",
+                lineHeight: 1.42,
+              }}
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            marginTop: 24,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => handleAction("primary")}
             style={{
-              color: COLORS.subtle,
-              fontSize: 12,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              fontWeight: 900,
-              marginBottom: 10,
+              border: 0,
+              borderRadius: 18,
+              padding: "14px 18px",
+              background: "linear-gradient(135deg, #2563eb, #7c3aed)",
+              color: "#ffffff",
+              fontWeight: 950,
+              cursor: "pointer",
+              boxShadow: "0 18px 42px rgba(37, 99, 235, 0.22)",
             }}
           >
-            Começos rápidos
-          </div>
+            Começar com uma leitura executiva
+          </button>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {SUGGESTIONS.map((prompt) => (
-              <button
-                key={prompt}
-                onClick={() => callMaybe(onFillPrompt, prompt)}
-                style={{
-                  border: "1px solid rgba(148, 163, 184, 0.16)",
-                  background: "rgba(15, 23, 42, 0.56)",
-                  color: COLORS.muted,
-                  borderRadius: 999,
-                  padding: "10px 14px",
-                  fontSize: 13,
-                  lineHeight: 1.35,
-                  cursor: "pointer",
-                }}
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            onClick={() => handleAction("secondary")}
+            style={{
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 18,
+              padding: "14px 18px",
+              background: "rgba(255,255,255,0.06)",
+              color: COLORS.text,
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            Acionar Team
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleAction("tertiary")}
+            style={{
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 18,
+              padding: "14px 18px",
+              background: "rgba(255,255,255,0.035)",
+              color: COLORS.muted,
+              fontWeight: 850,
+              cursor: "pointer",
+            }}
+          >
+            Preencher próximo passo
+          </button>
         </div>
       </div>
     </div>
