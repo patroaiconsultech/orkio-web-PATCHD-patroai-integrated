@@ -10,29 +10,31 @@ export default function AvatarOracleCard({
     card: {
       position: "relative",
       overflow: "hidden",
-      borderRadius: 30,
-      border: "1px solid rgba(255,220,140,0.22)",
-      background: "linear-gradient(180deg, rgba(5,8,16,0.97), rgba(7,11,20,0.92))",
+      borderRadius: 32,
+      border: "1px solid rgba(255,224,156,0.22)",
+      background:
+        "radial-gradient(circle at 50% 0%, rgba(255,223,138,0.12), transparent 22%), linear-gradient(180deg, rgba(4,7,14,0.98), rgba(8,12,22,0.94))",
       boxShadow:
-        "0 32px 90px rgba(0,0,0,0.46), 0 0 0 1px rgba(255,255,255,0.03) inset, 0 0 90px rgba(255,207,102,0.10)",
-      padding: 18,
-      minHeight: 560,
+        "0 36px 110px rgba(0,0,0,0.50), 0 0 0 1px rgba(255,255,255,0.03) inset, 0 0 90px rgba(255,206,107,0.12)",
+      padding: 20,
+      minHeight: 620,
       display: "flex",
       flexDirection: "column",
       justifyContent: "space-between",
-      backdropFilter: "blur(20px)",
+      backdropFilter: "blur(24px)",
+      isolation: "isolate",
     },
     bgAura: {
       position: "absolute",
       inset: 0,
       background:
-        "radial-gradient(circle at 50% 14%, rgba(255,223,150,0.24) 0%, rgba(255,199,86,0.10) 18%, rgba(122,93,255,0.10) 40%, rgba(0,0,0,0) 68%)",
+        "radial-gradient(circle at 50% 14%, rgba(255,223,150,0.24) 0%, rgba(255,199,86,0.12) 20%, rgba(122,93,255,0.12) 44%, rgba(0,0,0,0) 72%)",
       pointerEvents: "none",
     },
     ring: {
       position: "absolute",
-      inset: "18px",
-      borderRadius: 26,
+      inset: 18,
+      borderRadius: 28,
       border: "1px solid rgba(255,255,255,0.05)",
       boxShadow: "0 0 0 1px rgba(255,255,255,0.02) inset",
       pointerEvents: "none",
@@ -40,45 +42,45 @@ export default function AvatarOracleCard({
     portraitWrap: {
       position: "relative",
       zIndex: 1,
-      minHeight: 370,
-      borderRadius: 26,
+      minHeight: 390,
+      borderRadius: 28,
       overflow: "hidden",
-      border: "1px solid rgba(255,255,255,0.06)",
+      border: "1px solid rgba(255,255,255,0.07)",
       background:
-        "radial-gradient(circle at 50% 18%, rgba(255,219,136,0.30), rgba(28,32,56,0.88) 36%, rgba(8,10,18,1) 72%)",
+        "radial-gradient(circle at 50% 18%, rgba(255,219,136,0.34), rgba(28,32,56,0.88) 36%, rgba(8,10,18,1) 74%)",
       display: "grid",
       placeItems: "center",
     },
     haloOuter: {
       position: "absolute",
-      width: 300,
-      height: 300,
+      width: 340,
+      height: 340,
       borderRadius: "50%",
       background:
-        "radial-gradient(circle, rgba(255,229,163,0.62) 0%, rgba(255,206,112,0.22) 32%, rgba(118,144,255,0.12) 54%, rgba(0,0,0,0) 72%)",
+        "radial-gradient(circle, rgba(255,229,163,0.64) 0%, rgba(255,206,112,0.24) 34%, rgba(118,144,255,0.14) 58%, rgba(0,0,0,0) 76%)",
       filter: "blur(8px)",
-      opacity: 0.92,
+      opacity: 0.94,
     },
     haloInner: {
       position: "absolute",
-      width: 170,
-      height: 170,
+      width: 190,
+      height: 190,
       borderRadius: "50%",
       background:
-        "radial-gradient(circle, rgba(255,242,204,0.94) 0%, rgba(255,227,153,0.34) 32%, rgba(0,0,0,0) 66%)",
-      filter: "blur(5px)",
-      opacity: 0.95,
+        "radial-gradient(circle, rgba(255,242,204,0.96) 0%, rgba(255,227,153,0.36) 34%, rgba(0,0,0,0) 68%)",
+      filter: "blur(6px)",
+      opacity: 0.96,
     },
     portrait: {
       position: "relative",
       zIndex: 2,
       width: "100%",
       height: "100%",
-      minHeight: 370,
+      minHeight: 390,
       objectFit: "cover",
       objectPosition: "center top",
       mixBlendMode: "screen",
-      opacity: 0.985,
+      opacity: 0.99,
     },
     badgeRow: {
       position: "absolute",
@@ -88,20 +90,23 @@ export default function AvatarOracleCard({
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
+      gap: 12,
       zIndex: 3,
+      flexWrap: "wrap",
     },
     status: {
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
-      padding: "8px 12px",
+      padding: "9px 13px",
       borderRadius: 999,
-      background: "rgba(7,12,22,0.72)",
+      background: "rgba(7,12,22,0.74)",
       border: "1px solid rgba(255,255,255,0.08)",
-      color: "rgba(255,255,255,0.92)",
+      color: "rgba(255,255,255,0.94)",
       fontSize: 12,
       fontWeight: 800,
       letterSpacing: "0.02em",
+      backdropFilter: "blur(14px)",
     },
     dot: {
       width: 8,
@@ -115,50 +120,85 @@ export default function AvatarOracleCard({
       zIndex: 2,
       paddingTop: 18,
     },
+    kicker: {
+      fontSize: 12,
+      fontWeight: 900,
+      letterSpacing: "0.14em",
+      textTransform: "uppercase",
+      color: "rgba(255,224,156,0.88)",
+      marginBottom: 8,
+    },
     greeting: {
-      fontSize: 18,
+      fontSize: 19,
       fontWeight: 800,
       color: "#ffffff",
-      marginBottom: 10,
+      marginBottom: 12,
     },
     title: {
-      fontSize: 30,
-      lineHeight: 1.08,
+      fontSize: 33,
+      lineHeight: 1.06,
       fontWeight: 900,
       color: "#ffffff",
       margin: 0,
-      letterSpacing: "-0.03em",
+      letterSpacing: "-0.035em",
     },
     accent: {
       color: "#ffd975",
     },
     copy: {
-      marginTop: 14,
-      color: "rgba(255,255,255,0.74)",
+      marginTop: 16,
+      color: "rgba(255,255,255,0.76)",
       fontSize: 15,
-      lineHeight: 1.65,
+      lineHeight: 1.68,
+    },
+    points: {
+      display: "grid",
+      gap: 10,
+      marginTop: 18,
+    },
+    point: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      color: "rgba(255,255,255,0.80)",
+      fontSize: 14,
+      lineHeight: 1.45,
+    },
+    pointDot: {
+      width: 8,
+      height: 8,
+      flex: "0 0 auto",
+      borderRadius: "50%",
+      background: "linear-gradient(180deg, #ffe29c, #f7c862)",
+      boxShadow: "0 0 16px rgba(247,200,98,0.45)",
     },
     action: {
-      marginTop: 22,
+      marginTop: 24,
       width: "100%",
       border: "none",
-      borderRadius: 18,
-      padding: "16px 18px",
+      borderRadius: 20,
+      padding: "17px 18px",
       background:
-        "linear-gradient(90deg, rgba(122,74,255,0.96), rgba(197,95,255,0.95) 54%, rgba(255,218,120,0.97))",
+        "linear-gradient(90deg, rgba(122,74,255,0.96), rgba(197,95,255,0.95) 50%, rgba(255,218,120,0.97))",
       color: "#fff",
       fontWeight: 900,
       fontSize: 15,
       cursor: "pointer",
-      boxShadow: "0 18px 42px rgba(123,74,255,0.34)",
+      boxShadow: "0 18px 44px rgba(123,74,255,0.34)",
     },
     micro: {
-      marginTop: 10,
-      color: "rgba(255,255,255,0.54)",
+      marginTop: 12,
+      color: "rgba(255,255,255,0.56)",
       fontSize: 12,
       display: "flex",
       gap: 10,
       flexWrap: "wrap",
+    },
+    microChip: {
+      borderRadius: 999,
+      padding: "7px 10px",
+      background: "rgba(255,255,255,0.04)",
+      border: "1px solid rgba(255,255,255,0.06)",
     },
   };
 
@@ -171,9 +211,9 @@ export default function AvatarOracleCard({
         <div style={styles.badgeRow}>
           <div style={styles.status}>
             <span style={styles.dot} />
-            {online ? "Orkio online" : "Modo observação"}
+            {online ? "Avatar guiado ativo" : "Modo observação"}
           </div>
-          <div style={styles.status}>Presença serafim</div>
+          <div style={styles.status}>Onboarding premium</div>
         </div>
 
         <div style={styles.haloOuter} />
@@ -198,26 +238,33 @@ export default function AvatarOracleCard({
       </div>
 
       <div style={styles.body}>
+        <div style={styles.kicker}>Presença guiada</div>
         <div style={styles.greeting}>Olá. Eu sou o {name}.</div>
         <h3 style={styles.title}>
-          Uma presença <span style={styles.accent}>feminina, serena e luminosa</span> para conversar com sua empresa.
+          Posso abrir seu <span style={styles.accent}>onboarding guiado</span> com contexto,
+          voz e direção estratégica desde o primeiro clique.
         </h3>
+
         <div style={styles.copy}>
-          O Orkio pode se apresentar com uma estética mais acolhedora, espiritualizada e premium,
-          sem perder autoridade técnica. Esta versão transmite inteligência com doçura,
-          clareza e confiança.
+          Esta experiência aproxima a landing do console: o avatar conduz a entrada,
+          preserva intenção, ativa o onboarding e prepara a primeira conversa com
+          mais beleza, serenidade e clareza.
         </div>
 
-        <button type="button" style={styles.action} onClick={onStartChat}>
-          Conversar agora
+        <div style={styles.points}>
+          <div style={styles.point}><span style={styles.pointDot} />Entrada guiada pela Orkio com estética premium.</div>
+          <div style={styles.point}><span style={styles.pointDot} />Onboarding escrito com presença visual do avatar.</div>
+          <div style={styles.point}><span style={styles.pointDot} />Introdução falada para primeira experiência mais viva.</div>
+        </div>
+
+        <button type="button" style={styles.action} onClick={() => onStartChat?.()}>
+          Iniciar onboarding com o avatar →
         </button>
 
         <div style={styles.micro}>
-          <span>Voz sugerida: shimmer</span>
-          <span>•</span>
-          <span>Perfil: feminino etéreo</span>
-          <span>•</span>
-          <span>Ritmo: 0.90</span>
+          <span style={styles.microChip}>Contexto preservado</span>
+          <span style={styles.microChip}>Voz feminina</span>
+          <span style={styles.microChip}>Primeira jornada guiada</span>
         </div>
       </div>
     </aside>
