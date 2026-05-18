@@ -1,12 +1,13 @@
 {
-  "name": "Orkio",
-  "short_name": "Orkio",
   "id": "/app",
+  "name": "PatroAI Orkio",
+  "short_name": "Orkio",
+  "description": "PatroAI Orkio - agentes inteligentes e execução governada.",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",
-  "theme_color": "#0b0f1c",
-  "background_color": "#0b0f1c",
+  "theme_color": "#030713",
+  "background_color": "#030713",
   "icons": [
     {
       "src": "/icons/orkio-192.png",
