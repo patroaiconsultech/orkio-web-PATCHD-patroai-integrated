@@ -16,6 +16,8 @@ const BTN = "rounded-2xl px-4 py-2 text-sm font-semibold transition disabled:cur
 const INPUT = "w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35";
 const TEXTAREA = "w-full min-h-[92px] rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35";
 
+const BUILD_SIGNATURE = "AO-16D-R3-admin-dry-run-governado";
+
 function nowLabel() {
   try {
     return new Date().toLocaleString("pt-BR");
@@ -174,7 +176,7 @@ export default function AdminEvolutionCenter() {
       const arr = Array.isArray(payload) ? payload : Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.executions) ? payload.executions : [];
       setExecutions(arr);
     } catch (err) {
-      // AO-14: executions are read-only/future. Do not fail the console if not available.
+      // Execuções podem ainda não existir; não derruba o console.
       setExecutions([]);
     }
   }, [allowed, tenant, token]);
@@ -323,15 +325,25 @@ export default function AdminEvolutionCenter() {
   const approvedCount = items.filter(x => String(x.status).toLowerCase() === "approved").length;
   const rejectedCount = items.filter(x => String(x.status).toLowerCase() === "rejected").length;
   const planExecutionEnabled = plan?.execution_enabled === true || selected?.execution_enabled === true;
-  const selectedStatus = String(selected?.status || selected?.proposal_status || "").toLowerCase();
-  const selectedExecutionStatus = String(plan?.execution_status || selected?.execution_status || "not_started").toLowerCase();
+  const selectedStatus = String(selected?.status || selected?.proposal_status || "").trim().toLowerCase();
+  const selectedExecutionStatus = String(plan?.execution_status || selected?.execution_status || "not_started").trim().toLowerCase();
+  const selectedDryRunAvailable = Boolean(
+    plan?.can_dry_run === true ||
+    selected?.can_dry_run === true ||
+    plan?.dry_run_endpoint ||
+    selected?.dry_run_endpoint
+  );
+  const selectedBlocksRealExecution = Boolean(
+    planExecutionEnabled === false &&
+    plan?.can_execute_real !== true &&
+    selected?.can_execute_real !== true
+  );
   const selectedCanDryRun = Boolean(
     selected &&
     selectedStatus === "approved" &&
-    (plan?.can_dry_run === true || selected?.can_dry_run === true) &&
+    selectedDryRunAvailable &&
     selectedExecutionStatus !== "dry_run_completed" &&
-    planExecutionEnabled === false &&
-    (plan?.can_execute_real !== true && selected?.can_execute_real !== true)
+    selectedBlocksRealExecution
   );
   const selectedIsPending = selectedStatus.includes("pending");
   const selectedIsRejected = selectedStatus === "rejected";
@@ -352,6 +364,7 @@ export default function AdminEvolutionCenter() {
             <button onClick={() => nav("/admin")} className={`${BTN} border border-white/10 bg-white/5 text-white/80 hover:bg-white/10`}>
               Admin
             </button>
+            <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">{BUILD_SIGNATURE}</Pill>
             <button onClick={refreshAll} disabled={busy} className={`${BTN} bg-violet-400 text-black hover:bg-violet-300`}>
               {busy ? "Atualizando..." : "Atualizar"}
             </button>
@@ -536,6 +549,9 @@ export default function AdminEvolutionCenter() {
                   ) : (
                     <div className="mt-5 rounded-3xl border border-white/10 bg-black/15 p-4 text-sm text-white/55">
                       Nenhuma ação disponível para o status atual.
+                      <div className="mt-2 font-mono text-xs text-white/40">
+                        status={selectedStatus || "-"} • can_dry_run={String(Boolean(selectedDryRunAvailable))} • execution_status={selectedExecutionStatus || "-"}
+                      </div>
                     </div>
                   )}
                 </>
@@ -547,7 +563,7 @@ export default function AdminEvolutionCenter() {
             </div>
 
             <div className={CARD}>
-              <SectionTitle eyebrow="Plano de execução" title="Dry-run governado">
+              <SectionTitle eyebrow="Plano de execução" title="Dry-run governado AO-16D">
                 Após aprovação Admin, o console pode simular a execução e registrar diff, smoke e rollback sem aplicar mudanças reais.
               </SectionTitle>
 
@@ -560,6 +576,9 @@ export default function AdminEvolutionCenter() {
                 </Pill>
                 <Pill className="border-white/10 bg-white/5 text-white/65">
                   requires_admin_approval={String(plan?.requires_admin_approval !== false)}
+                </Pill>
+                <Pill className={selectedDryRunAvailable ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-100" : "border-white/10 bg-white/5 text-white/65"}>
+                  can_dry_run={String(Boolean(selectedDryRunAvailable))}
                 </Pill>
               </div>
 
