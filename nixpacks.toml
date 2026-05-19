@@ -1,0 +1,18 @@
+# AO-16D-R4 — Força build fresco e valida o bundle antes de servir.
+# Caminho real do projeto: nixpacks.toml
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = [
+  "npm run build",
+  "grep -R \"AO-16D-R4-force-fresh-build-admin-dry-run\" dist",
+  "grep -R \"Executar dry-run governado\" dist",
+  "if grep -R \"AO-14 é console visual\" dist; then echo \"ERRO: AO-14 encontrado no dist\"; exit 1; fi",
+  "if grep -R \"Dry-run futuro\" dist; then echo \"ERRO: Dry-run futuro encontrado no dist\"; exit 1; fi",
+  "if grep -R \"Nenhum botão de execução foi incluído\" dist; then echo \"ERRO: copy antiga encontrada no dist\"; exit 1; fi"
+]
+
+[start]
+cmd = "npm run start:prod"
