@@ -29,12 +29,20 @@ export default function App() {
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/app" element={<AppConsole />} />
         <Route path="/orkio/app" element={<AppConsole />} />
+
         <Route path="/admin" element={<AdminConsole />} />
         <Route path="/orkio/admin" element={<AdminConsole />} />
         <Route path="/admin/escalations" element={<AdminEscalations />} />
         <Route path="/admin/trademarks" element={<AdminTrademarkCenter />} />
         <Route path="/admin/valuation" element={<AdminValuationCenter />} />
+
+        {/* AO-14B — Admin Evolution Console / PTE entrypoints.
+            These routes are governance-only. They must not execute patches. */}
         <Route path="/admin/evolution" element={<AdminEvolutionCenter />} />
+        <Route path="/orkio/admin/evolution" element={<AdminEvolutionCenter />} />
+        <Route path="/admin/pte" element={<AdminEvolutionCenter />} />
+        <Route path="/admin/autoevolucao" element={<AdminEvolutionCenter />} />
+
         <Route path="/wallet" element={<BillingWalletCenter />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/privacy-settings" element={<PrivacySettings />} />
