@@ -1,61 +1,40 @@
 import React, { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { consumeReturnTo, DEFAULT_AFTER_LOGIN_PATH } from "../lib/authReturn";
+import { completeOtpLogin, setSession } from "../lib/auth.js";
+import { validateInvestorAccessCode } from "../ui/api.js";
 
-function getApiBase() {
-  return (
-    import.meta?.env?.VITE_API_BASE_URL ||
-    import.meta?.env?.VITE_API_URL ||
-    ""
-  ).replace(/\/$/, "");
-}
+function normalizeSessionPayload(result) {
+  const data = result?.data || result?.payload || result || {};
 
-function storeAuthPayload(data) {
   const token =
     data?.access_token ||
     data?.token ||
     data?.jwt ||
-    data?.data?.access_token ||
-    data?.data?.token ||
+    data?.session?.access_token ||
+    data?.session?.token ||
+    data?.auth?.access_token ||
+    data?.auth?.token ||
     "";
 
-  const user = data?.user || data?.data?.user || null;
+  const user =
+    data?.user ||
+    data?.account ||
+    data?.profile ||
+    data?.session?.user ||
+    data?.auth?.user ||
+    null;
 
-  if (token) {
-    localStorage.setItem("orkio_token", token);
-    localStorage.setItem("access_token", token);
-    localStorage.setItem("token", token);
-  }
+  const tenant =
+    data?.tenant ||
+    data?.org ||
+    data?.org_slug ||
+    data?.workspace ||
+    user?.tenant ||
+    user?.org_slug ||
+    "public";
 
-  if (user) {
-    localStorage.setItem("orkio_user", JSON.stringify(user));
-    localStorage.setItem("user", JSON.stringify(user));
-  }
-
-  return { token, user };
-}
-
-async function parseResponse(response) {
-  const text = await response.text();
-  let data = {};
-
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { raw: text };
-  }
-
-  if (!response.ok) {
-    const message =
-      data?.detail ||
-      data?.message ||
-      data?.error ||
-      `Falha HTTP ${response.status}`;
-
-    throw new Error(message);
-  }
-
-  return data;
+  return { token, user, tenant, raw: data };
 }
 
 export default function AuthPage() {
@@ -63,7 +42,7 @@ export default function AuthPage() {
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [org, setOrg] = useState("public");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -75,22 +54,32 @@ export default function AuthPage() {
     setError("");
 
     try {
-      const response = await fetch(`${getApiBase()}/api/auth/login`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Orkio-Org": org || "public",
-        },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-          org: org || "public",
-        }),
+      const result = await validateInvestorAccessCode({
+        email: email.trim(),
+        code: code.trim(),
+        tenant: org || "public",
+        org: org || "public",
       });
 
-      const data = await parseResponse(response);
-      storeAuthPayload(data);
+      const session = normalizeSessionPayload(result);
+
+      if (!session.token || !session.user) {
+        throw new Error("Resposta de autenticação sem token ou usuário.");
+      }
+
+      try {
+        completeOtpLogin({
+          access_token: session.token,
+          user: session.user,
+          tenant: session.tenant,
+        });
+      } catch {
+        setSession({
+          token: session.token,
+          user: session.user,
+          tenant: session.tenant,
+        });
+      }
 
       const destination =
         consumeReturnTo(location) ||
@@ -99,7 +88,7 @@ export default function AuthPage() {
 
       navigate(destination, { replace: true });
     } catch (err) {
-      setError(err?.message || "Falha ao entrar.");
+      setError(err?.message || "Falha ao validar código de acesso.");
     } finally {
       setBusy(false);
     }
@@ -118,7 +107,7 @@ export default function AuthPage() {
           </h1>
 
           <p className="mt-2 text-sm leading-relaxed text-white/60">
-            Acesse sua conta para continuar.
+            Acesse sua conta usando o código de acesso autorizado.
           </p>
 
           <form onSubmit={submit} className="mt-6 space-y-3">
@@ -138,15 +127,15 @@ export default function AuthPage() {
 
             <label className="block">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
-                Senha
+                Código de acesso
               </span>
               <input
-                type="password"
                 required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
                 className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
-                placeholder="••••••••"
+                placeholder="código autorizado"
+                autoComplete="one-time-code"
               />
             </label>
 
@@ -173,7 +162,7 @@ export default function AuthPage() {
               disabled={busy}
               className="w-full rounded-2xl bg-violet-400 px-4 py-3 text-sm font-black text-black transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {busy ? "Entrando..." : "Entrar"}
+              {busy ? "Validando..." : "Entrar"}
             </button>
           </form>
         </div>
