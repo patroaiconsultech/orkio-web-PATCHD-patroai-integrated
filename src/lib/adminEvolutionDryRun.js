@@ -1,4 +1,4 @@
-// AO-16D-R2 — src/lib/adminEvolutionDryRun.js
+// AO-16D-R3 — src/lib/adminEvolutionDryRun.js
 // Dry-run governado: chama somente o endpoint de simulação.
 // Não habilita execução real, commit, deploy ou migration.
 
