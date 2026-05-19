@@ -1,4 +1,6 @@
-// AO-16D — src/lib/adminEvolutionDryRun.js
+// AO-16D-R2 — src/lib/adminEvolutionDryRun.js
+// Dry-run governado: chama somente o endpoint de simulação.
+// Não habilita execução real, commit, deploy ou migration.
 
 function getApiBase() {
   return (
@@ -33,6 +35,7 @@ async function parseResponse(response) {
     const message = data?.detail || data?.message || data?.error || `Falha HTTP ${response.status}`;
     const err = new Error(message);
     err.status = response.status;
+    err.data = data;
     err.payload = data;
     throw err;
   }
@@ -40,12 +43,14 @@ async function parseResponse(response) {
   return data;
 }
 
-export async function runEvolutionDryRun(proposalId) {
+export async function runEvolutionDryRun(proposalId, options = {}) {
   if (!proposalId) throw new Error("proposal_id ausente para dry-run.");
 
-  const token = getStoredToken();
+  const token = options.token || getStoredToken();
   const headers = { "Content-Type": "application/json" };
+
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (options.org) headers["X-Orkio-Org"] = options.org;
 
   const url = `${getApiBase()}/api/admin/evolution/proposals/${encodeURIComponent(proposalId)}/dry-run`;
 
