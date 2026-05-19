@@ -16,7 +16,7 @@ const BTN = "rounded-2xl px-4 py-2 text-sm font-semibold transition disabled:cur
 const INPUT = "w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35";
 const TEXTAREA = "w-full min-h-[92px] rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35";
 
-const BUILD_SIGNATURE = "AO-16D-R3-admin-dry-run-governado";
+const BUILD_SIGNATURE = "AO-16D-R4-force-fresh-build-admin-dry-run";
 
 function nowLabel() {
   try {
@@ -140,6 +140,20 @@ export default function AdminEvolutionCenter() {
   const tenant = getTenant() || "public";
   const user = getUser();
   const allowed = Boolean(token && (isAdmin(user) || isMasterAdmin(user) || hasAdminConsoleAccess(user)));
+
+  useEffect(() => {
+    try {
+      window.__ORKIO_ADMIN_EVOLUTION_BUILD__ = BUILD_SIGNATURE;
+      document.documentElement.setAttribute("data-orkio-admin-evolution-build", BUILD_SIGNATURE);
+      console.info(`[${BUILD_SIGNATURE}] AdminEvolutionCenter mounted`, {
+        href: window.location.href,
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      // Diagnóstico não bloqueante.
+    }
+  }, []);
+
 
   const [items, setItems] = useState([]);
   const [selectedId, setSelectedId] = useState("");
