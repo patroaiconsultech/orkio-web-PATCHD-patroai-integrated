@@ -17,41 +17,69 @@ import {
 } from "../lib/auth.js";
 import { consumeReturnTo, DEFAULT_AFTER_LOGIN_PATH } from "../lib/authReturn";
 
+const palette = {
+  ink: "#f8fafc",
+  muted: "rgba(248,250,252,0.68)",
+  faint: "rgba(248,250,252,0.46)",
+  line: "rgba(255,255,255,0.12)",
+  lineGold: "rgba(247,200,98,0.24)",
+  gold: "#f7c862",
+  goldSoft: "#ffe29c",
+  goldDeep: "#8a5a12",
+  card: "rgba(7,10,18,0.74)",
+  cardStrong: "rgba(9,13,24,0.92)",
+  input: "rgba(255,255,255,0.07)",
+  inputBorder: "rgba(255,255,255,0.13)",
+  success: "#88f3a0",
+};
+
 const shell = {
   minHeight: "100vh",
   display: "grid",
   placeItems: "center",
   padding: 20,
+  color: palette.ink,
   background:
-    "radial-gradient(circle at 12% 0%, rgba(34,211,238,0.14) 0%, rgba(6,10,20,0) 32%), radial-gradient(circle at 88% 0%, rgba(124,58,237,0.18) 0%, rgba(6,10,20,0) 34%), linear-gradient(180deg, #060812 0%, #040712 100%)",
+    "radial-gradient(900px 580px at 12% 0%, rgba(247,200,98,0.16), transparent 58%), radial-gradient(760px 500px at 88% 10%, rgba(111,132,255,0.16), transparent 48%), linear-gradient(180deg, #02050a 0%, #050914 48%, #02050a 100%)",
+};
+
+const pageGrid = {
+  width: "100%",
+  maxWidth: 1180,
+  display: "grid",
+  gridTemplateColumns: "minmax(300px, 0.92fr) minmax(320px, 1fr)",
+  gap: 24,
+  alignItems: "stretch",
 };
 
 const card = {
   width: "100%",
-  maxWidth: 560,
-  borderRadius: 32,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.96)",
-  color: "#0f172a",
-  boxShadow: "0 30px 90px rgba(2,6,23,0.45)",
+  borderRadius: 34,
+  border: `1px solid ${palette.line}`,
+  background:
+    "linear-gradient(180deg, rgba(255,255,255,0.095), rgba(255,255,255,0.045))",
+  color: palette.ink,
+  boxShadow: "0 30px 100px rgba(0,0,0,0.45)",
   padding: 28,
+  boxSizing: "border-box",
+  backdropFilter: "blur(20px)",
 };
 
 const label = {
   display: "block",
   marginBottom: 8,
   fontSize: 13,
-  fontWeight: 700,
-  color: "#334155",
+  fontWeight: 850,
+  color: "rgba(248,250,252,0.78)",
 };
 
 const input = {
   width: "100%",
   padding: "14px 16px",
-  borderRadius: 16,
-  border: "1px solid #cbd5e1",
-  background: "#ffffff",
-  color: "#0f172a",
+  borderRadius: 18,
+  border: `1px solid ${palette.inputBorder}`,
+  background: palette.input,
+  color: palette.ink,
   outline: "none",
   fontSize: 15,
   boxSizing: "border-box",
@@ -60,25 +88,26 @@ const input = {
 const btn = {
   width: "100%",
   border: 0,
-  borderRadius: 18,
+  borderRadius: 20,
   padding: "15px 18px",
-  fontWeight: 800,
+  fontWeight: 950,
   fontSize: 15,
   cursor: "pointer",
-  background: "linear-gradient(135deg, #2563eb, #0f172a)",
-  color: "#fff",
+  background: "linear-gradient(135deg, #fff1cb 0%, #f7c862 48%, #a66f16 100%)",
+  color: "#05070d",
+  boxShadow: "0 22px 52px rgba(247,200,98,0.22)",
 };
 
 const secondaryBtn = {
   width: "100%",
-  border: "1px solid #cbd5e1",
-  borderRadius: 18,
+  border: `1px solid ${palette.line}`,
+  borderRadius: 20,
   padding: "15px 18px",
-  fontWeight: 700,
+  fontWeight: 850,
   fontSize: 15,
   cursor: "pointer",
-  background: "#ffffff",
-  color: "#0f172a",
+  background: "rgba(255,255,255,0.055)",
+  color: "rgba(248,250,252,0.86)",
 };
 
 const linkBtn = {
@@ -86,22 +115,23 @@ const linkBtn = {
   background: "transparent",
   padding: 0,
   margin: 0,
-  color: "#2563eb",
-  fontWeight: 700,
+  color: palette.goldSoft,
+  fontWeight: 850,
   cursor: "pointer",
   textAlign: "left",
 };
 
-const muted = { color: "#64748b", fontSize: 14, lineHeight: 1.5 };
+const muted = { color: palette.muted, fontSize: 14, lineHeight: 1.62 };
 
 const adminChip = {
-  border: "1px solid rgba(15,23,42,0.10)",
-  background: "rgba(255,255,255,0.75)",
-  color: "#475569",
+  border: `1px solid ${palette.lineGold}`,
+  background: "rgba(247,200,98,0.08)",
+  color: palette.goldSoft,
   fontSize: 12,
-  padding: "6px 10px",
+  padding: "7px 11px",
   borderRadius: 999,
   cursor: "pointer",
+  fontWeight: 900,
 };
 
 const eyeBtn = {
@@ -111,20 +141,24 @@ const eyeBtn = {
   transform: "translateY(-50%)",
   border: 0,
   background: "transparent",
-  color: "#475569",
+  color: palette.goldSoft,
   cursor: "pointer",
-  fontWeight: 700,
+  fontWeight: 850,
 };
 
 const sidePanel = {
   width: "100%",
-  borderRadius: 32,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
-  color: "#ffffff",
-  boxShadow: "0 30px 90px rgba(2,6,23,0.35)",
+  borderRadius: 34,
+  border: `1px solid ${palette.line}`,
+  background:
+    "linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025))",
+  color: palette.ink,
+  boxShadow: "0 30px 100px rgba(0,0,0,0.38)",
   padding: 28,
-  backdropFilter: "blur(18px)",
+  boxSizing: "border-box",
+  backdropFilter: "blur(20px)",
+  overflow: "hidden",
+  position: "relative",
 };
 
 const sideChip = {
@@ -133,25 +167,37 @@ const sideChip = {
   gap: 10,
   padding: "10px 14px",
   borderRadius: 999,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.04)",
+  border: `1px solid ${palette.lineGold}`,
+  background: "rgba(247,200,98,0.06)",
   fontSize: 11,
-  fontWeight: 800,
+  fontWeight: 900,
   letterSpacing: "0.18em",
   textTransform: "uppercase",
-  color: "rgba(255,255,255,0.62)",
+  color: palette.goldSoft,
 };
 
 const planPill = {
-  borderRadius: 20,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.04)",
+  borderRadius: 22,
+  border: `1px solid ${palette.line}`,
+  background: "rgba(255,255,255,0.045)",
   padding: "14px 16px",
+};
+
+const statusBox = {
+  marginTop: 16,
+  borderRadius: 20,
+  border: `1px solid ${palette.lineGold}`,
+  background: "rgba(247,200,98,0.08)",
+  color: palette.goldSoft,
+  padding: "12px 14px",
+  fontSize: 14,
+  lineHeight: 1.55,
 };
 
 const AUTH_REQUEST_TIMEOUT_MS = 45000;
 const POST_LOGIN_REDIRECT_FALLBACK_MS = 900;
-const PRECHAT_KEY = "orkio_prechat_context_v1";
+const PRECHAT_KEY = "orkio_prechat_context";
+const PRECHAT_LEGACY_KEY = "orkio_prechat_context_v1";
 const PRECHAT_IMPORT_KEY = "orkio_prechat_import_pending_v1";
 const PENDING_CHECKOUT_CTX_KEY = "orkio_pending_checkout_ctx";
 const ADMIN_ALLOWED_EMAILS = new Set(["daniel@patroai.com", "daniel@patroai.com.br"]);
@@ -174,7 +220,12 @@ function normalizeAccessCode(value) {
 
 function readPrechatContext() {
   try {
-    const raw = window.localStorage?.getItem(PRECHAT_KEY);
+    const raw =
+      window.localStorage?.getItem(PRECHAT_KEY) ||
+      window.sessionStorage?.getItem(PRECHAT_KEY) ||
+      window.localStorage?.getItem(PRECHAT_LEGACY_KEY) ||
+      window.sessionStorage?.getItem(PRECHAT_LEGACY_KEY) ||
+      "";
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -215,6 +266,157 @@ function clearCheckoutCtx() {
   try {
     localStorage.removeItem(PENDING_CHECKOUT_CTX_KEY);
   } catch {}
+}
+
+
+function readAuthJourneyContext(search = "") {
+  try {
+    const params = new URLSearchParams(search || window.location.search || "");
+    const source = String(params.get("source") || "").trim();
+    const entry = String(params.get("entry") || "").trim();
+    const mode = String(params.get("mode") || "").trim();
+    const onboarding = params.get("onboarding") === "1";
+    const prechat = params.get("prechat") === "1";
+    const beta = params.get("beta") === "1";
+    const returnTo = String(params.get("returnTo") || params.get("next") || "").trim();
+
+    return {
+      source,
+      entry,
+      mode,
+      onboarding,
+      prechat,
+      beta,
+      returnTo,
+      fromAvatar: entry === "avatar" || prechat,
+      fromDemo: source.includes("demo"),
+      fromPatroai: source.includes("patroai"),
+      fromOrkio: source.includes("orkio"),
+    };
+  } catch {
+    return {
+      source: "",
+      entry: "",
+      mode: "",
+      onboarding: false,
+      prechat: false,
+      beta: false,
+      returnTo: "",
+      fromAvatar: false,
+      fromDemo: false,
+      fromPatroai: false,
+      fromOrkio: false,
+    };
+  }
+}
+
+function getAuthPresentation({ mode, otpMode, journey }) {
+  const safeMode = otpMode ? "otp" : mode || "login";
+  const fromAvatar = !!journey?.fromAvatar;
+  const fromDemo = !!journey?.fromDemo;
+  const fromPatroai = !!journey?.fromPatroai;
+  const fromOrkio = !!journey?.fromOrkio;
+  const onboarding = !!journey?.onboarding;
+
+  if (safeMode === "otp") {
+    return {
+      badge: "Acesso seguro",
+      title: "Confirme seu acesso",
+      subtitle:
+        "Digite o código enviado para seu e-mail. Essa etapa protege sua sessão e preserva a continuidade da jornada.",
+      panelTitle: "Validação com segurança",
+      panelBody:
+        "O Orkio mantém o contexto preparado enquanto você conclui a verificação. Depois disso, seguimos para o ambiente certo.",
+      steps: ["Código por e-mail", "Sessão validada", "Continuidade preservada"],
+    };
+  }
+
+  if (safeMode === "forgot") {
+    return {
+      badge: "Recuperação",
+      title: "Recupere seu acesso",
+      subtitle: "Informe seu e-mail para receber instruções de recuperação de senha.",
+      panelTitle: "Sem perder o caminho",
+      panelBody:
+        "A recuperação foi desenhada para ser simples: você confirma o e-mail, redefine a senha e volta para a jornada original.",
+      steps: ["E-mail confirmado", "Senha redefinida", "Retorno seguro"],
+    };
+  }
+
+  if (safeMode === "reset") {
+    return {
+      badge: "Nova senha",
+      title: "Defina sua nova senha",
+      subtitle: "Crie uma nova senha para recuperar seu acesso à plataforma.",
+      panelTitle: "Acesso restaurado",
+      panelBody:
+        "Após atualizar a senha, você poderá entrar novamente e continuar no ambiente Orkio.",
+      steps: ["Nova senha", "Conta protegida", "Login liberado"],
+    };
+  }
+
+  if (safeMode === "register") {
+    if (fromAvatar) {
+      return {
+        badge: "Orkio iniciou o contexto",
+        title: "Preserve sua conversa com o Orkio",
+        subtitle:
+          "Crie seu acesso para salvar o diagnóstico iniciado, manter memória contextual e continuar a jornada dentro da plataforma.",
+        panelTitle: "Sua conversa não precisa recomeçar",
+        panelBody:
+          "O Orkio já sabe de onde você veio. Agora o cadastro cria uma sessão segura para transformar conversa em diagnóstico, plano e execução.",
+        steps: ["Contexto recebido", "Conta criada", "Diagnóstico continuado"],
+      };
+    }
+
+    if (fromDemo) {
+      return {
+        badge: "Demonstração Patroai",
+        title: "Prepare sua demonstração",
+        subtitle:
+          "Crie seu acesso para organizar o diagnóstico inicial e chegar à demonstração com mais clareza sobre sua operação.",
+        panelTitle: "Demonstração com contexto",
+        panelBody:
+          "Em vez de uma reunião genérica, a Patroai conduz uma entrada com contexto, intenção e próximos passos.",
+        steps: ["Perfil criado", "Objetivo registrado", "Demonstração preparada"],
+      };
+    }
+
+    if (fromPatroai || fromOrkio || onboarding) {
+      return {
+        badge: fromPatroai ? "Patroai Consultech" : "Orkio OS",
+        title: "Crie seu acesso inteligente",
+        subtitle:
+          "Entre na plataforma para iniciar diagnóstico, conversar com o Orkio e transformar contexto em plano de evolução.",
+        panelTitle: "Uma entrada com continuidade",
+        panelBody:
+          "A jornada começa antes do formulário: origem, intenção e próximo passo acompanham o usuário até o app.",
+        steps: ["Cadastro simples", "Diagnóstico inicial", "Acesso ao app"],
+      };
+    }
+
+    return {
+      badge: "Novo acesso",
+      title: "Crie sua conta",
+      subtitle:
+        "Comece com um acesso gratuito para conhecer o Orkio e explorar a jornada de inteligência empresarial.",
+      panelTitle: "Comece com clareza",
+      panelBody:
+        "A criação da conta prepara seu espaço para conversas, agentes, diagnósticos e evolução operacional.",
+      steps: ["Conta criada", "Contexto inicial", "Ambiente liberado"],
+    };
+  }
+
+  return {
+    badge: "Bem-vindo de volta",
+    title: "Continue de onde parou",
+    subtitle:
+      "Entre com e-mail e senha. Se a governança exigir, o código OTP será solicitado na próxima etapa.",
+    panelTitle: "Memória e continuidade",
+    panelBody:
+      "O login não é só uma porta de entrada. Ele recupera sua sessão, seu contexto e o próximo passo da jornada.",
+    steps: ["Sessão recuperada", "Contexto preservado", "Próximo passo retomado"],
+  };
 }
 
 function normalizeAuthErrorMessage(err, fallbackMessage) {
@@ -272,7 +474,7 @@ function PasswordField({ labelText, placeholder, value, onChange, show, onToggle
           style={eyeBtn}
           aria-label={show ? "Ocultar senha" : "Mostrar senha"}
         >
-          {show ? "Hide" : "Show"}
+          {show ? "Ocultar" : "Mostrar"}
         </button>
       </div>
     </div>
@@ -288,7 +490,18 @@ export default function AuthPage() {
     try {
       const params = new URLSearchParams(window.location.search);
       const raw = params.get("mode");
-      return ["register", "login", "forgot", "reset"].includes(raw || "") ? raw : "login";
+      if (["register", "login", "forgot", "reset"].includes(raw || "")) return raw;
+
+      const entry = String(params.get("entry") || "").toLowerCase();
+      const source = String(params.get("source") || "").toLowerCase();
+      const onboarding = params.get("onboarding");
+      const prechat = params.get("prechat");
+
+      if (entry === "avatar" || onboarding === "1" || prechat === "1" || source.includes("demo")) {
+        return "register";
+      }
+
+      return "login";
     } catch {
       return "login";
     }
@@ -303,7 +516,7 @@ export default function AuthPage() {
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState("founder_access");
+  const [selectedPlan, setSelectedPlan] = useState("free_trial");
 
   const [otpCode, setOtpCode] = useState("");
   const [pendingEmail, setPendingEmail] = useState("");
@@ -319,6 +532,12 @@ export default function AuthPage() {
   const [busy, setBusy] = useState(false);
   const loginWatchdogRef = useRef(null);
   const redirectedAfterLoginRef = useRef(false);
+
+  const journey = useMemo(() => readAuthJourneyContext(location.search), [location.search]);
+  const presentation = useMemo(
+    () => getAuthPresentation({ mode, otpMode, journey }),
+    [mode, otpMode, journey]
+  );
 
   const token = getToken();
   const currentUser = getUser();
@@ -377,29 +596,8 @@ export default function AuthPage() {
     };
   }, []);
 
-  const title = useMemo(() => {
-    if (otpMode) return "Verificar código";
-    if (mode === "login") return "Entrar";
-    if (mode === "forgot") return "Recuperar senha";
-    if (mode === "reset") return "Nova senha";
-    return "Criar conta";
-  }, [otpMode, mode]);
-
-  const subtitle = useMemo(() => {
-    if (otpMode) {
-      return "Digite o código numérico enviado para seu e-mail. Não usamos link de landing para validar acesso.";
-    }
-    if (mode === "login") {
-      return "Entre com e-mail e senha. Se o OTP estiver ativo, o código será solicitado na próxima etapa.";
-    }
-    if (mode === "forgot") {
-      return "Informe seu e-mail para receber as instruções de recuperação.";
-    }
-    if (mode === "reset") {
-      return "Defina sua nova senha para recuperar o acesso.";
-    }
-    return "Continue o diagnóstico iniciado pela Orkio dentro da plataforma. O teste gratuito é liberado por 7 dias.";
-  }, [otpMode, mode]);
+  const title = presentation.title;
+  const subtitle = presentation.subtitle;
 
   function setAuthMode(nextMode) {
     setMode(nextMode);
@@ -479,7 +677,7 @@ export default function AuthPage() {
 
     sessionStorage.removeItem("post_auth_redirect");
     redirectedAfterLoginRef.current = true;
-    setStatus("Redirecting...");
+    setStatus("Acesso validado. Redirecionando com segurança...");
 
     try {
       if (loginWatchdogRef.current) window.clearTimeout(loginWatchdogRef.current);
@@ -622,7 +820,7 @@ export default function AuthPage() {
     }
 
     setBusy(true);
-    setStatus("Criando sua conta e preparando seu teste gratuito...");
+    setStatus("Criando sua conta e preparando a continuidade da jornada...");
 
     try {
       if (selectedPlan && selectedPlan !== "free_trial") {
@@ -663,7 +861,7 @@ export default function AuthPage() {
     }
 
     setBusy(true);
-    setStatus("Entrando...");
+    setStatus("Validando acesso e recuperando contexto...");
 
     try {
       const { data } = await apiFetchWithTimeout(
@@ -830,15 +1028,23 @@ export default function AuthPage() {
   function renderModeTabs() {
     if (otpMode) return null;
 
+    const tabBase = {
+      ...secondaryBtn,
+      padding: "13px 16px",
+      borderRadius: 18,
+      boxShadow: "none",
+    };
+
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 20 }}>
         <button
           type="button"
           onClick={() => setAuthMode("login")}
           style={{
-            ...secondaryBtn,
-            background: mode === "login" ? "#e0f2fe" : "#fff",
-            borderColor: mode === "login" ? "#2563eb" : "#cbd5e1",
+            ...tabBase,
+            background: mode === "login" ? "rgba(247,200,98,0.14)" : "rgba(255,255,255,0.045)",
+            borderColor: mode === "login" ? "rgba(247,200,98,0.46)" : palette.line,
+            color: mode === "login" ? palette.goldSoft : "rgba(248,250,252,0.70)",
           }}
         >
           Entrar
@@ -847,9 +1053,10 @@ export default function AuthPage() {
           type="button"
           onClick={() => setAuthMode("register")}
           style={{
-            ...secondaryBtn,
-            background: mode === "register" ? "#e0f2fe" : "#fff",
-            borderColor: mode === "register" ? "#2563eb" : "#cbd5e1",
+            ...tabBase,
+            background: mode === "register" ? "rgba(247,200,98,0.14)" : "rgba(255,255,255,0.045)",
+            borderColor: mode === "register" ? "rgba(247,200,98,0.46)" : palette.line,
+            color: mode === "register" ? palette.goldSoft : "rgba(248,250,252,0.70)",
           }}
         >
           Criar conta
@@ -873,13 +1080,13 @@ export default function AuthPage() {
             style={input}
             value={otpCode}
             onChange={(event) => setOtpCode(event.target.value)}
-            placeholder="000000"
+            placeholder="Código de 6 dígitos"
             inputMode="numeric"
             autoComplete="one-time-code"
           />
         </div>
         <button type="submit" disabled={busy} style={{ ...btn, opacity: busy ? 0.65 : 1 }}>
-          {busy ? "Validando..." : "Validar e entrar"}
+          {busy ? "Validando..." : "Validar e continuar"}
         </button>
         <button
           type="button"
@@ -928,7 +1135,7 @@ export default function AuthPage() {
         />
 
         <button type="submit" disabled={busy} style={{ ...btn, opacity: busy ? 0.65 : 1 }}>
-          {busy ? "Entrando..." : "Entrar"}
+          {busy ? "Entrando..." : "Entrar e continuar"}
         </button>
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
@@ -1002,7 +1209,7 @@ export default function AuthPage() {
         />
 
         <div>
-          <label style={label}>Código promocional ou convite</label>
+          <label style={label}>Código promocional, convite ou acesso interno</label>
           <input
             style={input}
             value={accessCode}
@@ -1013,13 +1220,13 @@ export default function AuthPage() {
         </div>
 
         <div>
-          <label style={label}>Plano</label>
+          <label style={label}>Tipo de acesso</label>
           <select
             style={input}
             value={selectedPlan}
             onChange={(event) => setSelectedPlan(event.target.value)}
           >
-            <option value="free_trial">Teste gratuito</option>
+            <option value="free_trial">Diagnóstico inicial gratuito</option>
             <option value="founder_access">Founder Access</option>
             <option value="pro_access">Pro Access</option>
             <option value="team_access">Team Access</option>
@@ -1033,11 +1240,11 @@ export default function AuthPage() {
             onChange={(event) => setAcceptTerms(event.target.checked)}
             style={{ marginTop: 3 }}
           />
-          <span>Aceito os termos de uso e a política de privacidade da PatroAI.</span>
+          <span>Aceito os termos de uso, política de privacidade e tratamento seguro dos dados pela PatroAI.</span>
         </label>
 
         <button type="submit" disabled={busy} style={{ ...btn, opacity: busy ? 0.65 : 1 }}>
-          {busy ? "Criando..." : "Criar conta"}
+          {busy ? "Preparando acesso..." : "Criar conta e continuar"}
         </button>
 
         <button type="button" style={linkBtn} onClick={() => setAuthMode("login")}>
@@ -1129,80 +1336,151 @@ export default function AuthPage() {
 
   return (
     <div style={shell}>
+      <style>
+        {`
+          @media (max-width: 920px) {
+            .auth-premium-grid {
+              grid-template-columns: 1fr !important;
+            }
+            .auth-premium-side {
+              order: 2;
+            }
+            .auth-premium-card {
+              order: 1;
+            }
+          }
+
+          input::placeholder {
+            color: rgba(248,250,252,0.36);
+          }
+
+          select option {
+            color: #0f172a;
+            background: #ffffff;
+          }
+        `}
+      </style>
+
       <div
+        aria-hidden="true"
         style={{
-          width: "100%",
-          maxWidth: 1180,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
-          gap: 24,
-          alignItems: "start",
+          position: "fixed",
+          inset: 0,
+          pointerEvents: "none",
+          opacity: 0.08,
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,.7) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.7) 1px, transparent 1px)",
+          backgroundSize: "80px 80px",
         }}
-      >
-        <div style={sidePanel}>
-          <div style={sideChip}>
-            <OrkioSphereMark size={18} glow={false} ring={false} />
-            Orkio OS • acesso guiado
-          </div>
+      />
 
-          <div style={{ marginTop: 24, display: "flex", alignItems: "center", gap: 14 }}>
-            <OrkioSphereMark size={64} badge />
-            <div>
-              <div
-                style={{
-                  fontSize: 12,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.18em",
-                  color: "rgba(255,255,255,0.5)",
-                  fontWeight: 900,
-                }}
-              >
-                PatroAI + Orkio
-              </div>
-              <div style={{ marginTop: 6, fontSize: 28, lineHeight: 1.02, fontWeight: 900 }}>
-                Continue seu diagnóstico
-                <br />
-                com acesso seguro.
+      <div className="auth-premium-grid" style={pageGrid}>
+        <div className="auth-premium-side" style={sidePanel}>
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              right: -120,
+              top: -120,
+              width: 300,
+              height: 300,
+              borderRadius: "50%",
+              background:
+                "radial-gradient(circle at center, rgba(247,200,98,0.24), transparent 66%)",
+              filter: "blur(8px)",
+            }}
+          />
+
+          <div style={{ position: "relative" }}>
+            <div style={sideChip}>
+              <OrkioSphereMark size={18} glow={false} ring={false} />
+              {presentation.badge}
+            </div>
+
+            <div style={{ marginTop: 26, display: "flex", alignItems: "center", gap: 16 }}>
+              <OrkioSphereMark size={72} badge />
+              <div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.18em",
+                    color: palette.faint,
+                    fontWeight: 950,
+                  }}
+                >
+                  PatroAI + Orkio
+                </div>
+                <div style={{ marginTop: 7, fontSize: 30, lineHeight: 1.04, fontWeight: 950 }}>
+                  {presentation.panelTitle}
+                </div>
               </div>
             </div>
-          </div>
 
-          <p style={{ marginTop: 18, color: "rgba(255,255,255,0.68)", lineHeight: 1.65 }}>
-            Login por e-mail e senha, com OTP quando a governança exigir. A sessão preserva o
-            contexto de retorno para o console, app ou Admin.
-          </p>
+            <p style={{ marginTop: 18, color: palette.muted, lineHeight: 1.72 }}>
+              {presentation.panelBody}
+            </p>
 
-          <div style={{ display: "grid", gap: 12, marginTop: 20 }}>
-            <div style={planPill}>
-              <strong>Senha restaurada</strong>
-              <div style={{ marginTop: 6, color: "rgba(255,255,255,0.62)", fontSize: 13 }}>
-                A tela usa login por e-mail e senha para acesso operacional.
-              </div>
+            <div style={{ display: "grid", gap: 12, marginTop: 24 }}>
+              {presentation.steps.map((step, index) => (
+                <div key={step} style={planPill}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 999,
+                        display: "grid",
+                        placeItems: "center",
+                        border: `1px solid ${palette.lineGold}`,
+                        background: "rgba(247,200,98,0.08)",
+                        color: palette.goldSoft,
+                        fontSize: 12,
+                        fontWeight: 950,
+                      }}
+                    >
+                      {index + 1}
+                    </span>
+                    <strong>{step}</strong>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div style={planPill}>
-              <strong>OTP preservado</strong>
-              <div style={{ marginTop: 6, color: "rgba(255,255,255,0.62)", fontSize: 13 }}>
-                Quando o backend retornar pending_otp, o segundo fator é solicitado.
+
+            <div
+              style={{
+                marginTop: 24,
+                borderRadius: 24,
+                border: `1px solid ${palette.line}`,
+                background: "rgba(0,0,0,0.20)",
+                padding: 16,
+              }}
+            >
+              <div style={{ color: palette.goldSoft, fontSize: 12, fontWeight: 950, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+                Continuidade de contexto
               </div>
+              <p style={{ margin: "8px 0 0", color: palette.muted, lineHeight: 1.6, fontSize: 13 }}>
+                Origem, intenção, retorno pós-login e diagnóstico iniciado são preservados sem criar rotas novas.
+              </p>
             </div>
           </div>
         </div>
 
-        <div style={card}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div className="auth-premium-card" style={card}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
             <div>
               <div
                 style={{
                   fontSize: 12,
                   textTransform: "uppercase",
                   letterSpacing: "0.18em",
-                  color: "#64748b",
-                  fontWeight: 900,
+                  color: palette.goldSoft,
+                  fontWeight: 950,
                 }}
               >
-                PATROAI
+                Acesso Patroai
               </div>
-              <h1 style={{ margin: "8px 0 0", fontSize: 34, lineHeight: 1, color: "#0f172a" }}>
+              <h1 style={{ margin: "8px 0 0", fontSize: 38, lineHeight: 1, color: palette.ink }}>
                 {title}
               </h1>
             </div>
@@ -1214,27 +1492,45 @@ export default function AuthPage() {
             ) : null}
           </div>
 
-          <p style={{ ...muted, marginTop: 12 }}>{subtitle}</p>
+          <p style={{ ...muted, marginTop: 14 }}>{subtitle}</p>
+
+          {journey?.fromAvatar || journey?.fromDemo || journey?.fromPatroai || journey?.fromOrkio ? (
+            <div
+              style={{
+                marginTop: 16,
+                borderRadius: 22,
+                border: `1px solid ${palette.lineGold}`,
+                background: "rgba(247,200,98,0.07)",
+                padding: 14,
+                color: "rgba(248,250,252,0.76)",
+                fontSize: 13,
+                lineHeight: 1.58,
+              }}
+            >
+              <strong style={{ color: palette.goldSoft }}>Origem reconhecida:</strong>{" "}
+              {journey.fromAvatar
+                ? "avatar Orkio / pré-chat"
+                : journey.fromDemo
+                ? "demonstração Patroai"
+                : journey.fromPatroai
+                ? "landing Patroai"
+                : "landing Orkio OS"}
+              . Vamos manter essa intenção durante o acesso.
+            </div>
+          ) : null}
 
           {renderModeTabs()}
           {renderActiveForm()}
 
-          {status ? (
-            <div
-              style={{
-                marginTop: 16,
-                borderRadius: 18,
-                border: "1px solid rgba(37,99,235,0.20)",
-                background: "rgba(37,99,235,0.08)",
-                color: "#1e3a8a",
-                padding: "12px 14px",
-                fontSize: 14,
-                lineHeight: 1.5,
-              }}
-            >
-              {status}
-            </div>
-          ) : null}
+          {status ? <div style={statusBox}>{status}</div> : null}
+
+          <div style={{ marginTop: 18, display: "flex", gap: 12, flexWrap: "wrap", color: palette.faint, fontSize: 12 }}>
+            <span>Privacidade por design</span>
+            <span>•</span>
+            <span>OTP quando necessário</span>
+            <span>•</span>
+            <span>Retorno seguro para /app</span>
+          </div>
         </div>
       </div>
     </div>
