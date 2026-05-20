@@ -16,7 +16,7 @@ const BTN = "rounded-2xl px-4 py-2 text-sm font-semibold transition disabled:cur
 const INPUT = "w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35";
 const TEXTAREA = "w-full min-h-[92px] rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35";
 
-const BUILD_SIGNATURE = "AO-17B-create-branch-only-governed";
+const BUILD_SIGNATURE = "AO-17C-AO18A-apply-revert-restore-point";
 
 function nowLabel() {
   try {
@@ -169,6 +169,8 @@ export default function AdminEvolutionCenter() {
   const [dryRunResult, setDryRunResult] = useState(null);
   const [branchPrPlan, setBranchPrPlan] = useState(null);
   const [branchCreateResult, setBranchCreateResult] = useState(null);
+  const [branchPatchResult, setBranchPatchResult] = useState(null);
+  const [branchRevertResult, setBranchRevertResult] = useState(null);
 
   const selected = useMemo(() => {
     const found = items.find(x => String(x.proposal_id) === String(selectedId));
@@ -232,6 +234,8 @@ export default function AdminEvolutionCenter() {
     setDryRunResult(null);
     setBranchPrPlan(null);
     setBranchCreateResult(null);
+      setBranchPatchResult(null);
+      setBranchRevertResult(null);
     try {
       const next = await loadList();
       const id = selectedId || next?.[0]?.proposal_id;
@@ -363,6 +367,81 @@ export default function AdminEvolutionCenter() {
     }
   }
 
+
+  async function applyBranchPatch(id) {
+    if (!id) return;
+    const targetBranch = effectiveBranchPrPlan?.target_branch || effectiveBranchPrPlan?.suggested_branch || "ao-17/evo_0c29e7b01d21";
+    setActionBusy(`apply-branch-patch:${id}`);
+    setError("");
+    setNotice("");
+    setBranchPatchResult(null);
+    setBranchRevertResult(null);
+    try {
+      const data = await apiFetch(`/api/admin/evolution/proposals/${encodeURIComponent(id)}/apply-branch-patch`, {
+        method: "POST",
+        token,
+        org: tenant,
+        body: {
+          branch: targetBranch,
+          repo_target: "both",
+          confirm_restore_point: true,
+        },
+      });
+      const payload = unwrapPayload(data);
+      setBranchPatchResult(payload);
+      const restorePoint = payload?.restore_point_id ? ` • restore_point=${payload.restore_point_id}` : "";
+      const execution = payload?.execution_id ? ` • ${payload.execution_id}` : "";
+      setNotice(`AO-17C/AO-18A: patch aplicado somente na branch ${payload?.target_branch || targetBranch}${restorePoint}${execution}. Reversão disponível. Main/PR/deploy/migration seguem bloqueados.`);
+      await loadDetail(id);
+      await loadPlan(id);
+      await loadBranchPrPlan(id);
+      await loadExecutions();
+    } catch (err) {
+      setError(extractError(err));
+    } finally {
+      setActionBusy("");
+    }
+  }
+
+  async function revertBranchPatch(id) {
+    if (!id) return;
+    const latestApplied = executions.find(x =>
+      String(x?.proposal_id || "") === String(id || "") &&
+      String(x?.status || "").trim() === "branch_patch_applied"
+    );
+    const restorePointId = branchPatchResult?.restore_point_id || latestApplied?.result?.restore_point_id || "";
+    const executionId = branchPatchResult?.execution_id || latestApplied?.execution_id || "";
+    setActionBusy(`revert-branch-patch:${id}`);
+    setError("");
+    setNotice("");
+    setBranchRevertResult(null);
+    try {
+      const data = await apiFetch(`/api/admin/evolution/proposals/${encodeURIComponent(id)}/revert-branch-patch`, {
+        method: "POST",
+        token,
+        org: tenant,
+        body: {
+          restore_point_id: restorePointId,
+          execution_id: executionId,
+          repo_target: "both",
+        },
+      });
+      const payload = unwrapPayload(data);
+      setBranchRevertResult(payload);
+      const restorePoint = payload?.restore_point_id ? ` • restore_point=${payload.restore_point_id}` : "";
+      const execution = payload?.execution_id ? ` • ${payload.execution_id}` : "";
+      setNotice(`AO-18A: reversão aplicada na branch ${payload?.target_branch || payload?.branch || ""}${restorePoint}${execution}. Main permaneceu intacta.`);
+      await loadDetail(id);
+      await loadPlan(id);
+      await loadBranchPrPlan(id);
+      await loadExecutions();
+    } catch (err) {
+      setError(extractError(err));
+    } finally {
+      setActionBusy("");
+    }
+  }
+
   if (!allowed) {
     return (
       <main className="min-h-screen bg-[#070711] px-4 py-10 text-white">
@@ -424,6 +503,30 @@ export default function AdminEvolutionCenter() {
     selectedIsDryRunCompleted &&
     canPrepareBranchPr &&
     selectedBlocksRealExecution
+  );
+  const selectedIsAo17cRestorePointProposal = Boolean(
+    String(effectiveBranchPrPlan?.stage || "").includes("AO-17C") ||
+    selectedTitle.includes("ao-17c") ||
+    selectedTitle.includes("ao-18a") ||
+    String(selected?.summary || "").toLowerCase().includes("restore point")
+  );
+  const targetBranchLabel = effectiveBranchPrPlan?.target_branch || effectiveBranchPrPlan?.suggested_branch || "";
+  const canApplyBranchPatch = Boolean(
+    selected?.proposal_id &&
+    selectedIsAo17cRestorePointProposal &&
+    selectedIsDryRunCompleted &&
+    targetBranchLabel &&
+    (effectiveBranchPrPlan?.can_apply_branch_patch || effectiveBranchPrPlan?.can_prepare_branch_patch)
+  );
+  const latestBranchPatchExecution = executions.find(x =>
+    String(x?.proposal_id || "") === String(selected?.proposal_id || "") &&
+    String(x?.status || "").trim() === "branch_patch_applied"
+  );
+  const latestRestorePointId = branchPatchResult?.restore_point_id || latestBranchPatchExecution?.result?.restore_point_id || "";
+  const canRevertBranchPatch = Boolean(
+    selected?.proposal_id &&
+    selectedIsAo17cRestorePointProposal &&
+    latestRestorePointId
   );
 
   return (
@@ -750,6 +853,39 @@ export default function AdminEvolutionCenter() {
                       </button>
                     </div>
                   ) : null}
+
+                  {canApplyBranchPatch ? (
+                    <div className="mt-4 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 p-4">
+                      <div className="font-semibold text-cyan-50">AO-17C/AO-18A — patch na branch com restore point permanente</div>
+                      <p className="mt-2 text-xs leading-relaxed text-cyan-50/75">
+                        Esta ação aplica um patch governado somente na branch existente <span className="font-mono">{targetBranchLabel}</span>.
+                        Antes da escrita, o backend captura snapshot anterior e registra restore_point_id. Main, PR, merge, deploy e migration permanecem bloqueados.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">restore_point=true</Pill>
+                        <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">main=false</Pill>
+                        <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">pr=false</Pill>
+                        <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">deploy=false</Pill>
+                        <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">migration=false</Pill>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => applyBranchPatch(selected?.proposal_id)}
+                          disabled={Boolean(actionBusy) || !selected?.proposal_id}
+                          className={`${BTN} bg-cyan-300 text-black hover:bg-cyan-200`}
+                        >
+                          {actionBusy === `apply-branch-patch:${selected?.proposal_id}` ? "Aplicando patch..." : "Aplicar patch na branch"}
+                        </button>
+                        <button
+                          onClick={() => revertBranchPatch(selected?.proposal_id)}
+                          disabled={Boolean(actionBusy) || !canRevertBranchPatch}
+                          className={`${BTN} border border-cyan-200/25 bg-black/20 text-cyan-50 hover:bg-cyan-300/10`}
+                        >
+                          {actionBusy === `revert-branch-patch:${selected?.proposal_id}` ? "Revertendo..." : "Reverter patch da branch"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="rounded-2xl border border-white/10 bg-black/15 p-4 text-sm text-white/55">
@@ -768,6 +904,24 @@ export default function AdminEvolutionCenter() {
                   <div className="font-semibold">Último receipt AO-17B</div>
                   <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-black/25 p-3 text-xs text-amber-50/85">
                     {JSON.stringify(branchCreateResult, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
+
+              {branchPatchResult ? (
+                <div className="mt-3 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 p-3 text-sm text-cyan-50">
+                  <div className="font-semibold">Último receipt AO-17C/AO-18A</div>
+                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-black/25 p-3 text-xs text-cyan-50/85">
+                    {JSON.stringify(branchPatchResult, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
+
+              {branchRevertResult ? (
+                <div className="mt-3 rounded-2xl border border-emerald-300/25 bg-emerald-300/10 p-3 text-sm text-emerald-50">
+                  <div className="font-semibold">Último receipt AO-18A — reversão</div>
+                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-black/25 p-3 text-xs text-emerald-50/85">
+                    {JSON.stringify(branchRevertResult, null, 2)}
                   </pre>
                 </div>
               ) : null}
