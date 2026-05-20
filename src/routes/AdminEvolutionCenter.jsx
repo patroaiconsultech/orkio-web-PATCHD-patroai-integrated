@@ -16,7 +16,7 @@ const BTN = "rounded-2xl px-4 py-2 text-sm font-semibold transition disabled:cur
 const INPUT = "w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35";
 const TEXTAREA = "w-full min-h-[92px] rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35";
 
-const BUILD_SIGNATURE = "AO-17A-branch-pr-runner-plan-readonly";
+const BUILD_SIGNATURE = "AO-17B-create-branch-only-governed";
 
 function nowLabel() {
   try {
@@ -168,6 +168,7 @@ export default function AdminEvolutionCenter() {
   const [lastRefresh, setLastRefresh] = useState("");
   const [dryRunResult, setDryRunResult] = useState(null);
   const [branchPrPlan, setBranchPrPlan] = useState(null);
+  const [branchCreateResult, setBranchCreateResult] = useState(null);
 
   const selected = useMemo(() => {
     const found = items.find(x => String(x.proposal_id) === String(selectedId));
@@ -230,6 +231,7 @@ export default function AdminEvolutionCenter() {
     setNotice("");
     setDryRunResult(null);
     setBranchPrPlan(null);
+    setBranchCreateResult(null);
     try {
       const next = await loadList();
       const id = selectedId || next?.[0]?.proposal_id;
@@ -257,6 +259,7 @@ export default function AdminEvolutionCenter() {
     setPlan(null);
     setDryRunResult(null);
     setBranchPrPlan(null);
+    setBranchCreateResult(null);
     loadDetail(selectedId)
       .then(() => loadPlan(selectedId))
       .catch(err => setError(extractError(err)));
@@ -331,6 +334,35 @@ export default function AdminEvolutionCenter() {
     }
   }
 
+  async function createTemporaryBranch(id) {
+    if (!id) return;
+    setActionBusy(`create-branch:${id}`);
+    setError("");
+    setNotice("");
+    setBranchCreateResult(null);
+    try {
+      const data = await apiFetch(`/api/admin/evolution/proposals/${encodeURIComponent(id)}/create-branch`, {
+        method: "POST",
+        token,
+        org: tenant,
+        body: { repo_target: "both" },
+      });
+      const payload = unwrapPayload(data);
+      setBranchCreateResult(payload);
+      const branch = payload?.branch || payload?.branch_name || "branch temporária";
+      const execution = payload?.execution_id ? ` • ${payload.execution_id}` : "";
+      setNotice(`AO-17B: branch governada criada/confirmada (${branch})${execution}. Nenhum arquivo, commit, PR, merge, deploy ou migration foi executado.`);
+      await loadDetail(id);
+      await loadPlan(id);
+      await loadBranchPrPlan(id);
+      await loadExecutions();
+    } catch (err) {
+      setError(extractError(err));
+    } finally {
+      setActionBusy("");
+    }
+  }
+
   if (!allowed) {
     return (
       <main className="min-h-screen bg-[#070711] px-4 py-10 text-white">
@@ -380,6 +412,18 @@ export default function AdminEvolutionCenter() {
   const canPrepareBranchPr = Boolean(
     effectiveBranchPrPlan?.can_prepare_branch_pr ||
     (selectedIsDryRunCompleted && selectedBlocksRealExecution)
+  );
+  const selectedTitle = String(selected?.title || "").toLowerCase();
+  const selectedIsAo17bBranchProposal = selectedTitle.includes("ao-17b") && (
+    selectedTitle.includes("branch") ||
+    String(selected?.summary || "").toLowerCase().includes("branch tempor")
+  );
+  const canCreateTemporaryBranch = Boolean(
+    selected?.proposal_id &&
+    selectedIsAo17bBranchProposal &&
+    selectedIsDryRunCompleted &&
+    canPrepareBranchPr &&
+    selectedBlocksRealExecution
   );
 
   return (
@@ -683,6 +727,29 @@ export default function AdminEvolutionCenter() {
                   >
                     Carregar plano AO-17A
                   </button>
+
+                  {canCreateTemporaryBranch ? (
+                    <div className="mt-4 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-4">
+                      <div className="font-semibold text-amber-50">AO-17B — criação governada de branch temporária</div>
+                      <p className="mt-2 text-xs leading-relaxed text-amber-50/75">
+                        Esta ação cria somente a branch temporária sugerida. Não escreve arquivos, não cria commit,
+                        não abre PR, não faz merge, deploy ou migration.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">files=false</Pill>
+                        <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">commit=false</Pill>
+                        <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">pr=false</Pill>
+                        <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">deploy=false</Pill>
+                      </div>
+                      <button
+                        onClick={() => createTemporaryBranch(selected?.proposal_id)}
+                        disabled={Boolean(actionBusy) || !selected?.proposal_id}
+                        className={`${BTN} mt-3 bg-amber-300 text-black hover:bg-amber-200`}
+                      >
+                        {actionBusy === `create-branch:${selected?.proposal_id}` ? "Criando branch..." : "Criar branch temporária"}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="rounded-2xl border border-white/10 bg-black/15 p-4 text-sm text-white/55">
@@ -694,6 +761,15 @@ export default function AdminEvolutionCenter() {
                 <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-2xl border border-white/10 bg-black/25 p-3 text-xs text-indigo-50/80">
                   {JSON.stringify(effectiveBranchPrPlan, null, 2)}
                 </pre>
+              ) : null}
+
+              {branchCreateResult ? (
+                <div className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-50">
+                  <div className="font-semibold">Último receipt AO-17B</div>
+                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-black/25 p-3 text-xs text-amber-50/85">
+                    {JSON.stringify(branchCreateResult, null, 2)}
+                  </pre>
+                </div>
               ) : null}
             </div>
 
