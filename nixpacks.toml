@@ -1,8 +1,8 @@
-# AO-17B-CREATE — Força build fresco e valida o bundle antes de servir.
+# AO-17C/AO-18A-APPLY — Força build fresco e valida botões de patch/reversão.
 # Caminho real do projeto: nixpacks.toml
 #
-# Este guard impede deploy de bundle antigo AO-16D-R4.
-# O deploy WEB só deve passar se o dist contiver o painel AO-17B-CREATE.
+# Este guard impede deploy de bundle antigo. O deploy WEB só deve passar se o
+# dist contiver assinatura AO-17C/AO18A e botões de aplicar/reverter patch.
 
 [phases.install]
 cmds = ["npm install"]
@@ -10,9 +10,10 @@ cmds = ["npm install"]
 [phases.build]
 cmds = [
   "npm run build",
-  "grep -R \"AO-17B-create-branch-only-governed\" dist",
-  "grep -R \"Carregar plano AO-17A\" dist",
-  "grep -R \"Criar branch temporária\" dist",
+  "grep -R \"AO-17C-AO18A-apply-revert-restore-point\" dist",
+  "grep -R \"Aplicar patch na branch\" dist",
+  "grep -R \"Reverter patch da branch\" dist",
+  "grep -R \"restore_point=true\" dist",
   "if grep -R \"AO-16D-R4-force-fresh-build-admin-dry-run\" dist; then echo \"ERRO: AO-16D-R4 encontrado no dist\"; exit 1; fi",
   "if grep -R \"AO-14 é console visual\" dist; then echo \"ERRO: AO-14 encontrado no dist\"; exit 1; fi",
   "if grep -R \"Dry-run futuro\" dist; then echo \"ERRO: Dry-run futuro encontrado no dist\"; exit 1; fi",
