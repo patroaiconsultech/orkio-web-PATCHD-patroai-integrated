@@ -16,7 +16,7 @@ const BTN = "rounded-2xl px-4 py-2 text-sm font-semibold transition disabled:cur
 const INPUT = "w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35";
 const TEXTAREA = "w-full min-h-[92px] rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35";
 
-const BUILD_SIGNATURE = "AO-16D-R4-force-fresh-build-admin-dry-run";
+const BUILD_SIGNATURE = "AO-17A-branch-pr-runner-plan-readonly";
 
 function nowLabel() {
   try {
@@ -167,6 +167,7 @@ export default function AdminEvolutionCenter() {
   const [rejectReason, setRejectReason] = useState("Rejeitado pelo Admin após revisão.");
   const [lastRefresh, setLastRefresh] = useState("");
   const [dryRunResult, setDryRunResult] = useState(null);
+  const [branchPrPlan, setBranchPrPlan] = useState(null);
 
   const selected = useMemo(() => {
     const found = items.find(x => String(x.proposal_id) === String(selectedId));
@@ -209,7 +210,17 @@ export default function AdminEvolutionCenter() {
     const data = await apiFetch(`/api/admin/evolution/proposals/${encodeURIComponent(id)}/execution-plan`, { token, org: tenant });
     const payload = unwrapPayload(data);
     setPlan(payload);
+    setBranchPrPlan(payload?.branch_pr_plan || payload?.plan?.branch_pr_plan || null);
     return payload;
+  }, [allowed, tenant, token]);
+
+  const loadBranchPrPlan = useCallback(async (id) => {
+    if (!allowed || !id) return null;
+    const data = await apiFetch(`/api/admin/evolution/proposals/${encodeURIComponent(id)}/branch-pr-plan`, { token, org: tenant });
+    const payload = unwrapPayload(data);
+    const planPayload = payload?.plan || payload?.branch_pr_plan || payload;
+    setBranchPrPlan(planPayload);
+    return planPayload;
   }, [allowed, tenant, token]);
 
   const refreshAll = useCallback(async () => {
@@ -218,6 +229,7 @@ export default function AdminEvolutionCenter() {
     setError("");
     setNotice("");
     setDryRunResult(null);
+    setBranchPrPlan(null);
     try {
       const next = await loadList();
       const id = selectedId || next?.[0]?.proposal_id;
@@ -244,6 +256,7 @@ export default function AdminEvolutionCenter() {
     setNotice("");
     setPlan(null);
     setDryRunResult(null);
+    setBranchPrPlan(null);
     loadDetail(selectedId)
       .then(() => loadPlan(selectedId))
       .catch(err => setError(extractError(err)));
@@ -309,6 +322,7 @@ export default function AdminEvolutionCenter() {
       setNotice(`Dry-run governado concluído: ${payload?.execution_id || "execution_id retornado pelo backend"}. Execução real permaneceu bloqueada.`);
       await loadDetail(id);
       await loadPlan(id);
+      await loadBranchPrPlan(id);
       await loadExecutions();
     } catch (err) {
       setError(extractError(err));
@@ -362,6 +376,11 @@ export default function AdminEvolutionCenter() {
   const selectedIsPending = selectedStatus.includes("pending");
   const selectedIsRejected = selectedStatus === "rejected";
   const selectedIsDryRunCompleted = selectedExecutionStatus === "dry_run_completed";
+  const effectiveBranchPrPlan = branchPrPlan || plan?.branch_pr_plan || null;
+  const canPrepareBranchPr = Boolean(
+    effectiveBranchPrPlan?.can_prepare_branch_pr ||
+    (selectedIsDryRunCompleted && selectedBlocksRealExecution)
+  );
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(124,58,237,0.30),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.18),_transparent_34%),#070711] px-4 py-6 text-white">
@@ -628,6 +647,53 @@ export default function AdminEvolutionCenter() {
                 <div className="mt-3 rounded-2xl border border-rose-400/25 bg-rose-400/10 p-3 text-sm text-rose-50">
                   Bloqueador: o plano retornou execution_enabled=true. Não avance para dry-run até corrigir a governança.
                 </div>
+              ) : null}
+            </div>
+
+            <div className={`${CARD} border-indigo-300/20 bg-indigo-300/5`}>
+              <SectionTitle eyebrow="Próxima etapa" title="AO-17A — Branch/PR Runner Governado">
+                Transforma o dry-run aprovado em contrato de execução futura em branch/PR. Esta etapa ainda é read-only: não cria branch, não escreve no repositório, não cria commit, não abre PR, não faz merge, deploy ou migration.
+              </SectionTitle>
+
+              <div className="mb-4 flex flex-wrap gap-2">
+                <Pill className={canPrepareBranchPr ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-100" : "border-white/10 bg-white/5 text-white/65"}>
+                  can_prepare_branch_pr={String(Boolean(canPrepareBranchPr))}
+                </Pill>
+                <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">
+                  main_write=false
+                </Pill>
+                <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">
+                  deploy_auto=false
+                </Pill>
+                <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">
+                  migration_auto=false
+                </Pill>
+              </div>
+
+              {selectedIsDryRunCompleted ? (
+                <div className="rounded-2xl border border-indigo-300/20 bg-black/15 p-4 text-sm text-indigo-50/85">
+                  <div className="font-semibold text-indigo-50">Dry-run concluído. AO-17A pode ser revisado.</div>
+                  <p className="mt-2 text-indigo-50/70">
+                    O próximo GO seguro é preparar branch/PR, com rollback_plan obrigatório e aprovação Admin antes de qualquer escrita real.
+                  </p>
+                  <button
+                    onClick={() => loadBranchPrPlan(selected?.proposal_id)}
+                    disabled={Boolean(actionBusy) || !selected?.proposal_id}
+                    className={`${BTN} mt-3 border border-indigo-200/20 bg-indigo-300/15 text-indigo-50 hover:bg-indigo-300/20`}
+                  >
+                    Carregar plano AO-17A
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-black/15 p-4 text-sm text-white/55">
+                  AO-17A permanece bloqueado até o dry-run retornar <span className="font-mono">execution_status=dry_run_completed</span>.
+                </div>
+              )}
+
+              {effectiveBranchPrPlan ? (
+                <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-2xl border border-white/10 bg-black/25 p-3 text-xs text-indigo-50/80">
+                  {JSON.stringify(effectiveBranchPrPlan, null, 2)}
+                </pre>
               ) : null}
             </div>
 
