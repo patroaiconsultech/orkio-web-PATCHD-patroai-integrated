@@ -391,7 +391,8 @@ export default function AdminEvolutionCenter() {
       setBranchPatchResult(payload);
       const restorePoint = payload?.restore_point_id ? ` • restore_point=${payload.restore_point_id}` : "";
       const execution = payload?.execution_id ? ` • ${payload.execution_id}` : "";
-      setNotice(`AO-17C/AO-18A: patch aplicado somente na branch ${payload?.target_branch || targetBranch}${restorePoint}${execution}. Reversão disponível. Main/PR/deploy/migration seguem bloqueados.`);
+      const pending = payload?.verification_pending ? " com verificação pendente" : "";
+      setNotice(`AO-17C/AO-18A: patch aceito${pending} na branch ${payload?.target_branch || targetBranch}${restorePoint}${execution}. Reversão disponível. Main/PR/deploy/migration seguem bloqueados.`);
       await loadDetail(id);
       await loadPlan(id);
       await loadBranchPrPlan(id);
@@ -405,10 +406,20 @@ export default function AdminEvolutionCenter() {
 
   async function revertBranchPatch(id) {
     if (!id) return;
-    const latestApplied = executions.find(x =>
-      String(x?.proposal_id || "") === String(id || "") &&
-      String(x?.status || "").trim() === "branch_patch_applied"
-    );
+    const statusesWithRestore = new Set([
+      "branch_patch_applied",
+      "branch_patch_verification_pending",
+      "branch_patch_failed",
+    ]);
+    const latestApplied = executions.find(x => {
+      const status = String(x?.status || "").trim();
+      if (String(x?.proposal_id || "") !== String(id || "")) return false;
+      if (!statusesWithRestore.has(status)) return false;
+      const result = x?.result || {};
+      const receipts = Array.isArray(result?.file_receipts) ? result.file_receipts : [];
+      const hasBranchWrite = receipts.some(item => Boolean(item?.commit_sha || item?.write_accepted || item?.raw_result?.commit_sha || item?.raw_result?.write_accepted));
+      return status !== "branch_patch_failed" || hasBranchWrite;
+    });
     const restorePointId = branchPatchResult?.restore_point_id || latestApplied?.result?.restore_point_id || "";
     const executionId = branchPatchResult?.execution_id || latestApplied?.execution_id || "";
     setActionBusy(`revert-branch-patch:${id}`);
@@ -518,10 +529,20 @@ export default function AdminEvolutionCenter() {
     targetBranchLabel &&
     (effectiveBranchPrPlan?.can_apply_branch_patch || effectiveBranchPrPlan?.can_prepare_branch_patch)
   );
-  const latestBranchPatchExecution = executions.find(x =>
-    String(x?.proposal_id || "") === String(selected?.proposal_id || "") &&
-    String(x?.status || "").trim() === "branch_patch_applied"
-  );
+  const branchPatchStatusesWithRestore = new Set([
+    "branch_patch_applied",
+    "branch_patch_verification_pending",
+    "branch_patch_failed",
+  ]);
+  const latestBranchPatchExecution = executions.find(x => {
+    const status = String(x?.status || "").trim();
+    if (String(x?.proposal_id || "") !== String(selected?.proposal_id || "")) return false;
+    if (!branchPatchStatusesWithRestore.has(status)) return false;
+    const result = x?.result || {};
+    const receipts = Array.isArray(result?.file_receipts) ? result.file_receipts : [];
+    const hasBranchWrite = receipts.some(item => Boolean(item?.commit_sha || item?.write_accepted || item?.raw_result?.commit_sha || item?.raw_result?.write_accepted));
+    return status !== "branch_patch_failed" || hasBranchWrite;
+  });
   const latestRestorePointId = branchPatchResult?.restore_point_id || latestBranchPatchExecution?.result?.restore_point_id || "";
   const canRevertBranchPatch = Boolean(
     selected?.proposal_id &&
