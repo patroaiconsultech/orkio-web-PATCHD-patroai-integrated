@@ -1,952 +1,433 @@
-import React, { useMemo, useState } from "react";
-import AvatarHero3D from "../components/AvatarHero3D.jsx";
-import AvatarPrechatModal from "../components/AvatarPrechatModal.jsx";
-import PremiumIcon from "../components/PremiumIcon.jsx";
+import React, { useCallback, useRef, useState } from "react";
 
 /**
- * PATROAI CONSULTECH — LANDING INSTITUCIONAL PREMIUM
+ * AO-01 HOTFIX — AvatarHero3D puro
  *
- * Rota atual preservada:
- * /        → PatroaiLanding
- * /patroai → PatroaiLanding
- * /orkio   → Landing / Orkio OS
+ * Este componente NÃO importa a landing e NÃO importa a si mesmo.
+ * Ele é visual, isolado e seguro para ser usado dentro de PatroaiLanding.jsx.
  *
- * Patch premium:
- * - Avatar humanóide por asset WebP com fallback CSS.
- * - Cérebro/hero visual por asset WebP com fallback CSS.
- * - Ícones SVG internos, sem nova dependência.
- * - Voz pública via AvatarHero3D usando /api/public/tts com fallback seguro.
+ * Contrato esperado:
+ * <AvatarHero3D
+ *   speech="texto opcional para fala local"
+ *   onText={handleStartAvatarJourney}
+ *   onDiagnosis={handleStartAvatarJourney}
+ * />
  */
 
-const ROUTES = {
-  orkioOS: "/orkio",
-  patroai: "/patroai",
-  auth: "/auth",
-  app: "/app",
-  admin: "/admin",
-};
+const AVATAR_SRC = "/patroai-assets/orkio-avatar-hero.webp";
+const BRAIN_SRC = "/patroai-assets/patroai-brain-hero.webp";
 
-const LOGO_PRIMARY = "/patroai-assets/logo-patroai-novo.png";
-const LOGO_FALLBACK = "/patroai-assets/logo-patroai-novo.webp";
+export default function AvatarHero3D({ speech = "", onText, onDiagnosis }) {
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [brainFailed, setBrainFailed] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const utteranceRef = useRef(null);
 
-const PROCESS_STEPS = [
-  {
-    number: "01",
-    title: "Diagnosticar",
-    text: "Entendemos o negócio, desafios e oportunidades.",
-    icon: "search",
-  },
-  {
-    number: "02",
-    title: "Planejar",
-    text: "Definimos estratégia, prioridades e arquitetura.",
-    icon: "plan",
-  },
-  {
-    number: "03",
-    title: "Construir",
-    text: "Desenvolvemos soluções sob medida e inteligentes.",
-    icon: "code",
-  },
-  {
-    number: "04",
-    title: "Implantar",
-    text: "Colocamos em produção com segurança e qualidade.",
-    icon: "rocket",
-  },
-  {
-    number: "05",
-    title: "Evoluir",
-    text: "Acompanhamos, otimizamos e ampliamos resultados.",
-    icon: "growth",
-  },
-];
+  const safeCallback = useCallback((fn) => {
+    if (typeof fn === "function") fn();
+  }, []);
 
-const SERVICES = [
-  {
-    title: "Consultoria Estratégica",
-    text: "Mapeamos dores, oportunidades e prioridades para estruturar caminhos claros de evolução.",
-    icon: "target",
-  },
-  {
-    title: "Desenvolvimento de Sistemas",
-    text: "Criamos soluções digitais sob medida para organizar processos, dados e operações.",
-    icon: "system",
-  },
-  {
-    title: "Agentes de IA Personalizados",
-    text: "Construímos agentes inteligentes adaptados ao contexto, linguagem e objetivos de cada negócio.",
-    icon: "brain",
-  },
-  {
-    title: "Automação e Governança",
-    text: "Conectamos tecnologia, controle e execução para reduzir fricção e aumentar eficiência.",
-    icon: "gear",
-  },
-];
+  const handleSpeak = useCallback(() => {
+    const text =
+      typeof speech === "string" && speech.trim()
+        ? speech.trim()
+        : "Olá. Eu sou o Orkio. Posso ajudar você a organizar contexto, entender desafios e iniciar uma evolução com clareza.";
 
-const ORKIO_BENEFITS = [
-  ["search", "Entende seu negócio"],
-  ["voice", "Responde por voz e texto"],
-  ["brain", "Gera insights e recomendações"],
-  ["gear", "Acompanha e evolui com você"],
-];
+    try {
+      if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+        safeCallback(onText);
+        return;
+      }
 
-function rememberAppRedirect() {
-  try {
-    window.localStorage?.setItem("post_auth_redirect", ROUTES.app);
-    window.sessionStorage?.setItem("post_auth_redirect", ROUTES.app);
-  } catch {}
-}
+      window.speechSynthesis.cancel();
 
-function safeNavigateToAuth(params = {}) {
-  rememberAppRedirect();
-  const query = new URLSearchParams();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "pt-BR";
+      utterance.rate = 0.96;
+      utterance.pitch = 0.92;
+      utterance.volume = 1;
 
-  Object.entries(params).forEach(([key, value]) => {
-    if (value == null || value === "") return;
-    query.set(key, String(value));
-  });
+      utterance.onstart = () => setSpeaking(true);
+      utterance.onend = () => setSpeaking(false);
+      utterance.onerror = () => setSpeaking(false);
 
-  window.location.href = `${ROUTES.auth}${query.toString() ? `?${query.toString()}` : ""}`;
-}
-
-function navigateTo(path) {
-  window.location.href = path;
-}
-
-function PatroaiLogo({ compact = false }) {
-  const [src, setSrc] = useState(LOGO_PRIMARY);
+      utteranceRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      setSpeaking(false);
+      safeCallback(onText);
+    }
+  }, [onText, safeCallback, speech]);
 
   return (
-    <div className={`patroai-logo ${compact ? "patroai-logo--compact" : ""}`}>
-      <img
-        src={src}
-        alt="PatroAI Consultech"
-        onError={() => {
-          if (src !== LOGO_FALLBACK) setSrc(LOGO_FALLBACK);
-        }}
-      />
-      <div>
-        <strong>PatroAI</strong>
-        <span>Consultech</span>
-      </div>
-    </div>
-  );
-}
-
-export default function PatroaiLanding() {
-  const [prechatOpen, setPrechatOpen] = useState(false);
-
-  const heroSubtitle = useMemo(
-    () =>
-      "A PatroAI Consultech une consultoria estratégica, desenvolvimento de sistemas, automação e agentes de IA personalizados para transformar desafios empresariais em processos inteligentes, governáveis e escaláveis.",
-    []
-  );
-
-  const orkioSpeech = useMemo(
-    () =>
-      "Olá. Eu sou o Orkio. Posso mostrar como a PatroAI transforma processos, sistemas e inteligência artificial em evolução real para empresas, com clareza, estratégia, governança e execução.",
-    []
-  );
-
-  function handleLogin() {
-    safeNavigateToAuth({ mode: "login", source: "patroai_landing" });
-  }
-
-  function handleDemo() {
-    safeNavigateToAuth({ mode: "register", source: "patroai_demo" });
-  }
-
-  function handleStartAvatarJourney() {
-    setPrechatOpen(true);
-  }
-
-  function handleContinueAfterPrechat() {
-    setPrechatOpen(false);
-    safeNavigateToAuth({
-      entry: "avatar",
-      onboarding: 1,
-      prechat: 1,
-      mode: "register",
-      source: "patroai_landing",
-    });
-  }
-
-  return (
-    <div className="patroai-page">
+    <section className={`orkio-avatar-hero ${speaking ? "is-speaking" : ""}`} aria-label="Assistente Orkio">
       <style>{`
-        .patroai-page {
-          min-height: 100vh;
+        .orkio-avatar-hero {
+          position: relative;
+          min-height: 520px;
+          border: 1px solid rgba(247,200,98,0.28);
+          border-radius: 34px;
           overflow: hidden;
-          color: #fff;
-          font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           background:
-            radial-gradient(900px 560px at 12% 0%, rgba(247,200,98,0.13), transparent 58%),
-            radial-gradient(820px 560px at 92% 16%, rgba(247,200,98,0.10), transparent 52%),
-            linear-gradient(180deg, #02060b 0%, #06111b 52%, #02060b 100%);
+            radial-gradient(520px 360px at 55% 28%, rgba(247,200,98,0.19), transparent 62%),
+            radial-gradient(420px 320px at 92% 35%, rgba(247,200,98,0.15), transparent 64%),
+            linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.032)),
+            rgba(2,6,11,0.76);
+          box-shadow: 0 32px 90px rgba(0,0,0,0.42);
+          isolation: isolate;
         }
 
-        .patroai-page * {
-          box-sizing: border-box;
+        .orkio-avatar-hero::before,
+        .orkio-avatar-hero::after {
+          content: "";
+          position: absolute;
+          inset: auto;
+          pointer-events: none;
+          z-index: 0;
         }
 
-        .patroai-page button,
-        .patroai-page a {
-          -webkit-tap-highlight-color: transparent;
-        }
-
-        .patroai-shell {
-          width: min(1560px, calc(100% - 40px));
-          margin: 0 auto;
-        }
-
-        .patroai-topbar {
-          position: sticky;
-          top: 0;
-          z-index: 40;
-          border-bottom: 1px solid rgba(255,255,255,0.08);
-          background: rgba(2,6,11,0.78);
-          backdrop-filter: blur(22px);
-        }
-
-        .patroai-topbar__inner {
-          min-height: 92px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 24px;
-        }
-
-        .patroai-logo {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          color: #fff;
-          text-decoration: none;
-        }
-
-        .patroai-logo img {
-          width: 58px;
-          height: 58px;
+        .orkio-avatar-hero::before {
+          width: 520px;
+          height: 520px;
+          right: -190px;
+          top: -140px;
           border-radius: 999px;
-          object-fit: cover;
-          border: 1px solid rgba(255,214,119,0.28);
-          box-shadow: 0 0 26px rgba(247,200,98,0.24);
-          background: #05070b;
+          background: radial-gradient(circle, rgba(247,200,98,0.16), transparent 66%);
+          filter: blur(2px);
         }
 
-        .patroai-logo strong {
-          display: block;
-          font-size: 29px;
-          line-height: 0.95;
-          font-weight: 950;
-          letter-spacing: -0.03em;
-        }
-
-        .patroai-logo span {
-          display: block;
-          margin-top: 6px;
-          color: #f7c862;
-          font-size: 11px;
-          font-weight: 850;
-          text-transform: uppercase;
-          letter-spacing: 0.34em;
-        }
-
-        .patroai-logo--compact img {
-          width: 42px;
-          height: 42px;
-        }
-
-        .patroai-logo--compact strong {
-          font-size: 20px;
-        }
-
-        .patroai-logo--compact span {
-          font-size: 9px;
-        }
-
-        .patroai-brand-button {
-          appearance: none;
-          background: transparent;
-          border: 0;
-          padding: 0;
-          cursor: pointer;
-        }
-
-        .patroai-nav {
-          display: flex;
-          align-items: center;
-          gap: clamp(18px, 3vw, 42px);
-          color: rgba(255,255,255,0.86);
-          font-size: 15px;
-          font-weight: 750;
-        }
-
-        .patroai-nav a {
-          color: inherit;
-          text-decoration: none;
-          transition: color 160ms ease;
-        }
-
-        .patroai-nav a:hover {
-          color: #f7c862;
-        }
-
-        .patroai-actions {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .patroai-button {
-          border: 1px solid rgba(247,200,98,0.52);
-          border-radius: 14px;
-          padding: 14px 22px;
-          background: linear-gradient(135deg, #ffe3a2 0%, #f7c862 52%, #b68023 100%);
-          color: #080b11;
-          font-size: 14px;
-          font-weight: 950;
-          cursor: pointer;
-          box-shadow: 0 18px 34px rgba(247,200,98,0.18);
-          transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
-        }
-
-        .patroai-button:hover {
-          transform: translateY(-1px);
-          filter: brightness(1.04);
-          box-shadow: 0 22px 46px rgba(247,200,98,0.24);
-        }
-
-        .patroai-button--ghost {
-          color: #f8fafc;
-          background: rgba(255,255,255,0.035);
-          border-color: rgba(247,200,98,0.22);
-          box-shadow: none;
-        }
-
-        .patroai-button--ghost:hover {
-          background: rgba(247,200,98,0.08);
-        }
-
-        .patroai-button--admin {
-          padding-inline: 16px;
-          color: rgba(255,232,170,0.86);
-        }
-
-        .patroai-hero {
-          position: relative;
-          padding: 38px 0 24px;
-          display: grid;
-          grid-template-columns: minmax(320px, 0.85fr) minmax(700px, 1.7fr);
-          gap: 30px;
-          align-items: center;
-        }
-
-        .patroai-hero::before {
-          content: "";
-          position: absolute;
-          inset: -16px -8vw auto -8vw;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, rgba(247,200,98,0.28), transparent);
-        }
-
-        .patroai-copy {
-          position: relative;
-          z-index: 3;
-          min-width: 0;
-        }
-
-        .patroai-kicker {
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
-          color: #f7c862;
-          font-size: 13px;
-          font-weight: 950;
-          text-transform: uppercase;
-          letter-spacing: 0.16em;
-          margin-bottom: 20px;
-        }
-
-        .patroai-kicker::before {
-          content: "";
-          width: 8px;
-          height: 8px;
-          border-radius: 99px;
-          background: #f7c862;
-          box-shadow: 0 0 18px rgba(247,200,98,0.7);
-        }
-
-        .patroai-copy h1 {
-          max-width: 590px;
-          margin: 0;
-          font-size: clamp(42px, 4.2vw, 70px);
-          line-height: 1.02;
-          letter-spacing: -0.07em;
-          font-weight: 950;
-        }
-
-        .patroai-gradient-text {
-          display: inline;
-          color: #f7c862;
-          text-shadow: 0 0 34px rgba(247,200,98,0.12);
-        }
-
-        .patroai-copy p {
-          max-width: 560px;
-          margin: 22px 0 0;
-          color: rgba(248,250,252,0.72);
-          font-size: 16px;
-          line-height: 1.72;
-        }
-
-        .patroai-hero__cta {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          flex-wrap: wrap;
-          margin-top: 28px;
-        }
-
-        .patroai-trust {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-top: 24px;
-          color: rgba(255,226,157,0.82);
-          font-size: 14px;
-          line-height: 1.4;
-        }
-
-        .patroai-trust svg {
-          color: #f7c862;
-          flex: 0 0 auto;
-        }
-
-        .patroai-stage {
-          min-width: 0;
-        }
-
-        .patroai-process {
-          margin-top: 12px;
-          position: relative;
-          z-index: 3;
-          display: grid;
-          grid-template-columns: repeat(5, 1fr);
-          gap: 0;
-          border: 1px solid rgba(247,200,98,0.24);
-          background:
-            linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.025)),
-            rgba(2,6,11,0.72);
-          border-radius: 24px;
-          box-shadow: 0 26px 70px rgba(0,0,0,0.32);
-          overflow: hidden;
-        }
-
-        .patroai-step {
-          position: relative;
-          padding: 22px 20px;
-          min-height: 124px;
-        }
-
-        .patroai-step:not(:last-child)::after {
-          content: "";
-          position: absolute;
+        .orkio-avatar-hero::after {
+          left: 0;
           right: 0;
-          top: 24px;
-          bottom: 24px;
-          width: 1px;
-          background: linear-gradient(180deg, transparent, rgba(247,200,98,0.28), transparent);
+          bottom: 0;
+          height: 46%;
+          background:
+            radial-gradient(ellipse at 56% 100%, rgba(247,200,98,0.20), transparent 56%),
+            linear-gradient(180deg, transparent, rgba(0,0,0,0.28));
         }
 
-        .patroai-step__top {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          margin-bottom: 14px;
-        }
-
-        .patroai-step small {
-          color: #fff;
-          font-weight: 950;
-          font-size: 13px;
-        }
-
-        .patroai-step__icon,
-        .patroai-card__icon,
-        .patroai-orkio__icon {
-          display: inline-grid;
-          place-items: center;
-          border-radius: 999px;
-          color: #f7c862;
-          border: 1px solid rgba(247,200,98,0.44);
-          background: rgba(247,200,98,0.065);
-          box-shadow: inset 0 0 24px rgba(247,200,98,0.04), 0 0 22px rgba(247,200,98,0.08);
-        }
-
-        .patroai-step__icon {
-          width: 56px;
-          height: 56px;
-        }
-
-        .patroai-step h3,
-        .patroai-card h3 {
-          margin: 0;
-          color: rgba(255,255,255,0.94);
-          font-size: 18px;
-          letter-spacing: -0.03em;
-        }
-
-        .patroai-step p,
-        .patroai-card p {
-          margin: 8px 0 0;
-          color: rgba(248,250,252,0.64);
-          font-size: 13px;
-          line-height: 1.58;
-        }
-
-        .patroai-services {
-          padding: 46px 0 30px;
+        .orkio-avatar-hero__grid {
+          position: relative;
+          z-index: 2;
+          min-height: 520px;
           display: grid;
-          grid-template-columns: minmax(280px, 0.72fr) minmax(520px, 1.28fr);
-          gap: 38px;
+          grid-template-columns: 0.95fr 1.05fr;
           align-items: stretch;
         }
 
-        .patroai-section-label {
-          display: inline-flex;
-          align-items: center;
-          gap: 12px;
+        .orkio-avatar-hero__copy {
+          padding: 34px 28px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 18px;
+        }
+
+        .orkio-avatar-hero__eyebrow {
           color: #f7c862;
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 950;
-          text-transform: uppercase;
           letter-spacing: 0.16em;
-          margin-bottom: 22px;
+          text-transform: uppercase;
         }
 
-        .patroai-section-label::before {
-          content: "";
-          width: 22px;
-          height: 2px;
-          background: #f7c862;
-          border-radius: 99px;
-          box-shadow: 0 0 12px rgba(247,200,98,0.56);
-        }
-
-        .patroai-services__intro h2,
-        .patroai-orkio h2 {
+        .orkio-avatar-hero__copy h2 {
           margin: 0;
-          color: #fff;
-          font-size: clamp(32px, 3vw, 52px);
-          line-height: 1.1;
+          color: #f8fafc;
+          font-size: clamp(34px, 4.2vw, 58px);
+          line-height: 0.98;
           letter-spacing: -0.06em;
         }
 
-        .patroai-services__intro p,
-        .patroai-orkio p {
-          margin: 18px 0 0;
-          color: rgba(248,250,252,0.68);
+        .orkio-avatar-hero__copy h2 span {
+          display: block;
+          background: linear-gradient(135deg, #fff3ca, #f7c862 48%, #a76f19);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+          text-shadow: 0 0 38px rgba(247,200,98,0.18);
+        }
+
+        .orkio-avatar-hero__copy p {
+          margin: 0;
+          max-width: 390px;
+          color: rgba(248,250,252,0.74);
           font-size: 15px;
-          line-height: 1.75;
+          line-height: 1.68;
         }
 
-        .patroai-cards {
+        .orkio-avatar-hero__actions {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 14px;
+          gap: 10px;
+          max-width: 330px;
+          margin-top: 4px;
         }
 
-        .patroai-card {
-          position: relative;
-          min-height: 228px;
-          border-radius: 22px;
-          border: 1px solid rgba(247,200,98,0.22);
-          background:
-            radial-gradient(220px 180px at 40% 0%, rgba(247,200,98,0.09), transparent 64%),
-            linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.025));
-          padding: 24px;
-          box-shadow: 0 20px 54px rgba(0,0,0,0.28);
-          overflow: hidden;
-        }
-
-        .patroai-card::after {
-          content: "";
-          position: absolute;
-          inset: auto -20% -42% 16%;
-          height: 96px;
-          background: radial-gradient(circle, rgba(247,200,98,0.18), transparent 62%);
-          filter: blur(10px);
-        }
-
-        .patroai-card__icon {
-          width: 58px;
-          height: 58px;
-          margin-bottom: 28px;
-        }
-
-        .patroai-orkio {
-          padding: 20px 0 58px;
-        }
-
-        .patroai-orkio__inner {
-          position: relative;
-          display: grid;
-          grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1.1fr);
-          gap: 30px;
-          align-items: center;
-          border-radius: 34px;
-          border: 1px solid rgba(247,200,98,0.24);
-          background:
-            radial-gradient(680px 380px at 90% 110%, rgba(247,200,98,0.18), transparent 60%),
-            radial-gradient(560px 320px at 20% 0%, rgba(255,255,255,0.06), transparent 60%),
-            rgba(3,8,15,0.76);
-          padding: 38px;
-          overflow: hidden;
-          box-shadow: 0 28px 80px rgba(0,0,0,0.34);
-        }
-
-        .patroai-orkio__inner::after {
-          content: "";
-          position: absolute;
-          right: -90px;
-          bottom: -120px;
-          width: 520px;
-          height: 220px;
-          background:
-            radial-gradient(circle, rgba(247,200,98,0.22) 0 1px, transparent 1.6px);
-          background-size: 14px 14px;
-          opacity: 0.5;
-          transform: rotate(-8deg);
-        }
-
-        .patroai-orkio__grid {
-          position: relative;
-          z-index: 2;
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 14px;
-        }
-
-        .patroai-orkio__grid article {
-          min-height: 142px;
-          border-radius: 22px;
-          border: 1px solid rgba(247,200,98,0.2);
-          background: rgba(255,255,255,0.04);
-          padding: 20px;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          gap: 18px;
-        }
-
-        .patroai-orkio__icon {
-          width: 48px;
-          height: 48px;
-        }
-
-        .patroai-orkio__grid strong {
-          max-width: 180px;
-          color: rgba(255,255,255,0.9);
-          line-height: 1.32;
-        }
-
-        .patroai-footer {
-          border-top: 1px solid rgba(255,255,255,0.08);
-          background: rgba(2,6,11,0.82);
-        }
-
-        .patroai-footer__inner {
-          min-height: 96px;
+        .orkio-avatar-hero__action {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 18px;
-          color: rgba(248,250,252,0.56);
-          font-size: 13px;
-          line-height: 1.5;
+          gap: 12px;
+          width: 100%;
+          min-height: 48px;
+          padding: 12px 15px;
+          border-radius: 15px;
+          border: 1px solid rgba(247,200,98,0.30);
+          background: rgba(0,0,0,0.30);
+          color: rgba(248,250,252,0.88);
+          font-weight: 850;
+          cursor: pointer;
+          transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
         }
 
-        .patroai-footer__inner span:nth-child(2) {
-          max-width: 620px;
+        .orkio-avatar-hero__action:hover {
+          transform: translateY(-1px);
+          border-color: rgba(247,200,98,0.58);
+          background: rgba(247,200,98,0.10);
         }
 
-        @media (max-width: 1280px) {
-          .patroai-hero {
+        .orkio-avatar-hero__action b {
+          color: #f7c862;
+          font-size: 18px;
+        }
+
+        .orkio-avatar-hero__status {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-top: 4px;
+          color: rgba(255,226,157,0.78);
+          font-size: 12px;
+          font-weight: 780;
+        }
+
+        .orkio-avatar-hero__pulse {
+          width: 18px;
+          height: 18px;
+          border-radius: 999px;
+          border: 1px solid rgba(247,200,98,0.48);
+          background: radial-gradient(circle, #f7c862 0 20%, transparent 25%);
+          box-shadow: 0 0 0 rgba(247,200,98,0);
+        }
+
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__pulse {
+          animation: orkioAvatarPulse 1.1s ease-in-out infinite;
+        }
+
+        .orkio-avatar-hero__visual {
+          position: relative;
+          min-height: 520px;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          overflow: hidden;
+        }
+
+        .orkio-avatar-hero__brain {
+          position: absolute;
+          left: -90px;
+          bottom: 20px;
+          width: min(390px, 58%);
+          max-height: 390px;
+          object-fit: contain;
+          opacity: 0.92;
+          filter: drop-shadow(0 0 28px rgba(247,200,98,0.34));
+          z-index: 1;
+        }
+
+        .orkio-avatar-hero__avatar {
+          position: relative;
+          z-index: 3;
+          width: min(430px, 94%);
+          max-height: 500px;
+          object-fit: contain;
+          object-position: bottom center;
+          filter: drop-shadow(0 34px 46px rgba(0,0,0,0.62));
+          transform: translateX(8px);
+        }
+
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__avatar {
+          animation: orkioAvatarFloat 2.2s ease-in-out infinite;
+        }
+
+        .orkio-avatar-hero__fallback {
+          position: relative;
+          z-index: 3;
+          width: min(360px, 78%);
+          aspect-ratio: 0.68;
+          margin-bottom: 10px;
+          border-radius: 48% 48% 30% 30%;
+          background:
+            radial-gradient(circle at 50% 18%, rgba(255,245,210,0.9), transparent 0 13%, transparent 14%),
+            linear-gradient(140deg, rgba(247,200,98,0.18), rgba(255,255,255,0.04) 42%, rgba(247,200,98,0.08)),
+            rgba(4,8,15,0.72);
+          border: 1px solid rgba(247,200,98,0.30);
+          box-shadow: inset 0 0 60px rgba(247,200,98,0.09), 0 30px 60px rgba(0,0,0,0.46);
+        }
+
+        .orkio-avatar-hero__fallback::before {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 10%;
+          width: 42%;
+          aspect-ratio: 1;
+          transform: translateX(-50%);
+          border-radius: 44% 44% 48% 48%;
+          border: 1px solid rgba(247,200,98,0.42);
+          background: radial-gradient(circle at 50% 52%, rgba(247,200,98,0.18), transparent 62%);
+        }
+
+        .orkio-avatar-hero__fallback::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 38%;
+          width: 62%;
+          height: 52%;
+          transform: translateX(-50%);
+          border-radius: 38% 38% 18% 18%;
+          border: 1px solid rgba(247,200,98,0.30);
+          background: linear-gradient(180deg, rgba(247,200,98,0.10), rgba(0,0,0,0.18));
+        }
+
+        .orkio-avatar-hero__brainFallback {
+          position: absolute;
+          left: -64px;
+          bottom: 44px;
+          width: 290px;
+          height: 290px;
+          z-index: 1;
+          border-radius: 999px;
+          border: 1px solid rgba(247,200,98,0.25);
+          background:
+            radial-gradient(circle at 50% 50%, rgba(247,200,98,0.44), transparent 0 2%, transparent 3%),
+            repeating-radial-gradient(circle, rgba(247,200,98,0.12) 0 1px, transparent 1px 18px),
+            radial-gradient(circle, rgba(247,200,98,0.20), transparent 66%);
+          box-shadow: 0 0 54px rgba(247,200,98,0.22);
+        }
+
+        @keyframes orkioAvatarPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(247,200,98,0.26); transform: scale(1); }
+          50% { box-shadow: 0 0 0 9px rgba(247,200,98,0.04); transform: scale(1.06); }
+        }
+
+        @keyframes orkioAvatarFloat {
+          0%, 100% { transform: translateX(8px) translateY(0); }
+          50% { transform: translateX(8px) translateY(-4px); }
+        }
+
+        @media (max-width: 960px) {
+          .orkio-avatar-hero,
+          .orkio-avatar-hero__grid,
+          .orkio-avatar-hero__visual {
+            min-height: auto;
+          }
+
+          .orkio-avatar-hero__grid {
             grid-template-columns: 1fr;
           }
 
-          .patroai-copy {
-            max-width: 900px;
+          .orkio-avatar-hero__copy {
+            padding: 28px 22px 8px;
           }
 
-          .patroai-copy h1,
-          .patroai-copy p {
-            max-width: 820px;
+          .orkio-avatar-hero__visual {
+            min-height: 360px;
           }
 
-          .patroai-services {
-            grid-template-columns: 1fr;
+          .orkio-avatar-hero__brain {
+            left: 8px;
+            bottom: 8px;
+            width: 260px;
           }
 
-          .patroai-cards {
-            grid-template-columns: repeat(2, 1fr);
+          .orkio-avatar-hero__avatar {
+            width: min(360px, 84%);
           }
         }
 
-        @media (max-width: 980px) {
-          .patroai-nav {
-            display: none;
-          }
-
-          .patroai-actions {
-            gap: 8px;
-          }
-
-          .patroai-actions .patroai-button--admin {
-            display: none;
-          }
-
-          .patroai-process {
-            grid-template-columns: 1fr;
-          }
-
-          .patroai-step:not(:last-child)::after {
-            top: auto;
-            right: 20px;
-            left: 20px;
-            bottom: 0;
-            width: auto;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(247,200,98,0.28), transparent);
-          }
-
-          .patroai-orkio__inner {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (max-width: 720px) {
-          .patroai-shell {
-            width: min(100% - 24px, 1560px);
-          }
-
-          .patroai-topbar__inner {
-            min-height: 78px;
-          }
-
-          .patroai-logo img {
-            width: 46px;
-            height: 46px;
-          }
-
-          .patroai-logo strong {
-            font-size: 22px;
-          }
-
-          .patroai-logo span {
-            font-size: 9px;
-          }
-
-          .patroai-actions .patroai-button--ghost {
-            display: none;
-          }
-
-          .patroai-button {
-            padding: 12px 15px;
-          }
-
-          .patroai-hero {
-            padding-top: 26px;
-            gap: 20px;
-          }
-
-          .patroai-copy h1 {
-            font-size: clamp(38px, 11.5vw, 54px);
-          }
-
-          .patroai-copy p {
-            font-size: 15px;
-          }
-
-          .patroai-hero__cta {
-            align-items: stretch;
-            flex-direction: column;
-          }
-
-          .patroai-hero__cta .patroai-button {
-            width: 100%;
-          }
-
-          .patroai-cards,
-          .patroai-orkio__grid {
-            grid-template-columns: 1fr;
-          }
-
-          .patroai-orkio__inner {
-            padding: 24px;
+        @media (max-width: 560px) {
+          .orkio-avatar-hero {
             border-radius: 26px;
           }
 
-          .patroai-footer__inner {
-            flex-direction: column;
-            align-items: flex-start;
-            padding: 24px 0;
+          .orkio-avatar-hero__copy h2 {
+            font-size: 38px;
+          }
+
+          .orkio-avatar-hero__visual {
+            min-height: 310px;
+          }
+
+          .orkio-avatar-hero__brain,
+          .orkio-avatar-hero__brainFallback {
+            display: none;
           }
         }
       `}</style>
 
-      <header className="patroai-topbar">
-        <div className="patroai-shell patroai-topbar__inner">
-          <button type="button" className="patroai-brand-button" onClick={() => navigateTo(ROUTES.patroai)} aria-label="Ir para PatroAI">
-            <PatroaiLogo />
-          </button>
+      <div className="orkio-avatar-hero__grid">
+        <div className="orkio-avatar-hero__copy">
+          <span className="orkio-avatar-hero__eyebrow">Conheça o Orkio</span>
+          <h2>
+            Olá, eu sou o
+            <span>Orkio.</span>
+          </h2>
+          <p>
+            Posso te ajudar a transformar perguntas soltas em diagnóstico, clareza operacional
+            e próximos passos para evolução da sua empresa.
+          </p>
 
-          <nav className="patroai-nav" aria-label="Navegação principal">
-            <a href="#solucoes">Soluções</a>
-            <a href={ROUTES.orkioOS}>Plataforma Orkio</a>
-            <a href="#como-atuamos">Recursos</a>
-            <a href="#sobre">Sobre nós</a>
-          </nav>
+          <div className="orkio-avatar-hero__actions">
+            <button type="button" className="orkio-avatar-hero__action" onClick={handleSpeak}>
+              <span>Falar com Orkio</span>
+              <b>≋</b>
+            </button>
+            <button type="button" className="orkio-avatar-hero__action" onClick={() => safeCallback(onText)}>
+              <span>Digitar pergunta</span>
+              <b>□</b>
+            </button>
+            <button type="button" className="orkio-avatar-hero__action" onClick={() => safeCallback(onDiagnosis)}>
+              <span>Iniciar diagnóstico empresarial</span>
+              <b>✦</b>
+            </button>
+          </div>
 
-          <div className="patroai-actions">
-            <button type="button" className="patroai-button patroai-button--ghost patroai-button--admin" onClick={() => navigateTo(ROUTES.admin)}>
-              Admin
-            </button>
-            <button type="button" className="patroai-button patroai-button--ghost" onClick={handleLogin}>
-              Login
-            </button>
-            <button type="button" className="patroai-button" onClick={handleDemo}>
-              Agendar demonstração →
-            </button>
+          <div className="orkio-avatar-hero__status">
+            <span className="orkio-avatar-hero__pulse" aria-hidden="true" />
+            <span>{speaking ? "Respondendo por voz." : "Respondo por voz e por texto."}</span>
           </div>
         </div>
-      </header>
 
-      <main>
-        <section className="patroai-shell patroai-hero">
-          <div className="patroai-copy">
-            <div className="patroai-kicker">Consultoria • Tecnologia • IA • Execução</div>
-
-            <h1>
-              Criamos sistemas inteligentes para empresas que querem evoluir com{" "}
-              <span className="patroai-gradient-text">clareza, estratégia e execução.</span>
-            </h1>
-
-            <p>{heroSubtitle}</p>
-
-            <div className="patroai-hero__cta">
-              <button type="button" className="patroai-button" onClick={handleDemo}>
-                Conhecer a PatroAI →
-              </button>
-              <button type="button" className="patroai-button patroai-button--ghost" onClick={handleStartAvatarJourney}>
-                Falar com Orkio
-              </button>
-            </div>
-
-            <div className="patroai-trust">
-              <PremiumIcon name="shield" size={22} />
-              <span>Segurança, privacidade e governança em cada etapa.</span>
-            </div>
-          </div>
-
-          <div className="patroai-stage">
-            <AvatarHero3D
-              speech={orkioSpeech}
-              onText={handleStartAvatarJourney}
-              onDiagnosis={handleStartAvatarJourney}
+        <div className="orkio-avatar-hero__visual" aria-hidden="true">
+          {!brainFailed ? (
+            <img
+              className="orkio-avatar-hero__brain"
+              src={BRAIN_SRC}
+              alt=""
+              loading="eager"
+              decoding="async"
+              onError={() => setBrainFailed(true)}
             />
-          </div>
-        </section>
+          ) : (
+            <div className="orkio-avatar-hero__brainFallback" />
+          )}
 
-        <section id="como-atuamos" className="patroai-shell patroai-process" aria-label="Como atuamos">
-          {PROCESS_STEPS.map((step) => (
-            <article key={step.title} className="patroai-step">
-              <div className="patroai-step__top">
-                <small>{step.number}</small>
-                <span className="patroai-step__icon">
-                  <PremiumIcon name={step.icon} size={27} />
-                </span>
-              </div>
-              <h3>{step.title}</h3>
-              <p>{step.text}</p>
-            </article>
-          ))}
-        </section>
-
-        <section id="solucoes" className="patroai-shell patroai-services">
-          <div className="patroai-services__intro">
-            <div className="patroai-section-label">O que fazemos</div>
-            <h2>Soluções que geram clareza, eficiência e evolução contínua.</h2>
-            <p>
-              A PatroAI não entrega apenas tecnologia. Entrega continuidade operacional: entendemos o negócio,
-              desenhamos a solução, construímos o sistema, implantamos com clareza e acompanhamos a evolução.
-            </p>
-          </div>
-
-          <div className="patroai-cards">
-            {SERVICES.map((service) => (
-              <article key={service.title} className="patroai-card">
-                <span className="patroai-card__icon">
-                  <PremiumIcon name={service.icon} size={29} />
-                </span>
-                <h3>{service.title}</h3>
-                <p>{service.text}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section id="orkio" className="patroai-shell patroai-orkio">
-          <div className="patroai-orkio__inner">
-            <div>
-              <div className="patroai-section-label">Conheça o Orkio</div>
-              <h2>Conheça o Orkio, a inteligência operacional da PatroAI.</h2>
-              <p>
-                Orkio é nosso assistente de IA que entende o contexto do seu negócio, responde suas perguntas,
-                orienta decisões e acelera a execução com inteligência e precisão.
-              </p>
-
-              <div className="patroai-hero__cta">
-                <button type="button" className="patroai-button" onClick={() => navigateTo(ROUTES.orkioOS)}>
-                  Explorar Orkio OS →
-                </button>
-                <button type="button" className="patroai-button patroai-button--ghost" onClick={handleStartAvatarJourney}>
-                  Conversar com Orkio
-                </button>
-              </div>
-            </div>
-
-            <div className="patroai-orkio__grid">
-              {ORKIO_BENEFITS.map(([icon, label]) => (
-                <article key={label}>
-                  <span className="patroai-orkio__icon">
-                    <PremiumIcon name={icon} size={24} />
-                  </span>
-                  <strong>{label}</strong>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <footer id="sobre" className="patroai-footer">
-        <div className="patroai-shell patroai-footer__inner">
-          <PatroaiLogo compact />
-          <span>PatroAI Consultech · Sistemas inteligentes, agentes de IA personalizados e execução com governança.</span>
-          <span>© 2026 PatroAI. Todos os direitos reservados.</span>
+          {!avatarFailed ? (
+            <img
+              className="orkio-avatar-hero__avatar"
+              src={AVATAR_SRC}
+              alt=""
+              loading="eager"
+              decoding="async"
+              onError={() => setAvatarFailed(true)}
+            />
+          ) : (
+            <div className="orkio-avatar-hero__fallback" />
+          )}
         </div>
-      </footer>
-
-      <AvatarPrechatModal
-        open={prechatOpen}
-        onClose={() => setPrechatOpen(false)}
-        onContinue={handleContinueAfterPrechat}
-      />
-    </div>
+      </div>
+    </section>
   );
 }
