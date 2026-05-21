@@ -957,7 +957,7 @@ export default function Landing() {
             display: none;
           }
 
-          .orkio-actions a {
+          .orkio-actions {
             display: none;
           }
 
@@ -1067,9 +1067,6 @@ export default function Landing() {
 
           <div className="orkio-actions">
             <Link to={ROUTES.patroai}>Patroai Consultech</Link>
-            <button type="button" className="orkio-button" onClick={() => goToAuth({ entry: "orkio_diagnosis", mode: "register" })}>
-              Iniciar diagnóstico →
-            </button>
           </div>
         </div>
       </header>
