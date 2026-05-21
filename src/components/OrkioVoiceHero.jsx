@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import OrkioMysticAvatar from "./OrkioMysticAvatar.jsx";
-import { ORKIO_DEFAULT_VOICE_ID, coerceTtsSpeed, coerceVoiceId } from "../lib/voices.js";
 import { createOrkioSpeechMotion } from "../lib/orkioSpeechMotion.js";
+import {
+  cleanupAudioUrl,
+  getOrkioTtsSpeed,
+  getOrkioVoiceId,
+  requestOrkioTtsBlob,
+  speakWithOrkioBrowserVoice,
+} from "../lib/orkioTts.js";
 
 /**
  * AO-04B — OrkioVoiceHero com movimento de fala audio-reativo
@@ -86,103 +92,25 @@ export default function OrkioVoiceHero({
         ];
   }, [isPt, quickPrompts]);
 
-  const resolvedVoice = useMemo(() => {
-    const env = typeof window !== "undefined" && window.__ORKIO_ENV__ ? window.__ORKIO_ENV__ : {};
-    return coerceVoiceId(
-      String(
-        env.VITE_ORKIO_VOICE_ID ||
-        import.meta.env.VITE_ORKIO_VOICE_ID ||
-        env.VITE_REALTIME_VOICE ||
-        import.meta.env.VITE_REALTIME_VOICE ||
-        ORKIO_DEFAULT_VOICE_ID
-      ).trim()
-    );
-  }, []);
-
-  const resolvedTtsSpeed = useMemo(() => {
-    const env = typeof window !== "undefined" && window.__ORKIO_ENV__ ? window.__ORKIO_ENV__ : {};
-    return coerceTtsSpeed(env.VITE_ORKIO_TTS_SPEED || import.meta.env.VITE_ORKIO_TTS_SPEED || 0.9);
-  }, []);
-
-  function getApiRoot() {
-    const env = typeof window !== "undefined" && window.__ORKIO_ENV__ ? window.__ORKIO_ENV__ : {};
-    const base = String(env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
-    return base.endsWith("/api") ? base.slice(0, -4) : base;
-  }
-
-  function cleanupAudioUrl(audio) {
-    try {
-      if (audio?.dataset?.blobUrl) URL.revokeObjectURL(audio.dataset.blobUrl);
-    } catch {}
-  }
-
-  function pickBrowserVoice() {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
-
-    const voices = window.speechSynthesis.getVoices?.() || [];
-    const localePrefix = isPt ? "pt" : "en";
-    const preferredNames = isPt
-      ? ["francisca", "maria", "luciana", "helena", "google português", "brasil", "female"]
-      : ["samantha", "victoria", "zira", "jenny", "aria", "female"];
-
-    return (
-      voices.find((voice) => preferredNames.some((name) => voice.name.toLowerCase().includes(name))) ||
-      voices.find((voice) => voice.lang?.toLowerCase().startsWith(localePrefix)) ||
-      null
-    );
-  }
+  const resolvedVoice = useMemo(() => getOrkioVoiceId(), []);
+  const resolvedTtsSpeed = useMemo(() => getOrkioTtsSpeed(), []);
 
   function fallbackBrowserSpeech() {
-    if (typeof window === "undefined" || !("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
-      return false;
-    }
-
-    try {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(effectiveSpeech);
-      const voice = pickBrowserVoice();
-      if (voice) utter.voice = voice;
-      utter.lang = isPt ? "pt-BR" : "en-US";
-      utter.rate = resolvedTtsSpeed;
-      utter.pitch = 1.12;
-      utter.volume = 1;
-      utter.onstart = () => {
+    return speakWithOrkioBrowserVoice(effectiveSpeech, {
+      locale,
+      onStart: () => {
         setPlaying(true);
-        getMotionController().startSynthetic({ strength: 0.62 });
-      };
-      utter.onend = () => {
-        getMotionController().stop();
-        setPlaying(false);
-      };
-      utter.onerror = () => {
-        getMotionController().stop();
-        setPlaying(false);
-      };
-      window.speechSynthesis.speak(utter);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async function requestTts(endpoint) {
-    const res = await fetch(`${getApiRoot()}${endpoint}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(tenant ? { "X-Org-Slug": tenant } : {}),
+        getMotionController().startSynthetic({ strength: 0.64 });
       },
-      body: JSON.stringify({
-        text: effectiveSpeech,
-        voice: resolvedVoice,
-        speed: resolvedTtsSpeed,
-        locale,
-      }),
+      onEnd: () => {
+        getMotionController().stop();
+        setPlaying(false);
+      },
+      onError: () => {
+        getMotionController().stop();
+        setPlaying(false);
+      },
     });
-
-    if (!res.ok) throw new Error(`${endpoint} ${res.status}`);
-    return res.blob();
   }
 
   async function speak() {
@@ -197,13 +125,12 @@ export default function OrkioVoiceHero({
         audioRef.current = null;
       }
 
-      let blob;
-      try {
-        blob = await requestTts(token ? "/api/tts" : "/api/public/tts");
-      } catch (primaryErr) {
-        if (token) throw primaryErr;
-        blob = await requestTts("/api/tts/public");
-      }
+      const blob = await requestOrkioTtsBlob({
+        text: effectiveSpeech,
+        token,
+        tenant,
+        locale,
+      });
 
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
