@@ -9,51 +9,22 @@ import {
   speakWithOrkioBrowserVoice,
 } from "../lib/orkioTts.js";
 
-const ORKIO_VOICE_VIDEO_LEAD_MS = 120;
-
-function sleep(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function waitForAudioReady(audio, timeoutMs = 900) {
-  if (!audio || audio.readyState >= 2) return Promise.resolve();
-
-  return new Promise((resolve) => {
-    let done = false;
-
-    const finish = () => {
-      if (done) return;
-      done = true;
-      window.clearTimeout(timer);
-      audio.removeEventListener("loadeddata", finish);
-      audio.removeEventListener("canplay", finish);
-      audio.removeEventListener("error", finish);
-      resolve();
-    };
-
-    const timer = window.setTimeout(finish, timeoutMs);
-
-    audio.addEventListener("loadeddata", finish, { once: true });
-    audio.addEventListener("canplay", finish, { once: true });
-    audio.addEventListener("error", finish, { once: true });
-
-    try { audio.load?.(); } catch {}
-  });
-}
-
 /**
- * AO-04B — OrkioVoiceHero com movimento de fala audio-reativo
+ * AO-04G — OrkioVoiceHero com sincronização vídeo/voz robusta
  *
- * Corrige a sobreposição da /orkio no mobile:
- * - remove grid inline rígido que mantinha duas colunas em telas pequenas;
- * - usa CSS com breakpoints reais;
- * - reduz tipografia no mobile;
- * - impede overflow horizontal;
- * - anima a esfera enquanto a voz está ativa.
+ * Princípio: O ÁUDIO é a fonte de verdade do estado playing/speaking.
  *
- * Também corrige o endpoint público preferencial para /api/public/tts,
- * mantendo fallback legado /api/tts/public e fallback final do navegador.
+ * Fluxo:
+ * 1. Clique → playing=true + incrementa syncKey
+ * 2. Vídeo speaking inicia imediatamente via OrkioMysticAvatar
+ * 3. TTS blob é carregado e audio.play() é chamado após lead visual
+ * 4. playing permanece true durante TODA a duração do áudio
+ * 5. SOMENTE audio.onended → playing=false → vídeo volta para idle
+ *
+ * O vídeo NUNCA decide quando parar. O áudio manda.
  */
+
+const VIDEO_LEAD_MS = 120;
 
 export default function OrkioVoiceHero({
   tenant,
@@ -76,11 +47,11 @@ export default function OrkioVoiceHero({
 }) {
   const [locale, setLocale] = useState(defaultLocale === "en-US" ? "en-US" : "pt-BR");
   const [playing, setPlaying] = useState(false);
-  const [preparingSpeech, setPreparingSpeech] = useState(false);
-  const [speechSyncKey, setSpeechSyncKey] = useState(0);
+  const [speakingSyncKey, setSpeakingSyncKey] = useState(0);
   const audioRef = useRef(null);
   const heroRef = useRef(null);
   const motionRef = useRef(null);
+  const playingLockRef = useRef(false);
 
   const isPt = locale === "pt-BR";
 
@@ -91,7 +62,6 @@ export default function OrkioVoiceHero({
         smoothing: 0.78,
       });
     }
-
     return motionRef.current;
   }, []);
 
@@ -129,33 +99,41 @@ export default function OrkioVoiceHero({
   const resolvedVoice = useMemo(() => getOrkioVoiceId(), []);
   const resolvedTtsSpeed = useMemo(() => getOrkioTtsSpeed(), []);
 
+  // Função para encerrar a fala de forma segura
+  const endPlaying = useCallback(() => {
+    playingLockRef.current = false;
+    getMotionController().stop();
+    setPlaying(false);
+  }, [getMotionController]);
+
   function fallbackBrowserSpeech() {
     return speakWithOrkioBrowserVoice(effectiveSpeech, {
       locale,
       onStart: () => {
-        setPreparingSpeech(false);
-        setSpeechSyncKey((current) => current + 1);
-        setPlaying(true);
+        // playing já está true desde o clique
         getMotionController().startSynthetic({ strength: 0.64 });
       },
       onEnd: () => {
-        getMotionController().stop();
-        setPreparingSpeech(false);
-        setPlaying(false);
+        endPlaying();
       },
       onError: () => {
-        getMotionController().stop();
-        setPreparingSpeech(false);
-        setPlaying(false);
+        endPlaying();
       },
     });
   }
 
   async function speak() {
-    if (playing || preparingSpeech) return;
-    setPreparingSpeech(true);
+    if (playing || playingLockRef.current) return;
+
+    // 1. Setar playing IMEDIATAMENTE (vídeo speaking começa)
+    playingLockRef.current = true;
+    setPlaying(true);
+
+    // 2. Incrementar syncKey (força restart do vídeo speaking)
+    setSpeakingSyncKey((k) => k + 1);
 
     try {
+      // Limpar áudio anterior se existir
       if (audioRef.current) {
         try { audioRef.current.pause(); } catch {}
         cleanupAudioUrl(audioRef.current);
@@ -163,6 +141,7 @@ export default function OrkioVoiceHero({
         audioRef.current = null;
       }
 
+      // 3. Buscar TTS blob (vídeo já está tocando durante esta espera)
       const blob = await requestOrkioTtsBlob({
         text: effectiveSpeech,
         token,
@@ -173,45 +152,39 @@ export default function OrkioVoiceHero({
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.dataset.blobUrl = url;
-      audio.preload = "auto";
       audioRef.current = audio;
 
+      // 5. SOMENTE audio.onended volta para idle
       audio.onended = () => {
         cleanupAudioUrl(audio);
-        getMotionController().stop();
-        setPreparingSpeech(false);
-        setPlaying(false);
+        endPlaying();
       };
       audio.onerror = () => {
         cleanupAudioUrl(audio);
-        getMotionController().stop();
-        setPreparingSpeech(false);
-        setPlaying(false);
+        endPlaying();
       };
 
-      await waitForAudioReady(audio);
+      // Iniciar motion controller com áudio real
       await getMotionController().startAudioElement(audio, { strength: 0.94 });
 
-      // Sincroniza o vídeo speaking com o início real do áudio.
-      setSpeechSyncKey((current) => current + 1);
-      setPlaying(true);
-      await sleep(ORKIO_VOICE_VIDEO_LEAD_MS);
+      // 4. Aguardar lead visual antes de iniciar áudio
+      await new Promise((r) => setTimeout(r, VIDEO_LEAD_MS));
 
-      await audio.play();
-      setPreparingSpeech(false);
+      // Verificar se ainda estamos no estado playing
+      if (playingLockRef.current) {
+        await audio.play();
+      }
     } catch (err) {
       console.warn("ORKIO_VOICE_HERO_TTS_FAILED", err?.message || err);
       const browserFallbackOk = fallbackBrowserSpeech();
       if (!browserFallbackOk) {
-        getMotionController().stop();
-        setPreparingSpeech(false);
-        setPlaying(false);
+        endPlaying();
       }
     }
   }
 
   return (
-    <section ref={heroRef} className={`orkio-voice-hero ${playing ? "is-playing" : ""} ${preparingSpeech ? "is-preparing" : ""}`} aria-label="Orkio OS voz e texto">
+    <section ref={heroRef} className={`orkio-voice-hero ${playing ? "is-playing" : ""}`} aria-label="Orkio OS voz e texto">
       <style>{`
         .orkio-voice-hero {
           width: 100%;
@@ -645,12 +618,12 @@ export default function OrkioVoiceHero({
                 className="orkio-voice-hero__orbButton"
                 aria-label={isPt ? "Ouvir a Orkio" : "Listen to Orkio"}
               >
-                <OrkioMysticAvatar size={42} speaking={playing} speechSyncKey={speechSyncKey} />
+                <OrkioMysticAvatar size={42} speaking={playing} syncKey={speakingSyncKey} />
               </button>
 
               <div className="orkio-voice-hero__copy">
                 <div className="orkio-voice-hero__badge">
-                  {preparingSpeech ? (isPt ? "Sincronizando voz" : "Syncing voice") : playing ? (isPt ? "A Orkio falando" : "Orkio speaking") : badgeLabel}
+                  {playing ? (isPt ? "A Orkio falando" : "Orkio speaking") : badgeLabel}
                 </div>
                 <div className="orkio-voice-hero__voiceMeter" aria-hidden="true">
                   <span />
