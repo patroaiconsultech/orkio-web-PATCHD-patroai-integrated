@@ -10,7 +10,7 @@ import {
 } from "../lib/orkioTts.js";
 
 /**
- * AO-04H — OrkioVoiceHero com áudio restaurado + sincronização vídeo/voz
+ * AO-04J — OrkioVoiceHero com disparo visual no início real do áudio
  *
  * Princípio: O ÁUDIO é a fonte de verdade do estado playing/speaking.
  *
@@ -198,6 +198,18 @@ export default function OrkioVoiceHero({
       audio.preload = "auto";
       audioRef.current = audio;
 
+      let visualStarted = false;
+      const startVisualOnAudioStart = () => {
+        if (visualStarted || !playingLockRef.current) return;
+        visualStarted = true;
+        setVoiceLoading(false);
+        setSpeakingSyncKey((k) => k + 1);
+        setPlaying(true);
+        getMotionController().startSynthetic({ strength: 0.64 });
+      };
+
+      audio.addEventListener("playing", startVisualOnAudioStart, { once: true });
+
       audio.onended = () => {
         cleanupAudioUrl(audio);
         endPlaying();
@@ -211,15 +223,10 @@ export default function OrkioVoiceHero({
 
       if (!playingLockRef.current) return;
 
-      setVoiceLoading(false);
-      setSpeakingSyncKey((k) => k + 1);
-      setPlaying(true);
-      getMotionController().startSynthetic({ strength: 0.64 });
-
-      await nextAnimationFrame();
-
       if (playingLockRef.current) {
         await audio.play();
+        // Fallback para browsers que resolvem play() sem disparar eventos na ordem esperada.
+        if (!visualStarted && !audio.paused) startVisualOnAudioStart();
       }
     } catch (err) {
       console.warn("ORKIO_VOICE_HERO_TTS_FAILED", err?.message || err);
