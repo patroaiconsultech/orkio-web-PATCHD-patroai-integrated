@@ -9,6 +9,38 @@ import {
   speakWithOrkioBrowserVoice,
 } from "../lib/orkioTts.js";
 
+const ORKIO_VOICE_VIDEO_LEAD_MS = 120;
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function waitForAudioReady(audio, timeoutMs = 900) {
+  if (!audio || audio.readyState >= 2) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    let done = false;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(timer);
+      audio.removeEventListener("loadeddata", finish);
+      audio.removeEventListener("canplay", finish);
+      audio.removeEventListener("error", finish);
+      resolve();
+    };
+
+    const timer = window.setTimeout(finish, timeoutMs);
+
+    audio.addEventListener("loadeddata", finish, { once: true });
+    audio.addEventListener("canplay", finish, { once: true });
+    audio.addEventListener("error", finish, { once: true });
+
+    try { audio.load?.(); } catch {}
+  });
+}
+
 /**
  * AO-04B — OrkioVoiceHero com movimento de fala audio-reativo
  *
@@ -44,6 +76,8 @@ export default function OrkioVoiceHero({
 }) {
   const [locale, setLocale] = useState(defaultLocale === "en-US" ? "en-US" : "pt-BR");
   const [playing, setPlaying] = useState(false);
+  const [preparingSpeech, setPreparingSpeech] = useState(false);
+  const [speechSyncKey, setSpeechSyncKey] = useState(0);
   const audioRef = useRef(null);
   const heroRef = useRef(null);
   const motionRef = useRef(null);
@@ -99,23 +133,27 @@ export default function OrkioVoiceHero({
     return speakWithOrkioBrowserVoice(effectiveSpeech, {
       locale,
       onStart: () => {
+        setPreparingSpeech(false);
+        setSpeechSyncKey((current) => current + 1);
         setPlaying(true);
         getMotionController().startSynthetic({ strength: 0.64 });
       },
       onEnd: () => {
         getMotionController().stop();
+        setPreparingSpeech(false);
         setPlaying(false);
       },
       onError: () => {
         getMotionController().stop();
+        setPreparingSpeech(false);
         setPlaying(false);
       },
     });
   }
 
   async function speak() {
-    if (playing) return;
-    setPlaying(true);
+    if (playing || preparingSpeech) return;
+    setPreparingSpeech(true);
 
     try {
       if (audioRef.current) {
@@ -135,33 +173,45 @@ export default function OrkioVoiceHero({
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.dataset.blobUrl = url;
+      audio.preload = "auto";
       audioRef.current = audio;
 
       audio.onended = () => {
         cleanupAudioUrl(audio);
         getMotionController().stop();
+        setPreparingSpeech(false);
         setPlaying(false);
       };
       audio.onerror = () => {
         cleanupAudioUrl(audio);
         getMotionController().stop();
+        setPreparingSpeech(false);
         setPlaying(false);
       };
 
+      await waitForAudioReady(audio);
       await getMotionController().startAudioElement(audio, { strength: 0.94 });
+
+      // Sincroniza o vídeo speaking com o início real do áudio.
+      setSpeechSyncKey((current) => current + 1);
+      setPlaying(true);
+      await sleep(ORKIO_VOICE_VIDEO_LEAD_MS);
+
       await audio.play();
+      setPreparingSpeech(false);
     } catch (err) {
       console.warn("ORKIO_VOICE_HERO_TTS_FAILED", err?.message || err);
       const browserFallbackOk = fallbackBrowserSpeech();
       if (!browserFallbackOk) {
         getMotionController().stop();
+        setPreparingSpeech(false);
         setPlaying(false);
       }
     }
   }
 
   return (
-    <section ref={heroRef} className={`orkio-voice-hero ${playing ? "is-playing" : ""}`} aria-label="Orkio OS voz e texto">
+    <section ref={heroRef} className={`orkio-voice-hero ${playing ? "is-playing" : ""} ${preparingSpeech ? "is-preparing" : ""}`} aria-label="Orkio OS voz e texto">
       <style>{`
         .orkio-voice-hero {
           width: 100%;
@@ -595,12 +645,12 @@ export default function OrkioVoiceHero({
                 className="orkio-voice-hero__orbButton"
                 aria-label={isPt ? "Ouvir a Orkio" : "Listen to Orkio"}
               >
-                <OrkioMysticAvatar size={42} speaking={playing} />
+                <OrkioMysticAvatar size={42} speaking={playing} speechSyncKey={speechSyncKey} />
               </button>
 
               <div className="orkio-voice-hero__copy">
                 <div className="orkio-voice-hero__badge">
-                  {playing ? (isPt ? "A Orkio falando" : "Orkio speaking") : badgeLabel}
+                  {preparingSpeech ? (isPt ? "Sincronizando voz" : "Syncing voice") : playing ? (isPt ? "A Orkio falando" : "Orkio speaking") : badgeLabel}
                 </div>
                 <div className="orkio-voice-hero__voiceMeter" aria-hidden="true">
                   <span />
