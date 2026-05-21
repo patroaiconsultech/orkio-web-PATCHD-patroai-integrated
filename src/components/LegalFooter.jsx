@@ -1,8 +1,31 @@
 import React from "react";
 
-export default function LegalFooter({ compact = false }) {
+const LEGAL_COPY = {
+  pt: {
+    aria: "Termos legais da PatroAI",
+    title: "Transparência, consentimento e governança",
+    text: "Ao iniciar sua jornada, você poderá revisar os termos de uso, a política de privacidade e as condições de tratamento de dados conforme a LGPD.",
+    navAria: "Links legais",
+    terms: "Termos de uso",
+    privacy: "Privacidade",
+    register: "Aceite e cadastro",
+  },
+  en: {
+    aria: "PatroAI legal terms",
+    title: "Transparency, consent and governance",
+    text: "Before starting your journey, you can review the terms of use, privacy policy and data processing conditions under Brazilian LGPD standards.",
+    navAria: "Legal links",
+    terms: "Terms of use",
+    privacy: "Privacy",
+    register: "Consent and sign up",
+  },
+};
+
+export default function LegalFooter({ compact = false, locale = "pt" }) {
+  const copy = LEGAL_COPY[locale === "en" ? "en" : "pt"];
+
   return (
-    <section className={`orkio-legal-footer ${compact ? "is-compact" : ""}`} aria-label="Termos legais da PatroAI">
+    <section className={`orkio-legal-footer ${compact ? "is-compact" : ""}`} aria-label={copy.aria}>
       <style>{`
         .orkio-legal-footer {
           width: min(1560px, calc(100% - 40px));
@@ -76,17 +99,14 @@ export default function LegalFooter({ compact = false }) {
       `}</style>
 
       <div>
-        <strong>Transparência, consentimento e governança</strong>
-        <p>
-          Ao iniciar sua jornada, você poderá revisar os termos de uso, a política de privacidade
-          e as condições de tratamento de dados conforme a LGPD.
-        </p>
+        <strong>{copy.title}</strong>
+        <p>{copy.text}</p>
       </div>
 
-      <nav className="orkio-legal-footer__links" aria-label="Links legais">
-        <a href="/legal/terms.html" target="_blank" rel="noreferrer">Termos de uso</a>
-        <a href="/legal/privacy.html" target="_blank" rel="noreferrer">Privacidade</a>
-        <a href="/auth?mode=register&legal=1">Aceite e cadastro</a>
+      <nav className="orkio-legal-footer__links" aria-label={copy.navAria}>
+        <a href="/legal/terms.html" target="_blank" rel="noreferrer">{copy.terms}</a>
+        <a href="/legal/privacy.html" target="_blank" rel="noreferrer">{copy.privacy}</a>
+        <a href="/auth?mode=register&legal=1">{copy.register}</a>
       </nav>
     </section>
   );
