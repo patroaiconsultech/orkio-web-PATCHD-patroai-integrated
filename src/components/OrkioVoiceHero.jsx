@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import OrkioSphereMark from "../ui/OrkioSphereMark.jsx";
+import OrkioMysticAvatar from "./OrkioMysticAvatar.jsx";
 import { ORKIO_DEFAULT_VOICE_ID, coerceTtsSpeed, coerceVoiceId } from "../lib/voices.js";
 
 /**
@@ -22,9 +22,9 @@ export default function OrkioVoiceHero({
   defaultLocale = "pt-BR",
   kicker = "PatroAI apresenta Orkio",
   title = "Da concepção à execução cirúrgica.",
-  subtitle = "O Orkio é a Business Execution Engine da PatroAI: organiza tese, estrutura business plans sofisticados, coordena agentes e acompanha a execução com governança.",
-  speech = "Olá. Eu sou o Orkio. Através de mim, a PatroAI pode conceber novos negócios, estruturar business plans sofisticados e conduzir a execução com clareza, inteligência e governança.",
-  primaryLabel = "Conhecer o Orkio",
+  subtitle = "A Orkio é a Business Execution Engine da PatroAI: organiza tese, estrutura business plans sofisticados, coordena agentes e acompanha a execução com governança.",
+  speech = "Olá. Eu sou a Orkio. Através de mim, a PatroAI pode conceber novos negócios, estruturar business plans sofisticados e conduzir a execução com clareza, inteligência e governança.",
+  primaryLabel = "Conhecer a Orkio",
   secondaryLabel = "Entrar agora",
   tertiaryLabel = "Falar com a PatroAI",
   badgeLabel = "Voz ativa",
@@ -44,7 +44,7 @@ export default function OrkioVoiceHero({
   const effectiveSpeech = useMemo(() => {
     if (typeof speech === "string" && speech.trim()) return speech.trim();
     return isPt
-      ? "Olá. Eu sou o Orkio. Posso ajudar você a entender, organizar e executar com clareza."
+      ? "Olá. Eu sou a Orkio. Posso ajudar você a entender, organizar e executar com clareza."
       : "Hello. I am Orkio. I can help you understand, organize, and execute with clarity.";
   }, [isPt, speech]);
 
@@ -284,7 +284,7 @@ export default function OrkioVoiceHero({
           height: 96px;
           border-radius: 50%;
           border: 1px solid rgba(148,163,184,0.16);
-          background: rgba(15,23,42,0.58);
+          background: rgba(15,23,42,0.44);
           box-shadow: 0 18px 42px rgba(2,6,23,0.32);
           display: grid;
           place-items: center;
@@ -579,14 +579,14 @@ export default function OrkioVoiceHero({
                 type="button"
                 onClick={speak}
                 className="orkio-voice-hero__orbButton"
-                aria-label={isPt ? "Ouvir o Orkio" : "Listen to Orkio"}
+                aria-label={isPt ? "Ouvir a Orkio" : "Listen to Orkio"}
               >
-                <OrkioSphereMark size={42} badge />
+                <OrkioMysticAvatar size={42} speaking={playing} />
               </button>
 
               <div className="orkio-voice-hero__copy">
                 <div className="orkio-voice-hero__badge">
-                  {playing ? (isPt ? "Orkio falando" : "Orkio speaking") : badgeLabel}
+                  {playing ? (isPt ? "A Orkio falando" : "Orkio speaking") : badgeLabel}
                 </div>
                 <div className="orkio-voice-hero__title">{title}</div>
               </div>
@@ -596,7 +596,7 @@ export default function OrkioVoiceHero({
 
             <div className="orkio-voice-hero__actions">
               <button type="button" onClick={speak} className="orkio-voice-hero__ghost">
-                {isPt ? "Ouvir Orkio" : "Listen to Orkio"}
+                {isPt ? "Ouvir a Orkio" : "Listen to Orkio"}
               </button>
               <button type="button" onClick={onPrimaryAction} className="orkio-voice-hero__primary">
                 {primaryLabel}
@@ -629,11 +629,11 @@ export default function OrkioVoiceHero({
           <aside className="orkio-voice-hero__sideCard" aria-label="Narrativa Orkio">
             <div>
               <div className="orkio-voice-hero__sideTitle">
-                {isPt ? "Narrativa para clientes e investidores" : "Narrative for clients and investors"}
+                {isPt ? "Como a Orkio transforma visão em execução" : "How Orkio turns vision into execution"}
               </div>
               <p>
                 {isPt
-                  ? "A PatroAI usa o Orkio para transformar visão em direção concreta: diagnóstico, tese, business plan, arquitetura, agentes e execução acompanhada."
+                  ? "A PatroAI usa a Orkio para transformar visão em direção concreta: diagnóstico, tese, business plan, arquitetura, agentes e execução acompanhada."
                   : "PatroAI uses Orkio to turn vision into concrete direction: diagnosis, thesis, business plan, architecture, agents, and guided execution."}
               </p>
             </div>
