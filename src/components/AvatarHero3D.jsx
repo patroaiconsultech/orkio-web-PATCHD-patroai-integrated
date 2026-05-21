@@ -8,23 +8,13 @@ import {
 import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
 
 /**
- * AO-04K — Avatar com sincronização corretiva definitiva
+ * AO-04D — Avatar com vídeo idle/speaking + fala natural
  *
- * PRINCÍPIO: O ÁUDIO é a ÚNICA fonte de verdade do estado speaking.
- *
- * FLUXO CORRIGIDO:
- * 1. Clique → voiceLoading=true, speaking=false (vídeo permanece idle)
- * 2. TTS blob carrega → Audio preparado
- * 3. audio.play() chamado → aguarda evento "playing" do browser
- * 4. Evento "playing" dispara → speaking=true (vídeo troca INSTANTANEAMENTE)
- * 5. audio.onended → speaking=false (vídeo volta para idle INSTANTANEAMENTE)
- *
- * DIFERENÇA DO AO-04J:
- * - Removido qualquer seek/offset no vídeo
- * - Vídeo speaking roda continuamente em background (OrkioVideoMedia cuida)
- * - Troca visual é por opacidade instantânea (0ms)
- * - Não há mais SPEAKING_START_OFFSET_SECONDS
- * - speakingSyncKey removido (desnecessário com opacidade contínua)
+ * Evolução do AO-04B:
+ * - Usa OrkioVideoMedia para exibir vídeo idle/speaking
+ * - Fallback automático para imagem estática se vídeo falhar
+ * - Preserva TTS atual (orkioTts.js) sem alteração
+ * - Mantém orkioSpeechMotion como complemento (CSS vars para glow/pulse)
  */
 
 const AVATAR_SRC = "/patroai-assets/orkio-mystic-tech-v1.webp";
@@ -35,15 +25,14 @@ export default function AvatarHero3D({
   onDiagnosis,
   tenant = "public",
   token = "",
+  locale = "pt-BR",
 }) {
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [speaking, setSpeaking] = useState(false);
-  const [voiceLoading, setVoiceLoading] = useState(false);
   const [videoAvailable, setVideoAvailable] = useState(true);
   const audioRef = useRef(null);
   const heroRef = useRef(null);
   const motionRef = useRef(null);
-  const lockRef = useRef(false); // impede duplo-clique e garante que onended é respeitado
 
   const effectiveSpeech = useMemo(() => {
     return typeof speech === "string" && speech.trim()
@@ -62,6 +51,7 @@ export default function AvatarHero3D({
         smoothing: 0.76,
       });
     }
+
     return motionRef.current;
   }, []);
 
@@ -74,113 +64,73 @@ export default function AvatarHero3D({
     };
   }, []);
 
-  // Encerrar fala de forma segura — ÚNICO ponto que volta speaking para false
-  const endSpeaking = useCallback(() => {
-    lockRef.current = false;
-    setVoiceLoading(false);
-    getMotionController().stop();
-    setSpeaking(false);
-  }, [getMotionController]);
-
   function fallbackBrowserSpeech() {
     return speakWithOrkioBrowserVoice(effectiveSpeech, {
-      locale: "pt-BR",
+      locale,
       onStart: () => {
-        // Browser speech disparou — AGORA sim ativamos o visual
-        setVoiceLoading(false);
         setSpeaking(true);
         getMotionController().startSynthetic({ strength: 0.66 });
       },
       onEnd: () => {
-        endSpeaking();
+        getMotionController().stop();
+        setSpeaking(false);
       },
       onError: () => {
-        endSpeaking();
+        getMotionController().stop();
+        setSpeaking(false);
       },
     });
   }
 
   const handleSpeak = useCallback(async () => {
-    // Guard: não permite novo clique enquanto está carregando ou falando
-    if (speaking || voiceLoading || lockRef.current) return;
-
-    // FASE 1: Carregamento — vídeo permanece em IDLE
-    lockRef.current = true;
-    setVoiceLoading(true);
-    // speaking permanece FALSE aqui — o vídeo NÃO muda
+    if (speaking) return;
+    setSpeaking(true);
 
     try {
-      // Limpar áudio anterior se existir
       if (audioRef.current) {
-        try { audioRef.current.pause(); } catch {}
+        try {
+          audioRef.current.pause();
+        } catch {}
         cleanupAudioUrl(audioRef.current);
         getMotionController().stop();
         audioRef.current = null;
       }
 
-      // FASE 2: Buscar TTS blob
       const blob = await requestOrkioTtsBlob({
         text: effectiveSpeech,
         token,
         tenant,
-        locale: "pt-BR",
+        locale,
       });
 
-      // Verificar se não foi cancelado durante o fetch
-      if (!lockRef.current) return;
-
-      // FASE 3: Preparar Audio element
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.dataset.blobUrl = url;
-      audio.preload = "auto";
       audioRef.current = audio;
 
-      // Flag para garantir que o visual só é ativado uma vez
-      let visualActivated = false;
-
-      // EVENTO CRÍTICO: "playing" — o áudio REALMENTE começou a ser audível
-      const activateVisual = () => {
-        if (visualActivated || !lockRef.current) return;
-        visualActivated = true;
-        setVoiceLoading(false);
-        setSpeaking(true); // ← ÚNICO momento que speaking vira true
-        getMotionController().startSynthetic({ strength: 0.66 });
-      };
-
-      audio.addEventListener("playing", activateVisual, { once: true });
-
-      // EVENTO FINAL: "ended" — o áudio terminou
       audio.onended = () => {
         cleanupAudioUrl(audio);
-        endSpeaking(); // ← ÚNICO momento que speaking volta para false
+        getMotionController().stop();
+        setSpeaking(false);
       };
-
       audio.onerror = () => {
         cleanupAudioUrl(audio);
-        endSpeaking();
+        getMotionController().stop();
+        setSpeaking(false);
       };
 
-      // FASE 4: Iniciar playback
-      // O speaking ainda é FALSE aqui. O vídeo idle ainda está visível.
-      // Somente quando o browser confirmar "playing" é que o visual muda.
+      await getMotionController().startAudioElement(audio, { strength: 1 });
       await audio.play();
-
-      // Fallback: alguns browsers resolvem play() sem disparar "playing"
-      if (!visualActivated && !audio.paused && lockRef.current) {
-        activateVisual();
-      }
-
     } catch (err) {
       console.warn("ORKIO_AVATAR_TTS_FAILED", err?.message || err);
-      setVoiceLoading(false);
       const browserFallbackOk = fallbackBrowserSpeech();
       if (!browserFallbackOk) {
-        endSpeaking();
+        getMotionController().stop();
+        setSpeaking(false);
         safeCallback(onText);
       }
     }
-  }, [effectiveSpeech, endSpeaking, getMotionController, onText, safeCallback, speaking, tenant, token, voiceLoading]);
+  }, [effectiveSpeech, getMotionController, locale, onText, safeCallback, speaking, tenant, token]);
 
   return (
     <section ref={heroRef} className={`orkio-avatar-hero ${speaking ? "is-speaking" : ""}`} aria-label="Assistente Orkio">
@@ -296,7 +246,7 @@ export default function AvatarHero3D({
           color: rgba(248,250,252,0.88);
           font-weight: 850;
           cursor: pointer;
-          transition: transform 160ms ease, border-color 180ms ease, background 180ms ease;
+          transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
         }
 
         .orkio-avatar-hero__action:hover {
@@ -372,7 +322,7 @@ export default function AvatarHero3D({
             0 20px 60px rgba(0,0,0,0.42),
             0 0 42px rgba(247,200,98,0.08);
           transform-origin: 50% 58%;
-          transition: box-shadow 180ms ease;
+          transition: transform 120ms linear, box-shadow 180ms ease;
           will-change: transform;
         }
 
@@ -471,7 +421,7 @@ export default function AvatarHero3D({
 
           <div className="orkio-avatar-hero__actions">
             <button type="button" className="orkio-avatar-hero__action" onClick={handleSpeak}>
-              <span>{voiceLoading ? "Preparando voz..." : speaking ? "A Orkio falando..." : "Falar com a Orkio"}</span>
+              <span>{speaking ? "A Orkio falando..." : "Falar com a Orkio"}</span>
               <b>≋</b>
             </button>
             <button type="button" className="orkio-avatar-hero__action" onClick={() => safeCallback(onText)}>
@@ -486,7 +436,7 @@ export default function AvatarHero3D({
 
           <div className="orkio-avatar-hero__status" aria-live="polite">
             <span className="orkio-avatar-hero__pulse" aria-hidden="true" />
-            <span>{voiceLoading ? "Carregando a voz da Orkio." : speaking ? "Respondendo por voz." : "Respondo por voz e por texto."}</span>
+            <span>{speaking ? "Respondendo por voz." : "Respondo por voz e por texto."}</span>
           </div>
         </div>
 
@@ -496,7 +446,7 @@ export default function AvatarHero3D({
               <OrkioVideoMedia
                 speaking={speaking}
                 borderRadius="28px"
-                onVideoError={() => setVideoAvailable(false)}
+                onError={() => setVideoAvailable(false)}
               />
             ) : !avatarFailed ? (
               <img
@@ -514,7 +464,7 @@ export default function AvatarHero3D({
                 onError={() => setAvatarFailed(true)}
               />
             ) : (
-              <div style={{
+              <div className="orkio-avatar-hero__fallback" style={{
                 width: "100%",
                 height: "100%",
                 borderRadius: "28px",
