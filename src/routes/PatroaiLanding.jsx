@@ -1000,6 +1000,14 @@ export default function PatroaiLanding() {
         }
       `}</style>
 
+      <LandingLanguageSwitch
+        locale={locale}
+        onChange={setLocale}
+        compact
+        fixed
+      />
+
+
       <header className="patroai-topbar">
         <div className="patroai-shell patroai-topbar__inner">
           <button type="button" className="patroai-brand-button" onClick={() => navigateTo(`${ROUTES.patroai}?lang=${locale}`)} aria-label={copy.brandAria}>
@@ -1014,7 +1022,6 @@ export default function PatroaiLanding() {
           </nav>
 
           <div className="patroai-actions">
-            <LandingLanguageSwitch locale={locale} onChange={setLocale} />
             <button type="button" className="patroai-button patroai-button--ghost patroai-button--admin" onClick={() => navigateTo(ROUTES.admin)}>
               {copy.actions.admin}
             </button>
