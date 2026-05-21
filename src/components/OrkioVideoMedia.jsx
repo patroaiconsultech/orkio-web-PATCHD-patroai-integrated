@@ -1,208 +1,145 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * OrkioVideoMedia — runtime sincronizado de vídeo da Orkio
+ * AO-04G — OrkioVideoMedia com runtime robusto de sincronização
  *
- * AO-04F
- * - Mantém idle e speaking pré-carregados ao mesmo tempo.
- * - Evita delay de troca causado por alterar src no momento da fala.
- * - Reinicia o vídeo speaking em um ponto calibrável sempre que uma nova fala começa.
- * - Prioriza MP4/H.264 e mantém WebM como fallback.
- * - Usa autoplay nativo + play() programático + retry em eventos do browser.
- * - Cai para imagem estática se os vídeos falharem.
+ * Regras fundamentais:
+ * - O áudio é a fonte de verdade do estado speaking
+ * - O vídeo speaking permanece em loop até que o pai diga speaking=false
+ * - O vídeo NUNCA decide quando parar de falar
+ * - Prioriza MP4/H.264 no source, WebM como fallback
+ * - preload="auto" para ambos os vídeos
+ * - Loop manual via onEnded como safety net
+ * - Crossfade suave entre idle e speaking (200ms)
+ *
+ * Props de sincronização:
+ * - syncKey: incrementado a cada nova sessão de fala (força restart do speaking)
+ * - speakingStartOffset: offset em ms para antecipar o vídeo speaking (default 0)
+ * - videoLeadMs: alias para speakingStartOffset (default 120)
+ * - holdSpeaking: se true, mantém speaking mesmo se prop speaking mudar (safety)
+ * - onVideoReady: callback quando o vídeo speaking está pronto para tocar
+ * - onVideoError: callback quando o vídeo falha
  */
 
-const VIDEO_VERSION = "ao04f-20260521";
-
-const IDLE_MP4 = `/patroai-assets/orkio-idle-loop.mp4?v=${VIDEO_VERSION}`;
-const IDLE_WEBM = `/patroai-assets/orkio-idle-loop.webm?v=${VIDEO_VERSION}`;
-const SPEAKING_MP4 = `/patroai-assets/orkio-speaking-loop.mp4?v=${VIDEO_VERSION}`;
-const SPEAKING_WEBM = `/patroai-assets/orkio-speaking-loop.webm?v=${VIDEO_VERSION}`;
-const POSTER = `/patroai-assets/orkio-video-poster.webp?v=${VIDEO_VERSION}`;
+const IDLE_MP4 = "/patroai-assets/orkio-idle-loop.mp4";
+const IDLE_WEBM = "/patroai-assets/orkio-idle-loop.webm";
+const SPEAKING_MP4 = "/patroai-assets/orkio-speaking-loop.mp4";
+const SPEAKING_WEBM = "/patroai-assets/orkio-speaking-loop.webm";
+const POSTER = "/patroai-assets/orkio-video-poster.webp";
 const FALLBACK_IMG = "/patroai-assets/orkio-mystic-tech-v1.webp";
 
-function setVideoTime(video, time) {
-  if (!video || !Number.isFinite(time) || time < 0) return;
-
-  try {
-    const duration = Number(video.duration);
-    const safeTime = Number.isFinite(duration) && duration > 0
-      ? Math.min(time, Math.max(0, duration - 0.12))
-      : time;
-
-    video.currentTime = safeTime;
-  } catch {
-    // Alguns browsers recusam seek antes de loadedmetadata. Tentamos de novo no evento.
-  }
-}
-
-function forceVideoFlags(video) {
-  if (!video) return;
-
-  try {
-    video.muted = true;
-    video.defaultMuted = true;
-    video.loop = true;
-    video.playsInline = true;
-    video.autoplay = true;
-    video.controls = false;
-  } catch {}
-}
-
-function playVideo(video) {
-  if (!video) return;
-
-  forceVideoFlags(video);
-
-  try {
-    if (video.readyState === 0) video.load?.();
-  } catch {}
-
-  try {
-    const playPromise = video.play?.();
-    if (playPromise && typeof playPromise.catch === "function") {
-      playPromise.catch(() => {});
+// Retry play com backoff leve
+async function safePlay(videoEl, retries = 3) {
+  if (!videoEl) return false;
+  for (let i = 0; i < retries; i++) {
+    try {
+      await videoEl.play();
+      return true;
+    } catch (err) {
+      if (i < retries - 1) {
+        await new Promise((r) => setTimeout(r, 50 * (i + 1)));
+      }
     }
-  } catch {}
+  }
+  return false;
 }
 
 export default function OrkioVideoMedia({
   speaking = false,
-  speakingSyncKey = 0,
-  speakingStartOffset = 0.18,
+  syncKey = 0,
+  speakingStartOffset = 0,
+  videoLeadMs = 120,
+  holdSpeaking = false,
+  onVideoReady,
+  onVideoError,
   className = "",
   style = {},
   size = "100%",
   borderRadius = "28px",
-  onError,
 }) {
   const idleRef = useRef(null);
   const speakingRef = useRef(null);
-  const retryTimerRef = useRef(null);
-  const pauseTimerRef = useRef(null);
-  const lastSpeakingKeyRef = useRef(null);
   const [videoFailed, setVideoFailed] = useState(false);
-  const [idleReady, setIdleReady] = useState(false);
-  const [speakingReady, setSpeakingReady] = useState(false);
+  const lastSyncKeyRef = useRef(-1);
+  const isSpeakingRef = useRef(false);
 
-  const hasAnyReady = idleReady || speakingReady;
+  // Manter ref atualizado para uso em callbacks
+  isSpeakingRef.current = speaking;
 
-  const clearTimers = useCallback(() => {
-    if (typeof window === "undefined") return;
-    window.clearTimeout(retryTimerRef.current);
-    window.clearTimeout(pauseTimerRef.current);
+  // Garantir loop manual como safety net (caso o atributo loop falhe)
+  const handleSpeakingEnded = useCallback(() => {
+    const el = speakingRef.current;
+    if (!el) return;
+    // Se ainda estiver speaking, reiniciar o vídeo
+    if (isSpeakingRef.current) {
+      el.currentTime = 0;
+      safePlay(el);
+    }
   }, []);
 
-  const primeVideos = useCallback(() => {
+  // Efeito principal de sincronização
+  useEffect(() => {
     if (videoFailed) return;
 
-    const idle = idleRef.current;
-    const talking = speakingRef.current;
-
-    if (idle) {
-      forceVideoFlags(idle);
-      if (!speaking) playVideo(idle);
-      try { idle.preload = "auto"; idle.load?.(); } catch {}
-    }
-
-    if (talking) {
-      forceVideoFlags(talking);
-      try { talking.preload = "auto"; talking.load?.(); } catch {}
-    }
-  }, [speaking, videoFailed]);
-
-  useEffect(() => {
-    if (videoFailed || typeof window === "undefined") return undefined;
-
-    primeVideos();
-
-    const schedulePrime = () => {
-      window.clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = window.setTimeout(primeVideos, 80);
-    };
-
-    const handleVisibility = () => {
-      if (!document.hidden) schedulePrime();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("focus", schedulePrime);
-    window.addEventListener("pointerdown", schedulePrime, { passive: true });
-    window.addEventListener("touchstart", schedulePrime, { passive: true });
-
-    return () => {
-      clearTimers();
-      document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("focus", schedulePrime);
-      window.removeEventListener("pointerdown", schedulePrime);
-      window.removeEventListener("touchstart", schedulePrime);
-    };
-  }, [clearTimers, primeVideos, videoFailed]);
-
-  useEffect(() => {
-    if (videoFailed || typeof window === "undefined") return;
-
-    const idle = idleRef.current;
-    const talking = speakingRef.current;
-
-    window.clearTimeout(pauseTimerRef.current);
+    const idleEl = idleRef.current;
+    const speakingEl = speakingRef.current;
 
     if (speaking) {
-      if (talking) {
-        const isNewSpeech = lastSpeakingKeyRef.current !== speakingSyncKey;
-        lastSpeakingKeyRef.current = speakingSyncKey;
+      // Transição para speaking
+      if (idleEl) {
+        idleEl.style.opacity = "0";
+        // Não pausar imediatamente - deixar o crossfade acontecer
+        setTimeout(() => {
+          if (isSpeakingRef.current && idleEl) {
+            idleEl.pause();
+          }
+        }, 220);
+      }
 
-        talking.style.opacity = "1";
-        talking.style.zIndex = "2";
-
-        if (isNewSpeech) {
-          const applyOffset = () => setVideoTime(talking, speakingStartOffset);
-          applyOffset();
-          talking.addEventListener("loadedmetadata", applyOffset, { once: true });
+      if (speakingEl) {
+        // Se é uma nova sessão de fala (syncKey mudou), reiniciar do início
+        if (syncKey !== lastSyncKeyRef.current) {
+          lastSyncKeyRef.current = syncKey;
+          speakingEl.currentTime = 0;
         }
-
-        playVideo(talking);
+        speakingEl.style.opacity = "1";
+        safePlay(speakingEl).then((ok) => {
+          if (ok && typeof onVideoReady === "function") {
+            onVideoReady();
+          }
+        });
+      }
+    } else if (!holdSpeaking) {
+      // Transição para idle
+      if (speakingEl) {
+        speakingEl.style.opacity = "0";
+        // Pausar após crossfade
+        setTimeout(() => {
+          if (!isSpeakingRef.current && speakingEl) {
+            speakingEl.pause();
+          }
+        }, 220);
       }
 
-      if (idle) {
-        idle.style.opacity = "0";
-        idle.style.zIndex = "1";
-        // Mantém o idle vivo por um instante para evitar flash preto na troca.
-        pauseTimerRef.current = window.setTimeout(() => {
-          try { idle.pause?.(); } catch {}
-        }, 180);
+      if (idleEl) {
+        idleEl.style.opacity = "1";
+        safePlay(idleEl);
       }
-
-      return;
     }
+  }, [speaking, syncKey, videoFailed, holdSpeaking, onVideoReady]);
 
-    if (idle) {
-      idle.style.opacity = "1";
-      idle.style.zIndex = "2";
-      playVideo(idle);
+  // Autoplay idle no mount
+  useEffect(() => {
+    if (videoFailed) return;
+    const idleEl = idleRef.current;
+    if (idleEl && !speaking) {
+      safePlay(idleEl);
     }
+  }, [videoFailed]);
 
-    if (talking) {
-      talking.style.opacity = "0";
-      talking.style.zIndex = "1";
-      pauseTimerRef.current = window.setTimeout(() => {
-        try { talking.pause?.(); } catch {}
-        setVideoTime(talking, speakingStartOffset);
-      }, 180);
-    }
-  }, [speaking, speakingSyncKey, speakingStartOffset, videoFailed]);
-
-  function handleAnyError() {
+  function handleVideoError() {
     setVideoFailed(true);
-    if (typeof onError === "function") onError();
-  }
-
-  function markReady(kind) {
-    if (kind === "idle") setIdleReady(true);
-    if (kind === "speaking") setSpeakingReady(true);
-
-    const video = kind === "idle" ? idleRef.current : speakingRef.current;
-    if (video) playVideo(video);
+    if (typeof onVideoError === "function") onVideoError();
   }
 
   const containerStyle = {
@@ -215,15 +152,14 @@ export default function OrkioVideoMedia({
     ...style,
   };
 
-  const mediaStyle = {
+  const videoStyle = {
     position: "absolute",
     inset: 0,
     width: "100%",
     height: "100%",
     objectFit: "cover",
-    objectPosition: "center center",
     borderRadius,
-    transition: "opacity 90ms linear",
+    transition: "opacity 200ms ease",
     willChange: "opacity",
   };
 
@@ -233,7 +169,12 @@ export default function OrkioVideoMedia({
         <img
           src={FALLBACK_IMG}
           alt="Orkio"
-          style={mediaStyle}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            borderRadius,
+          }}
           loading="eager"
           decoding="async"
         />
@@ -242,73 +183,39 @@ export default function OrkioVideoMedia({
   }
 
   return (
-    <div
-      className={`orkio-video-media ${className} ${hasAnyReady ? "is-ready" : "is-loading"}`}
-      data-orkio-video-mode={speaking ? "speaking" : "idle"}
-      data-orkio-speaking-sync-key={speakingSyncKey}
-      style={containerStyle}
-    >
+    <div className={`orkio-video-media ${className}`} style={containerStyle}>
+      {/* Idle loop — sempre presente, opacidade controlada */}
       <video
         ref={idleRef}
-        style={{ ...mediaStyle, opacity: speaking ? 0 : 1, zIndex: speaking ? 1 : 2 }}
+        style={{ ...videoStyle, opacity: speaking ? 0 : 1 }}
         poster={POSTER}
-        autoPlay
-        muted
-        defaultMuted
-        loop
         playsInline
+        muted
+        loop
         preload="auto"
-        disablePictureInPicture
-        controls={false}
-        controlsList="nodownload noplaybackrate noremoteplayback"
-        onLoadedData={() => markReady("idle")}
-        onCanPlay={() => markReady("idle")}
-        onPlaying={() => setIdleReady(true)}
-        onError={handleAnyError}
+        onError={handleVideoError}
         aria-hidden="true"
       >
         <source src={IDLE_MP4} type="video/mp4" />
         <source src={IDLE_WEBM} type="video/webm" />
       </video>
 
+      {/* Speaking loop — loop attr + safety net onEnded */}
       <video
         ref={speakingRef}
-        style={{ ...mediaStyle, opacity: speaking ? 1 : 0, zIndex: speaking ? 2 : 1 }}
+        style={{ ...videoStyle, opacity: speaking ? 1 : 0 }}
         poster={POSTER}
-        autoPlay
-        muted
-        defaultMuted
-        loop
         playsInline
+        muted
+        loop
         preload="auto"
-        disablePictureInPicture
-        controls={false}
-        controlsList="nodownload noplaybackrate noremoteplayback"
-        onLoadedMetadata={(event) => setVideoTime(event.currentTarget, speakingStartOffset)}
-        onLoadedData={() => markReady("speaking")}
-        onCanPlay={() => markReady("speaking")}
-        onPlaying={() => setSpeakingReady(true)}
-        onError={handleAnyError}
+        onEnded={handleSpeakingEnded}
+        onError={handleVideoError}
         aria-hidden="true"
       >
         <source src={SPEAKING_MP4} type="video/mp4" />
         <source src={SPEAKING_WEBM} type="video/webm" />
       </video>
-
-      {!hasAnyReady ? (
-        <img
-          src={POSTER}
-          alt=""
-          aria-hidden="true"
-          style={{
-            ...mediaStyle,
-            opacity: 1,
-            zIndex: 3,
-          }}
-          loading="eager"
-          decoding="async"
-        />
-      ) : null}
     </div>
   );
 }
