@@ -1,66 +1,58 @@
-const DEFAULT_VOICE_ID = "shimmer";
-const DEFAULT_TTS_SPEED = 0.9;
+/**
+ * Orkio shared TTS runtime.
+ *
+ * Keeps avatar, onboarding and voice hero using the same voice contract.
+ * This file is intentionally small and frontend-only.
+ */
+
+const DEFAULT_VOICE = "shimmer";
+const DEFAULT_SPEED = 0.9;
 
 export function getOrkioVoiceId() {
-  const fromEnv =
-    typeof import.meta !== "undefined" && import.meta.env
-      ? import.meta.env.VITE_ORKIO_TTS_VOICE
-      : "";
-  return String(fromEnv || DEFAULT_VOICE_ID).trim() || DEFAULT_VOICE_ID;
+  return DEFAULT_VOICE;
 }
 
 export function getOrkioTtsSpeed() {
-  const fromEnv =
-    typeof import.meta !== "undefined" && import.meta.env
-      ? Number(import.meta.env.VITE_ORKIO_TTS_SPEED)
-      : NaN;
-  return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : DEFAULT_TTS_SPEED;
+  return DEFAULT_SPEED;
 }
 
-export function getApiRoot() {
-  const runtimeEnv =
-    typeof window !== "undefined" && window.__ORKIO_ENV__
-      ? window.__ORKIO_ENV__
-      : {};
-  const base = String(
-    runtimeEnv.VITE_API_BASE_URL ||
-      (typeof import.meta !== "undefined" && import.meta.env ? import.meta.env.VITE_API_BASE_URL : "") ||
-      ""
-  )
+export function cleanupAudioUrl(audio) {
+  try {
+    if (audio?.dataset?.blobUrl) {
+      URL.revokeObjectURL(audio.dataset.blobUrl);
+      delete audio.dataset.blobUrl;
+    }
+  } catch {}
+}
+
+function getApiRoot() {
+  if (typeof window === "undefined") return "";
+
+  const env = window.__ORKIO_ENV__ || {};
+  const base = String(env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || "")
     .trim()
     .replace(/\/$/, "");
 
   return base.endsWith("/api") ? base.slice(0, -4) : base;
 }
 
-export function cleanupAudioUrl(audio) {
-  try {
-    if (audio?.dataset?.blobUrl) URL.revokeObjectURL(audio.dataset.blobUrl);
-  } catch {}
-}
-
-function buildTtsPayload({ text, locale = "pt-BR", voice, speed } = {}) {
-  return {
-    text: String(text || ""),
-    voice: voice || getOrkioVoiceId(),
-    speed: speed || getOrkioTtsSpeed(),
-    locale,
-  };
-}
-
-async function postTts(endpoint, { text, token = "", tenant = "public", locale = "pt-BR", voice, speed } = {}) {
+async function postTts(endpoint, payload, headers) {
   const res = await fetch(`${getApiRoot()}${endpoint}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tenant ? { "X-Org-Slug": tenant } : {}),
-    },
-    body: JSON.stringify(buildTtsPayload({ text, locale, voice, speed })),
+    headers,
+    body: JSON.stringify(payload),
   });
 
-  if (!res.ok) throw new Error(`${endpoint} ${res.status}`);
-  return res.blob();
+  if (!res.ok) {
+    throw new Error(`${endpoint} ${res.status}`);
+  }
+
+  const blob = await res.blob();
+  if (!blob || blob.size <= 0) {
+    throw new Error(`${endpoint} returned empty audio`);
+  }
+
+  return blob;
 }
 
 export async function requestOrkioTtsBlob({
@@ -68,32 +60,47 @@ export async function requestOrkioTtsBlob({
   token = "",
   tenant = "public",
   locale = "pt-BR",
-  voice,
-  speed,
+  voice = DEFAULT_VOICE,
+  speed = DEFAULT_SPEED,
 } = {}) {
-  if (!String(text || "").trim()) throw new Error("TTS_EMPTY_TEXT");
+  const cleanText = String(text || "").trim();
+  if (!cleanText) throw new Error("TTS text is empty");
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(tenant ? { "X-Org-Slug": tenant } : {}),
+  };
+
+  const payload = {
+    text: cleanText,
+    voice,
+    speed,
+    locale,
+  };
 
   const endpoints = token
-    ? ["/api/tts"]
+    ? ["/api/tts", "/api/public/tts", "/api/tts/public"]
     : ["/api/public/tts", "/api/tts/public", "/api/tts"];
 
-  let lastError;
+  let lastError = null;
+
   for (const endpoint of endpoints) {
     try {
-      return await postTts(endpoint, { text, token, tenant, locale, voice, speed });
+      return await postTts(endpoint, payload, headers);
     } catch (err) {
       lastError = err;
     }
   }
 
-  throw lastError || new Error("TTS_REQUEST_FAILED");
+  throw lastError || new Error("TTS failed");
 }
 
 function pickBrowserVoice(locale = "pt-BR") {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
 
   const voices = window.speechSynthesis.getVoices?.() || [];
-  const normalizedLocale = String(locale || "pt-BR").toLowerCase();
+  const lang = String(locale || "pt-BR").toLowerCase();
 
   const preferredPt = [
     "francisca",
@@ -103,41 +110,35 @@ function pickBrowserVoice(locale = "pt-BR") {
     "google português",
     "portuguese",
     "brasil",
+    "brazil",
     "female",
   ];
+
   const preferredEn = [
     "samantha",
     "victoria",
     "karen",
+    "moira",
+    "tessa",
     "zira",
-    "aria",
-    "jenny",
     "google us english",
     "google uk english female",
     "female",
   ];
 
-  const names = normalizedLocale.startsWith("en") ? preferredEn : preferredPt;
+  const preferred = lang.startsWith("en") ? preferredEn : preferredPt;
 
   return (
-    voices.find((voice) => names.some((name) => voice.name.toLowerCase().includes(name))) ||
-    voices.find((voice) => voice.lang?.toLowerCase().startsWith(normalizedLocale)) ||
-    voices.find((voice) => voice.lang?.toLowerCase().startsWith(normalizedLocale.slice(0, 2))) ||
+    voices.find((voice) => preferred.some((name) => voice.name.toLowerCase().includes(name))) ||
+    voices.find((voice) => voice.lang?.toLowerCase() === lang) ||
+    voices.find((voice) => voice.lang?.toLowerCase().startsWith(lang.slice(0, 2))) ||
     null
   );
 }
 
 export function speakWithOrkioBrowserVoice(
   text,
-  {
-    locale = "pt-BR",
-    rate = 0.92,
-    pitch = 1.08,
-    volume = 1,
-    onStart,
-    onEnd,
-    onError,
-  } = {}
+  { locale = "pt-BR", onStart, onEnd, onError } = {}
 ) {
   if (
     typeof window === "undefined" ||
@@ -149,19 +150,33 @@ export function speakWithOrkioBrowserVoice(
 
   try {
     window.speechSynthesis.cancel();
+
     const utterance = new SpeechSynthesisUtterance(String(text || ""));
     const voice = pickBrowserVoice(locale);
+
     if (voice) utterance.voice = voice;
+
     utterance.lang = locale;
-    utterance.rate = rate;
-    utterance.pitch = pitch;
-    utterance.volume = volume;
-    utterance.onstart = () => onStart?.();
-    utterance.onend = () => onEnd?.();
-    utterance.onerror = () => onError?.();
+    utterance.rate = locale === "en-US" ? 0.94 : 0.9;
+    utterance.pitch = 1.08;
+    utterance.volume = 1;
+
+    utterance.onstart = () => {
+      if (typeof onStart === "function") onStart();
+    };
+
+    utterance.onend = () => {
+      if (typeof onEnd === "function") onEnd();
+    };
+
+    utterance.onerror = () => {
+      if (typeof onError === "function") onError();
+    };
+
     window.speechSynthesis.speak(utterance);
     return true;
-  } catch {
+  } catch (err) {
+    if (typeof onError === "function") onError(err);
     return false;
   }
 }
