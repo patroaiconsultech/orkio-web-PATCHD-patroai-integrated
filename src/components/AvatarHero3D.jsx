@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createOrkioSpeechMotion } from "../lib/orkioSpeechMotion.js";
+import {
+  cleanupAudioUrl,
+  requestOrkioTtsBlob,
+  speakWithOrkioBrowserVoice,
+} from "../lib/orkioTts.js";
 
 /**
  * AO-04B — Avatar com fala natural e movimento audio-reativo
@@ -56,98 +61,22 @@ export default function AvatarHero3D({
     };
   }, []);
 
-  function getApiRoot() {
-    const env = typeof window !== "undefined" && window.__ORKIO_ENV__ ? window.__ORKIO_ENV__ : {};
-    const base = String(env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || "")
-      .trim()
-      .replace(/\/$/, "");
-    return base.endsWith("/api") ? base.slice(0, -4) : base;
-  }
-
-  function cleanupAudioUrl(audio) {
-    try {
-      if (audio?.dataset?.blobUrl) URL.revokeObjectURL(audio.dataset.blobUrl);
-    } catch {}
-  }
-
-  function pickBrowserVoice() {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
-
-    const voices = window.speechSynthesis.getVoices?.() || [];
-    const preferredNames = [
-      "francisca",
-      "maria",
-      "helena",
-      "luciana",
-      "google português",
-      "portuguese",
-      "brasil",
-      "female",
-    ];
-
-    return (
-      voices.find((voice) => preferredNames.some((name) => voice.name.toLowerCase().includes(name))) ||
-      voices.find((voice) => voice.lang?.toLowerCase().startsWith("pt-br")) ||
-      voices.find((voice) => voice.lang?.toLowerCase().startsWith("pt")) ||
-      null
-    );
-  }
-
   function fallbackBrowserSpeech() {
-    if (
-      typeof window === "undefined" ||
-      !("speechSynthesis" in window) ||
-      !("SpeechSynthesisUtterance" in window)
-    ) {
-      return false;
-    }
-
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(effectiveSpeech);
-      const voice = pickBrowserVoice();
-      if (voice) utterance.voice = voice;
-      utterance.lang = "pt-BR";
-      utterance.rate = 0.92;
-      utterance.pitch = 1.08;
-      utterance.volume = 1;
-      utterance.onstart = () => {
+    return speakWithOrkioBrowserVoice(effectiveSpeech, {
+      locale: "pt-BR",
+      onStart: () => {
         setSpeaking(true);
         getMotionController().startSynthetic({ strength: 0.66 });
-      };
-      utterance.onend = () => {
-        getMotionController().stop();
-        setSpeaking(false);
-      };
-      utterance.onerror = () => {
-        getMotionController().stop();
-        setSpeaking(false);
-      };
-      window.speechSynthesis.speak(utterance);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async function requestTts(endpoint) {
-    const res = await fetch(`${getApiRoot()}${endpoint}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(tenant ? { "X-Org-Slug": tenant } : {}),
       },
-      body: JSON.stringify({
-        text: effectiveSpeech,
-        voice: "shimmer",
-        speed: 0.9,
-        locale: "pt-BR",
-      }),
+      onEnd: () => {
+        getMotionController().stop();
+        setSpeaking(false);
+      },
+      onError: () => {
+        getMotionController().stop();
+        setSpeaking(false);
+      },
     });
-
-    if (!res.ok) throw new Error(`${endpoint} ${res.status}`);
-    return res.blob();
   }
 
   const handleSpeak = useCallback(async () => {
@@ -164,13 +93,12 @@ export default function AvatarHero3D({
         audioRef.current = null;
       }
 
-      let blob;
-      try {
-        blob = await requestTts(token ? "/api/tts" : "/api/public/tts");
-      } catch (primaryErr) {
-        if (token) throw primaryErr;
-        blob = await requestTts("/api/tts/public");
-      }
+      const blob = await requestOrkioTtsBlob({
+        text: effectiveSpeech,
+        token,
+        tenant,
+        locale: "pt-BR",
+      });
 
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
@@ -219,6 +147,9 @@ export default function AvatarHero3D({
           isolation: isolate;
           --orkio-voice-level: 0;
           --orkio-mouth-open: 0;
+          --orkio-jaw-drop: 0;
+          --orkio-mouth-round: 0;
+          --orkio-mouth-wide: 0;
           --orkio-head-tilt: 0;
           --orkio-breath: 0;
           --orkio-voice-glow: 0;
@@ -431,24 +362,68 @@ export default function AvatarHero3D({
         }
 
 
-        .orkio-avatar-hero__voiceAperture {
+        .orkio-avatar-hero__mouthRig {
           position: absolute;
           left: 50%;
-          top: 43.5%;
-          z-index: 4;
-          width: 54px;
-          height: 10px;
-          border-radius: 999px;
+          top: 43.2%;
+          z-index: 5;
+          width: 62px;
+          height: 24px;
+          pointer-events: none;
           transform:
             translate(-50%, -50%)
-            scaleX(calc(0.84 + (var(--orkio-mouth-open) * 0.22)))
-            scaleY(calc(0.38 + (var(--orkio-mouth-open) * 0.78)));
-          background: radial-gradient(ellipse at center, rgba(247,200,98,0.62), rgba(247,200,98,0.16) 52%, transparent 72%);
-          filter: blur(4px);
-          opacity: calc(0.05 + (var(--orkio-mouth-open) * 0.20));
+            rotate(calc(var(--orkio-head-tilt) * 0.16deg))
+            scaleX(calc(0.86 + (var(--orkio-mouth-wide) * 0.18)));
+          opacity: calc(0.18 + (var(--orkio-voice-level) * 0.34));
           mix-blend-mode: screen;
-          pointer-events: none;
-          transition: opacity 90ms linear, transform 80ms linear;
+          transition: opacity 90ms linear, transform 70ms linear;
+        }
+
+        .orkio-avatar-hero__mouthShadow,
+        .orkio-avatar-hero__mouthLine,
+        .orkio-avatar-hero__mouthGlow {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          display: block;
+          border-radius: 999px;
+          transform-origin: center center;
+        }
+
+        .orkio-avatar-hero__mouthShadow {
+          width: 38px;
+          height: 10px;
+          background: radial-gradient(ellipse at center, rgba(2,6,14,0.66), rgba(2,6,14,0.28) 52%, transparent 76%);
+          transform:
+            translate(-50%, -50%)
+            scaleX(calc(0.58 + (var(--orkio-mouth-wide) * 0.46)))
+            scaleY(calc(0.12 + (var(--orkio-jaw-drop) * 0.82)));
+          opacity: calc(0.08 + (var(--orkio-mouth-open) * 0.42));
+          filter: blur(0.45px);
+        }
+
+        .orkio-avatar-hero__mouthLine {
+          width: 42px;
+          height: 2px;
+          background: linear-gradient(90deg, transparent, rgba(255,226,157,0.52), rgba(247,200,98,0.72), rgba(255,226,157,0.52), transparent);
+          transform:
+            translate(-50%, calc(-50% + (var(--orkio-jaw-drop) * 2.2px)))
+            scaleX(calc(0.62 + (var(--orkio-mouth-wide) * 0.44)))
+            scaleY(calc(0.70 + (var(--orkio-mouth-round) * 0.50)));
+          opacity: calc(0.16 + (var(--orkio-mouth-open) * 0.46));
+          box-shadow: 0 0 calc(6px + (var(--orkio-voice-glow) * 14px)) rgba(247,200,98,0.22);
+        }
+
+        .orkio-avatar-hero__mouthGlow {
+          width: 52px;
+          height: 16px;
+          background: radial-gradient(ellipse at center, rgba(247,200,98,0.30), rgba(96,165,250,0.08) 48%, transparent 72%);
+          transform:
+            translate(-50%, -50%)
+            scaleX(calc(0.72 + (var(--orkio-mouth-wide) * 0.32)))
+            scaleY(calc(0.26 + (var(--orkio-mouth-open) * 0.98)));
+          opacity: calc(0.05 + (var(--orkio-mouth-open) * 0.24));
+          filter: blur(3.4px);
         }
 
         .orkio-avatar-hero__voiceAura {
@@ -622,7 +597,11 @@ export default function AvatarHero3D({
             )}
 
             <div className="orkio-avatar-hero__voiceAura" aria-hidden="true" />
-            <div className="orkio-avatar-hero__voiceAperture" aria-hidden="true" />
+            <div className="orkio-avatar-hero__mouthRig" aria-hidden="true">
+              <span className="orkio-avatar-hero__mouthShadow" />
+              <span className="orkio-avatar-hero__mouthLine" />
+              <span className="orkio-avatar-hero__mouthGlow" />
+            </div>
 
             <div className="orkio-avatar-hero__equalizer" aria-hidden="true">
               <span />
