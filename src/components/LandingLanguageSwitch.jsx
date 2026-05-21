@@ -6,12 +6,13 @@ export default function LandingLanguageSwitch({
   onChange,
   compact = false,
   tone = "dark",
+  fixed = false,
 }) {
   const activeLocale = normalizeLandingLocale(locale);
 
   return (
     <div
-      className={`landing-language-switch ${compact ? "is-compact" : ""} is-${tone}`}
+      className={`landing-language-switch ${compact ? "is-compact" : ""} ${fixed ? "is-fixed" : ""} is-${tone}`}
       aria-label={activeLocale === "en" ? "Language selector" : "Seletor de idioma"}
       role="group"
     >
@@ -25,6 +26,14 @@ export default function LandingLanguageSwitch({
           border: 1px solid rgba(245,196,81,0.22);
           background: rgba(0,0,0,0.24);
           backdrop-filter: blur(12px);
+        }
+
+        .landing-language-switch.is-fixed {
+          position: fixed;
+          top: max(14px, env(safe-area-inset-top));
+          right: max(14px, env(safe-area-inset-right));
+          z-index: 9999;
+          box-shadow: 0 18px 50px rgba(0,0,0,0.34);
         }
 
         .landing-language-switch.is-light {
@@ -75,6 +84,11 @@ export default function LandingLanguageSwitch({
         @media (max-width: 760px) {
           .landing-language-switch {
             order: -1;
+          }
+
+          .landing-language-switch.is-fixed {
+            top: max(10px, env(safe-area-inset-top));
+            right: max(10px, env(safe-area-inset-right));
           }
         }
       `}</style>
