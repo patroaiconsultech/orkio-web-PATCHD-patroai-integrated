@@ -48,6 +48,19 @@ export default function AvatarHero3D({
     } catch {}
   }
 
+  function pickBrowserVoice() {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
+
+    const voices = window.speechSynthesis.getVoices?.() || [];
+    const preferredNames = ["francisca", "maria", "luciana", "helena", "google português", "brasil", "female"];
+
+    return (
+      voices.find((voice) => preferredNames.some((name) => voice.name.toLowerCase().includes(name))) ||
+      voices.find((voice) => voice.lang?.toLowerCase().startsWith("pt")) ||
+      null
+    );
+  }
+
   function fallbackBrowserSpeech() {
     if (typeof window === "undefined" || !("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
       return false;
@@ -56,9 +69,11 @@ export default function AvatarHero3D({
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(effectiveSpeech);
+      const voice = pickBrowserVoice();
+      if (voice) utterance.voice = voice;
       utterance.lang = "pt-BR";
-      utterance.rate = 0.95;
-      utterance.pitch = 0.94;
+      utterance.rate = 0.92;
+      utterance.pitch = 1.12;
       utterance.volume = 1;
       utterance.onstart = () => setSpeaking(true);
       utterance.onend = () => setSpeaking(false);
@@ -80,7 +95,8 @@ export default function AvatarHero3D({
       },
       body: JSON.stringify({
         text: effectiveSpeech,
-        speed: 0.92,
+        voice: "shimmer",
+        speed: 0.9,
         locale: "pt-BR",
       }),
     });
@@ -353,7 +369,8 @@ export default function AvatarHero3D({
           margin-bottom: 10px;
           border-radius: 48% 48% 30% 30%;
           background:
-            radial-gradient(circle at 50% 18%, rgba(255,245,210,0.9), transparent 0 13%, transparent 14%),
+            radial-gradient(circle at 50% 18%, rgba(247,200,98,0.24), transparent 30%),
+            radial-gradient(circle at 50% 48%, rgba(67,213,255,0.10), transparent 44%),
             linear-gradient(140deg, rgba(247,200,98,0.18), rgba(255,255,255,0.04) 42%, rgba(247,200,98,0.08)),
             rgba(4,8,15,0.72);
           border: 1px solid rgba(247,200,98,0.30);
