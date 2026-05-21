@@ -16,6 +16,16 @@ const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.
   : "realtime";
 const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || import.meta.env.VITE_SPEECH_RECOGNITION_LANG || "pt-BR").trim() || "pt-BR");
 
+// AO19D_REALTIME_TELEMETRY_LAYER
+// Feature-flagged client telemetry for WebRTC/Reatime voice diagnosis.
+// This does not change the chat/SSE text runtime; it only records key realtime lifecycle events.
+const REALTIME_TELEMETRY_ENABLED = (
+  String(ORKIO_ENV.VITE_REALTIME_TELEMETRY_ENABLED || import.meta.env.VITE_REALTIME_TELEMETRY_ENABLED || "true")
+    .trim()
+    .toLowerCase() !== "false"
+);
+const REALTIME_TELEMETRY_PREFIX = "AO19D_REALTIME";
+
 
 // METATRON_CHAT_FORCE_STREAM_AND_TIMEOUT
 // Auditoria 16/05: o stream estava sendo abortado cedo demais pelo connect timeout
@@ -117,9 +127,6 @@ async function consumeChatStream(
     onDone,
     onChunk,
     onAgentDone,
-    onAgentStarted,
-    onAgentChunk,
-    onOrchestratorMerge,
     onKeepalive,
     onExecution,
     signal,
@@ -168,9 +175,6 @@ async function consumeChatStream(
     eventCount += 1;
     if (ev === "status") onStatus?.(payload);
     if (ev === "execution") onExecution?.(payload);
-    if (ev === "agent_started") onAgentStarted?.(payload);
-    if (ev === "agent_chunk") onAgentChunk?.(payload);
-    if (ev === "orchestrator_merge") onOrchestratorMerge?.(payload);
     if (ev === "chunk") {
       const delta = String(payload?.delta ?? payload?.content ?? "");
       if (delta) draftText += delta;
@@ -1365,92 +1369,6 @@ const describeExecutionDone = (payload = {}) => ({
   detail: buildExecutionDoneDetail(payload),
   agentName: "",
 });
-
-// AO19A — Enterprise SSE / Execution Graph readiness.
-// These helpers let the current frontend consume richer backend SSE events
-// without breaking the existing stream contract. If the backend does not emit
-// them yet, the behavior remains unchanged.
-const summarizeEnterprisePayload = (payload = {}) => {
-  const parts = [];
-  const executionId = payload?.execution_id || payload?.graph_id || payload?.child_execution_id;
-  const parentAgent = payload?.parent_agent || payload?.parent_agent_name;
-  const status = payload?.status || payload?.state;
-  const risk = payload?.risk;
-  const duration = payload?.duration_ms ?? payload?.elapsed_ms;
-
-  if (executionId) parts.push(`exec ${executionId}`);
-  if (parentAgent) parts.push(`parent ${parentAgent}`);
-  if (status) parts.push(String(status));
-  if (risk) parts.push(`risco ${risk}`);
-  if (duration !== undefined && duration !== null && String(duration) !== "") parts.push(`${duration}ms`);
-
-  const message = String(payload?.message || payload?.detail || payload?.summary || "").trim();
-  if (message) parts.push(message.length > 180 ? `${message.slice(0, 177)}...` : message);
-
-  return parts.join(" • ");
-};
-
-const resolveEnterpriseAgentName = (payload = {}, fallback = "Agente") => (
-  resolveAssistantDisplayName(
-    {
-      agent_name: payload?.agent_name || payload?.agent || payload?.child_agent || payload?.to_agent_name || payload?.parent_agent,
-      final_speaker: payload?.final_speaker,
-      visible_agent: payload?.visible_agent,
-      content: payload?.message || payload?.status || payload?.summary || "",
-    },
-    fallback
-  )
-);
-
-const describeAgentStartedEvent = (payload = {}) => {
-  const agentName = resolveEnterpriseAgentName(payload, "Agente");
-  return {
-    kind: "agent",
-    label: `${agentName} iniciou`,
-    detail: summarizeEnterprisePayload(payload) || "Subagente acionado pelo orquestrador.",
-    agentName,
-  };
-};
-
-const describeAgentChunkEvent = (payload = {}) => {
-  const agentName = resolveEnterpriseAgentName(payload, "Agente");
-  return {
-    kind: "agent",
-    label: `${agentName} em execução`,
-    detail: summarizeEnterprisePayload(payload) || "Subagente enviou progresso.",
-    agentName,
-  };
-};
-
-const describeOrchestratorMergeEvent = (payload = {}) => ({
-  kind: "system",
-  label: "Orquestrador consolidando squads",
-  detail: summarizeEnterprisePayload(payload) || "Merge executivo em andamento.",
-  agentName: payload?.orchestrator || payload?.agent_name || "Orkio",
-});
-
-const describeExecutionGraphSummary = (payload = {}) => {
-  const childGraphs = payload?.child_execution_graphs || payload?.execution_graph?.child_execution_graphs || payload?.execution_graphs;
-  const childAgents = payload?.child_agents || payload?.execution_graph?.child_agents || payload?.runtime_hints?.routing?.child_agents;
-  const parts = [];
-
-  if (Array.isArray(childGraphs) && childGraphs.length) {
-    parts.push(`${childGraphs.length} grafo(s) filho(s)`);
-  } else if (typeof childGraphs === "string" && childGraphs.trim()) {
-    parts.push(`grafos: ${childGraphs}`);
-  }
-
-  if (Array.isArray(childAgents) && childAgents.length) {
-    parts.push(`${childAgents.length} subagente(s)`);
-  } else if (typeof childAgents === "string" && childAgents.trim()) {
-    parts.push(`subagentes: ${childAgents}`);
-  }
-
-  const dispatch = payload?.dispatch_executed ?? payload?.execution_graph?.dispatch_executed;
-  if (dispatch === true) parts.push("dispatch_executed=true");
-
-  return parts.join(" • ");
-};
 
 useEffect(() => { executionTraceRef.current = executionTrace || []; }, [executionTrace]);
 
@@ -2989,30 +2907,6 @@ async function sendMessage(presetMsg = null, opts = {}) {
               }
               appendExecutionTrace(describeExecutionEvent(payload));
             },
-            onAgentStarted: (payload) => {
-              if (isStale()) return;
-              const agentName = resolveEnterpriseAgentName(payload, "Agente");
-              setActiveRuntimeAgent(agentName);
-              appendExecutionTrace(describeAgentStartedEvent(payload));
-              setExecutionTraceExpanded(true);
-            },
-            onAgentChunk: (payload) => {
-              if (isStale()) return;
-              const agentName = resolveEnterpriseAgentName(payload, "");
-              if (agentName) setActiveRuntimeAgent(agentName);
-              // Avoid flooding the visual trace for every token. Only render
-              // semantic progress events that carry status/message/detail.
-              if (payload?.status || payload?.message || payload?.detail || payload?.summary) {
-                appendExecutionTrace(describeAgentChunkEvent(payload));
-              }
-            },
-            onOrchestratorMerge: (payload) => {
-              if (isStale()) return;
-              setRuntimeHandoffLabel("");
-              setActiveRuntimeAgent(payload?.agent_name || payload?.orchestrator || "Orkio");
-              appendExecutionTrace(describeOrchestratorMergeEvent(payload));
-              setExecutionTraceExpanded(true);
-            },
             onChunk: (payload, draftText) => {
               if (isStale()) return;
               setMessages((prev) => prev.map((m) => (
@@ -3061,15 +2955,6 @@ async function sendMessage(presetMsg = null, opts = {}) {
               if (isStale()) return;
               streamDonePayload = payload || null;
               appendExecutionTrace(describeExecutionDone(payload));
-              const graphSummary = describeExecutionGraphSummary(payload);
-              if (graphSummary) {
-                appendExecutionTrace({
-                  kind: "done",
-                  label: "Execution graph consolidado",
-                  detail: graphSummary,
-                  agentName: payload?.agent_name || payload?.final_speaker || "",
-                });
-              }
               if (payload?.thread_id) newThreadId = payload.thread_id;
               if (payload?.runtime_hints) {
                 setRuntimeHints(payload.runtime_hints);
@@ -4216,12 +4101,14 @@ function scheduleRealtimeIdleFollowup() {
           })
         : await startRealtimeSession({ agent_id: agentIdToSend, thread_id: threadId || null, voice: rtVoice, model: rtModel, ttl_seconds: 600 });
       logRealtimeStep('start:session_ok', start);
+      queueRealtimeTelemetry('TOKEN_RECEIVED', { has_client_secret: !!(start?.client_secret?.value || start?.client_secret_value || start?.value), model: rtModel, voice: rtVoice, runtime_mode: runtimeMode });
       const EPHEMERAL_KEY = start?.client_secret?.value || start?.client_secret_value || start?.value || null;
       if (!EPHEMERAL_KEY) {
         logRealtimeStep('start:ephemeral_missing', start);
         throw new Error('Realtime token vazio');
       }
       logRealtimeStep('start:ephemeral_ok', { session_id: start?.session_id || null, thread_id: start?.thread_id || null });
+      queueRealtimeTelemetry('EPHEMERAL_TOKEN_READY', { session_id: start?.session_id || null, thread_id: start?.thread_id || null });
 
       rtcSessionIdRef.current = start?.session_id || null;
       try { console.log("REALTIME_SESSION_STARTED", { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null }); } catch {}
@@ -4239,6 +4126,13 @@ function scheduleRealtimeIdleFollowup() {
 
       const pc = new RTCPeerConnection();
       rtcPcRef.current = pc;
+      queueRealtimeTelemetry('PEER_CREATED', { session_id: rtcSessionIdRef.current || null });
+      pc.oniceconnectionstatechange = () => {
+        queueRealtimeTelemetry('ICE_CONNECTION_STATE', { state: pc.iceConnectionState || 'unknown' });
+      };
+      pc.onicegatheringstatechange = () => {
+        queueRealtimeTelemetry('ICE_GATHERING_STATE', { state: pc.iceGatheringState || 'unknown' });
+      };
 
       // Remote audio output
       const audioEl = document.createElement('audio');
@@ -4247,6 +4141,7 @@ function scheduleRealtimeIdleFollowup() {
       rtcAudioElRef.current = audioEl;
       pc.ontrack = (e) => {
         try {
+          queueRealtimeTelemetry('AUDIO_TRACK_RECEIVED', { streams: e?.streams?.length || 0 });
           audioEl.srcObject = e.streams[0];
           // Ensure element is connected for better autoplay compatibility
           if (!audioEl.isConnected) {
@@ -4254,12 +4149,17 @@ function scheduleRealtimeIdleFollowup() {
             document.body.appendChild(audioEl);
           }
           const p = audioEl.play?.();
-          if (p && typeof p.catch === "function") p.catch(() => {});
+          if (p && typeof p.then === "function") {
+            p.then(() => queueRealtimeTelemetry('AUDIO_PLAY_START')).catch((err) => {
+              queueRealtimeTelemetry('AUDIO_PLAY_BLOCKED', { message: err?.message || null });
+            });
+          }
         } catch {}
       };
 
       // Mic input
       logRealtimeStep('start:request_mic');
+      queueRealtimeTelemetry('MIC_PERMISSION_REQUESTED');
       const micConstraints = {
         audio: {
           channelCount: 1,
@@ -4301,9 +4201,11 @@ function scheduleRealtimeIdleFollowup() {
       }
 
       logRealtimeStep('start:mic_ok', { label: outboundTrack?.label || null, readyState: outboundTrack?.readyState || null });
+      queueRealtimeTelemetry('MIC_READY', { label: outboundTrack?.label || null, readyState: outboundTrack?.readyState || null, sample_rate: 16000 });
       outboundTrack.onended = () => {
         try {
           logRealtimeStep("mic:ended");
+          queueRealtimeTelemetry('MIC_ENDED');
           if (realtimeModeRef.current) {
             void activateSilentRealtimeFallback("mic_ended");
           }
@@ -4318,6 +4220,7 @@ function scheduleRealtimeIdleFollowup() {
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState || "unknown";
         logRealtimeStep("pc:connection_state", { state });
+        queueRealtimeTelemetry('PEER_CONNECTION_STATE', { state });
         if (state === "failed" || state === "disconnected" || state === "closed") {
           setV2vError(`Realtime connection ${state}`);
           if (realtimeModeRef.current) void activateSilentRealtimeFallback(`pc_${state}`);
@@ -4326,6 +4229,7 @@ function scheduleRealtimeIdleFollowup() {
 
       dc.addEventListener("close", () => {
         logRealtimeStep("dc:close");
+        queueRealtimeTelemetry('DATA_CHANNEL_CLOSE');
         rtcResponseInFlightRef.current = false;
         if (realtimeModeRef.current) {
           setV2vPhase("error");
@@ -4337,10 +4241,12 @@ function scheduleRealtimeIdleFollowup() {
       dc.addEventListener("error", (err) => {
         console.warn("[Realtime] datachannel error", err);
         logRealtimeStep("dc:error", { message: err?.message || null });
+        queueRealtimeTelemetry('DATA_CHANNEL_ERROR', { message: err?.message || null });
       });
 
             dc.addEventListener('open', () => {
         setV2vPhase('listening');
+        queueRealtimeTelemetry('DATA_CHANNEL_OPEN');
         setUploadStatus('⚡ Realtime ativo — fale normalmente.');
         setTimeout(() => setUploadStatus(''), 1500);
 
@@ -4351,6 +4257,7 @@ function scheduleRealtimeIdleFollowup() {
           const langHint = resolveRealtimeTranscriptionLanguage(preferredLang);
           const transcription = { model: "gpt-4o-mini-transcribe" };
           if (langHint) transcription.language = langHint;
+          queueRealtimeTelemetry('SESSION_UPDATE_SENDING', { transcription_model: transcription.model, language: langHint || null, vad_silence_ms: REALTIME_SERVER_VAD_SILENCE_MS });
           dc.send(JSON.stringify({
             type: "session.update",
             session: {
@@ -4368,12 +4275,14 @@ function scheduleRealtimeIdleFollowup() {
               }
             }
           }));
-        } catch {}
+          queueRealtimeTelemetry('SESSION_UPDATED', { transcription_model: transcription.model, language: langHint || null, create_response: true });
+        } catch (err) { queueRealtimeTelemetry('SESSION_UPDATE_ERROR', { message: err?.message || null }); }
       });
 
       dc.addEventListener('message', (e) => {
         try {
           const ev = JSON.parse(e.data);
+          if (ev?.type) queueRealtimeTelemetry('EVENT_RECEIVED', { type: ev.type });
 
                     // Turn arming + optional Magic Words (B3)
           // server_vad + create_response=true is the source of truth.
@@ -4383,6 +4292,7 @@ function scheduleRealtimeIdleFollowup() {
           if (ev?.type === 'conversation.item.input_audio_transcription.completed') {
             const raw = (ev?.transcript || ev?.text || ev?.result?.transcript || '').toString();
             queueRealtimeEvent({ event_type: 'transcript.final', role: 'user', content: raw, is_final: true });
+            queueRealtimeTelemetry('TRANSCRIPT_FINAL', { length: raw.length, preview: raw.slice(0, 120) });
             try {} catch {}
             rtcLastFinalTranscriptRef.current = raw;
             markRealtimeUserActivity();
@@ -4409,6 +4319,7 @@ function scheduleRealtimeIdleFollowup() {
                   transcript: raw,
                   auto_fallback_ms: 2600,
                 });
+                queueRealtimeTelemetry('VAD_AWAITING_AUTO_RESPONSE', { transcript_length: raw.length, auto_fallback_ms: 2600 });
               }
             });
           }
@@ -4418,6 +4329,7 @@ function scheduleRealtimeIdleFollowup() {
             rtcTextBufRef.current += ev.delta;
           }
           if (ev?.type === 'response.created') {
+            queueRealtimeTelemetry('RESPONSE_CREATED', { response_id: ev?.response?.id || ev?.response_id || null });
             clearRealtimeResponseTimeout();
             rtcResponseInFlightRef.current = true;
             setV2vPhase('responding');
@@ -4445,6 +4357,7 @@ function scheduleRealtimeIdleFollowup() {
           }
           // Audio transcript (when model outputs audio without text)
           if (ev?.type === 'response.audio.delta') {
+            queueRealtimeTelemetry('AUDIO_DELTA_RECEIVED', { response_id: ev?.response_id || null });
             clearRealtimeResponseTimeout();
           }
           if (ev?.type === 'response.audio_transcript.delta' && ev?.delta) {
@@ -4470,6 +4383,7 @@ function scheduleRealtimeIdleFollowup() {
           }
 
           if (ev?.type === 'response.done') {
+            queueRealtimeTelemetry('RESPONSE_DONE', { response_id: ev?.response?.id || ev?.response_id || null, status: ev?.response?.status || null });
             clearRealtimeResponseTimeout();
             rtcResponseInFlightRef.current = false;
 
@@ -4487,6 +4401,7 @@ function scheduleRealtimeIdleFollowup() {
               });
               commitRealtimeAssistantFinal(finalText, { source: 'response.done' });
             } else {
+              queueRealtimeTelemetry('RESPONSE_DONE_WITHOUT_TEXT', { source: 'response.done' });
               logRealtimeStep('runtime:response_done_without_text', {
                 source: 'response.done',
                 textBuf: textFinal.length,
@@ -4500,6 +4415,7 @@ function scheduleRealtimeIdleFollowup() {
             rtcResponseInFlightRef.current = false;
             console.warn('[Realtime] error', ev);
             logRealtimeStep('runtime:error_event', ev);
+            queueRealtimeTelemetry('REALTIME_ERROR', { message: ev?.error?.message || null, code: ev?.error?.code || null, type: ev?.error?.type || null });
             setV2vError(ev?.error?.message || 'Erro Realtime');
             setV2vPhase('error');
             void activateSilentRealtimeFallback('realtime_error', { disarm: false });
@@ -4515,9 +4431,11 @@ function scheduleRealtimeIdleFollowup() {
 
       // SDP handshake
       logRealtimeStep('start:create_offer');
+      queueRealtimeTelemetry('SDP_OFFER_CREATE_START');
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       logRealtimeStep('start:local_description_set', { sdpLength: offer?.sdp?.length || 0 });
+      queueRealtimeTelemetry('SDP_LOCAL_DESCRIPTION_SET', { sdp_length: offer?.sdp?.length || 0 });
 
       const sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
         method: 'POST',
@@ -4531,16 +4449,20 @@ function scheduleRealtimeIdleFollowup() {
       const sdpText = await sdpResponse.text().catch(() => '');
       if (!sdpResponse.ok) {
         logRealtimeStep('start:sdp_error', { status: sdpResponse.status, body: sdpText || sdpResponse.statusText });
+        queueRealtimeTelemetry('SDP_HANDSHAKE_ERROR', { status: sdpResponse.status, body_preview: (sdpText || sdpResponse.statusText || '').slice(0, 500) });
         throw new Error(`SDP handshake falhou (${sdpResponse.status}): ${sdpText || sdpResponse.statusText}`);
       }
 
       logRealtimeStep('start:sdp_ok', { answerLength: sdpText.length });
+      queueRealtimeTelemetry('SDP_HANDSHAKE_OK', { answer_length: sdpText.length });
       const answer = { type: 'answer', sdp: sdpText };
       await pc.setRemoteDescription(answer);
       logRealtimeStep('start:ready', { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null });
+      queueRealtimeTelemetry('PEER_CONNECTED', { session_id: start?.session_id || null, thread_id: start?.thread_id || threadId || null });
 
     } catch (e) {
       console.error('[Realtime] startRealtime error', e);
+      queueRealtimeTelemetry('REALTIME_BOOT_ERROR', { message: e?.message || 'Falha ao iniciar Realtime' });
       logRealtimeStep('start:catch', {
         message: e?.message || 'Falha ao iniciar Realtime',
         stack: e?.stack || null,
@@ -4582,6 +4504,7 @@ function scheduleRealtimeIdleFollowup() {
         setTimeout(() => setUploadStatus(""), 1200);
       }, 7000);
       dc.send(JSON.stringify({ type: "response.create", response: { output_modalities: ["audio", "text"], audio: { output: { voice: rtcVoiceRef.current } } } }));
+      queueRealtimeTelemetry('RESPONSE_CREATE_SENT', { reason, voice: rtcVoiceRef.current });
       setRtcReadyToRespond(false);
       setV2vPhase("responding");
       setUploadStatus(reason === "magic" ? "✨ Command received — responding..." : reason === "auto_vad" ? "🎙️ Speech detected — responding..." : "▶️ Responding...");
@@ -4589,6 +4512,7 @@ function scheduleRealtimeIdleFollowup() {
     } catch (e) {
       rtcResponseInFlightRef.current = false;
       console.warn("[Realtime] triggerRealtimeResponse failed", e);
+      queueRealtimeTelemetry('RESPONSE_CREATE_FAILED', { reason, message: e?.message || null });
       setUploadStatus("❌ Failed to trigger realtime response.");
       setTimeout(() => setUploadStatus(""), 2000);
       void activateSilentRealtimeFallback("trigger_failed");
@@ -4623,6 +4547,44 @@ function scheduleRealtimeIdleFollowup() {
         setRtcAuditEvents(prev => prev.concat([item]));
       }
     } catch {}
+  }
+
+  function queueRealtimeTelemetry(eventName, meta = {}) {
+    try {
+      const normalizedName = String(eventName || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+      const payload = {
+        ao19d: true,
+        event_name: normalizedName,
+        session_id: rtcSessionIdRef.current || null,
+        thread_id: rtcThreadIdRef.current || threadId || null,
+        phase: v2vPhase || null,
+        realtime_mode: !!realtimeModeRef.current,
+        dc_state: rtcDcRef.current?.readyState || null,
+        pc_state: rtcPcRef.current?.connectionState || null,
+        ice_state: rtcPcRef.current?.iceConnectionState || null,
+        ts: new Date().toISOString(),
+        ...(meta && typeof meta === "object" ? meta : { meta }),
+      };
+
+      if (REALTIME_TELEMETRY_ENABLED) {
+        logRealtimeStep(`telemetry:${normalizedName}`, payload);
+        queueRealtimeEvent({
+          event_type: `telemetry.${normalizedName}`,
+          role: "system",
+          content: null,
+          is_final: false,
+          meta: payload,
+        });
+      } else {
+        logRealtimeStep(`telemetry_disabled:${normalizedName}`, payload);
+      }
+
+      try {
+        console.debug(REALTIME_TELEMETRY_PREFIX, normalizedName, payload);
+      } catch {}
+    } catch (err) {
+      try { console.warn("[Realtime] telemetry enqueue failed", err); } catch {}
+    }
   }
 
   async function flushRealtimeEvents() {
@@ -4861,6 +4823,7 @@ async function stopRealtime(reason = 'client_stop') {
     const sid = rtcSessionIdRef.current;
     try {
       console.log("REALTIME_STOP_REASON", reason, { sessionId: sid });
+      queueRealtimeTelemetry('SESSION_END_REQUESTED', { reason, session_id: sid || null });
     } catch {}
     rtcConnectingRef.current = false;
     try {
