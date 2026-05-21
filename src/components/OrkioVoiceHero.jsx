@@ -10,14 +10,14 @@ import {
 } from "../lib/orkioTts.js";
 
 /**
- * AO-04G — OrkioVoiceHero com sincronização vídeo/voz robusta
+ * AO-04H — OrkioVoiceHero com áudio restaurado + sincronização vídeo/voz
  *
  * Princípio: O ÁUDIO é a fonte de verdade do estado playing/speaking.
  *
  * Fluxo:
  * 1. Clique → playing=true + incrementa syncKey
  * 2. Vídeo speaking inicia imediatamente via OrkioMysticAvatar
- * 3. TTS blob é carregado e audio.play() é chamado após lead visual
+ * 3. TTS blob é carregado e audio.play() é chamado sem roteamento Web Audio
  * 4. playing permanece true durante TODA a duração do áudio
  * 5. SOMENTE audio.onended → playing=false → vídeo volta para idle
  *
@@ -164,8 +164,10 @@ export default function OrkioVoiceHero({
         endPlaying();
       };
 
-      // Iniciar motion controller com áudio real
-      await getMotionController().startAudioElement(audio, { strength: 0.94 });
+      // AO-04H: não roteamos o áudio real pelo Web Audio antes do play().
+      // Em alguns browsers isso deixa o AudioContext suspenso e silencia a voz.
+      // A voz real manda no estado; a animação visual usa motion sintético seguro.
+      getMotionController().startSynthetic({ strength: 0.64 });
 
       // 4. Aguardar lead visual antes de iniciar áudio
       await new Promise((r) => setTimeout(r, VIDEO_LEAD_MS));
