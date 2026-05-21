@@ -18,6 +18,7 @@ export default function OrkioMysticAvatar({
   label = "A Orkio — presença místico-tecnológica",
   onClick,
   useVideo = true,
+  speechSyncKey = 0,
 }) {
   const [failed, setFailed] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
@@ -160,6 +161,7 @@ export default function OrkioMysticAvatar({
       {shouldUseVideo ? (
         <OrkioVideoMedia
           speaking={speaking}
+          speakingSyncKey={speechSyncKey}
           borderRadius={isCard ? "30px" : "999px"}
           onError={() => setVideoFailed(true)}
         />
