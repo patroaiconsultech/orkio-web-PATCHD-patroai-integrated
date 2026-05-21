@@ -1,3 +1,8 @@
+CAMINHO REAL DO PROJETO:
+src/components/AvatarPrechatModal.jsx
+
+COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
+================================================================================
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 const STORAGE_KEY = "orkio_prechat_context";
@@ -372,3 +377,5 @@ export default function AvatarPrechatModal({
     </div>
   );
 }
+
+================================================================================
