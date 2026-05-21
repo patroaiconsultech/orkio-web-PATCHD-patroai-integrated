@@ -11,7 +11,7 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
  * - anima o avatar durante a fala.
  */
 
-const AVATAR_SRC = "/patroai-assets/orkio-avatar-hero.webp";
+const AVATAR_SRC = "/patroai-assets/orkio-mystic-tech-v1.webp";
 const BRAIN_SRC = "/patroai-assets/patroai-brain-hero.webp";
 
 export default function AvatarHero3D({
@@ -29,7 +29,7 @@ export default function AvatarHero3D({
   const effectiveSpeech = useMemo(() => {
     return typeof speech === "string" && speech.trim()
       ? speech.trim()
-      : "Olá. Eu sou o Orkio. Posso ajudar você a transformar perguntas soltas em diagnóstico, clareza operacional e próximos passos.";
+      : "Olá. Eu sou a Orkio. Posso ajudar você a transformar perguntas soltas em diagnóstico, clareza operacional e próximos passos.";
   }, [speech]);
 
   const safeCallback = useCallback((fn) => {
@@ -444,9 +444,9 @@ export default function AvatarHero3D({
 
       <div className="orkio-avatar-hero__grid">
         <div className="orkio-avatar-hero__copy">
-          <span className="orkio-avatar-hero__eyebrow">Conheça o Orkio</span>
+          <span className="orkio-avatar-hero__eyebrow">Conheça a Orkio</span>
           <h2>
-            Olá, eu sou o
+            Olá, eu sou a
             <span>Orkio.</span>
           </h2>
           <p>
@@ -456,7 +456,7 @@ export default function AvatarHero3D({
 
           <div className="orkio-avatar-hero__actions">
             <button type="button" className="orkio-avatar-hero__action" onClick={handleSpeak}>
-              <span>{speaking ? "Orkio falando..." : "Falar com Orkio"}</span>
+              <span>{speaking ? "A Orkio falando..." : "Falar com a Orkio"}</span>
               <b>≋</b>
             </button>
             <button type="button" className="orkio-avatar-hero__action" onClick={() => safeCallback(onText)}>
