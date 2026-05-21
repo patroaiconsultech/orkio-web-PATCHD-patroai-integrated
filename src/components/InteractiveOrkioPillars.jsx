@@ -1,48 +1,84 @@
 import React, { useMemo, useState } from "react";
 import OrkioMysticAvatar from "./OrkioMysticAvatar.jsx";
 
-const PILLARS = [
-  {
-    key: "estrategia",
-    title: "Estratégia",
-    example: "Transforma uma ideia solta em tese, prioridades e plano de ação.",
-    metric: "clareza",
-  },
-  {
-    key: "processos",
-    title: "Processos",
-    example: "Mapeia etapas, gargalos e responsáveis para reduzir retrabalho.",
-    metric: "fluxo",
-  },
-  {
-    key: "dados",
-    title: "Dados",
-    example: "Organiza sinais da operação para apoiar decisões e acompanhamento.",
-    metric: "leitura",
-  },
-  {
-    key: "automacao",
-    title: "Automação",
-    example: "Sugere agentes, rotinas e automações para acelerar a execução.",
-    metric: "velocidade",
-  },
-  {
-    key: "integracoes",
-    title: "Integrações",
-    example: "Conecta sistemas, equipes e informações sem perder governança.",
-    metric: "conexão",
-  },
-];
+const PILLARS_COPY = {
+  pt: [
+    {
+      key: "estrategia",
+      title: "Estratégia",
+      example: "Transforma uma ideia solta em tese, prioridades e plano de ação.",
+      metric: "clareza",
+    },
+    {
+      key: "processos",
+      title: "Processos",
+      example: "Mapeia etapas, gargalos e responsáveis para reduzir retrabalho.",
+      metric: "fluxo",
+    },
+    {
+      key: "dados",
+      title: "Dados",
+      example: "Organiza sinais da operação para apoiar decisões e acompanhamento.",
+      metric: "leitura",
+    },
+    {
+      key: "automacao",
+      title: "Automação",
+      example: "Sugere agentes, rotinas e automações para acelerar a execução.",
+      metric: "velocidade",
+    },
+    {
+      key: "integracoes",
+      title: "Integrações",
+      example: "Conecta sistemas, equipes e informações sem perder governança.",
+      metric: "conexão",
+    },
+  ],
+  en: [
+    {
+      key: "estrategia",
+      title: "Strategy",
+      example: "Turns an early idea into a thesis, priorities and an action plan.",
+      metric: "clarity",
+    },
+    {
+      key: "processos",
+      title: "Processes",
+      example: "Maps steps, bottlenecks and owners to reduce operational rework.",
+      metric: "flow",
+    },
+    {
+      key: "dados",
+      title: "Data",
+      example: "Organizes operational signals to support decisions and follow-up.",
+      metric: "reading",
+    },
+    {
+      key: "automacao",
+      title: "Automation",
+      example: "Suggests agents, routines and automations to accelerate execution.",
+      metric: "speed",
+    },
+    {
+      key: "integracoes",
+      title: "Integrations",
+      example: "Connects systems, teams and information without losing governance.",
+      metric: "connection",
+    },
+  ],
+};
 
-export default function InteractiveOrkioPillars() {
+export default function InteractiveOrkioPillars({ locale = "pt" }) {
   const [activeKey, setActiveKey] = useState("estrategia");
+  const pillars = PILLARS_COPY[locale === "en" ? "en" : "pt"];
+  const clickHint = locale === "en" ? "Click to see an example." : "Clique para ver um exemplo.";
 
   const active = useMemo(() => {
-    return PILLARS.find((item) => item.key === activeKey) || PILLARS[0];
-  }, [activeKey]);
+    return pillars.find((item) => item.key === activeKey) || pillars[0];
+  }, [activeKey, pillars]);
 
   return (
-    <section className="orkio-pillars" aria-label="Pilares interativos da Orkio">
+    <section className="orkio-pillars" aria-label={locale === "en" ? "Orkio interactive pillars" : "Pilares interativos da Orkio"}>
       <style>{`
         .orkio-pillars {
           position: relative;
@@ -257,7 +293,7 @@ export default function InteractiveOrkioPillars() {
       </div>
 
       <div className="orkio-pillars__buttons">
-        {PILLARS.map((pillar) => (
+        {pillars.map((pillar) => (
           <button
             key={pillar.key}
             type="button"
@@ -265,7 +301,7 @@ export default function InteractiveOrkioPillars() {
             onClick={() => setActiveKey(pillar.key)}
           >
             <strong>{pillar.title}</strong>
-            <small>Clique para ver um exemplo.</small>
+            <small>{clickHint}</small>
           </button>
         ))}
       </div>
