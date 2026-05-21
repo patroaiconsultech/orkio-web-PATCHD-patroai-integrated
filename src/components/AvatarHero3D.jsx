@@ -1,63 +1,137 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 
 /**
- * AO-01 HOTFIX — AvatarHero3D puro
+ * AO-02 — AvatarHero3D vivo e seguro
  *
- * Este componente NÃO importa a landing e NÃO importa a si mesmo.
- * Ele é visual, isolado e seguro para ser usado dentro de PatroaiLanding.jsx.
- *
- * Contrato esperado:
- * <AvatarHero3D
- *   speech="texto opcional para fala local"
- *   onText={handleStartAvatarJourney}
- *   onDiagnosis={handleStartAvatarJourney}
- * />
+ * Componente puro:
+ * - não importa a landing;
+ * - não importa a si mesmo;
+ * - usa TTS público quando disponível;
+ * - faz fallback seguro para speechSynthesis;
+ * - anima o avatar durante a fala.
  */
 
 const AVATAR_SRC = "/patroai-assets/orkio-avatar-hero.webp";
 const BRAIN_SRC = "/patroai-assets/patroai-brain-hero.webp";
 
-export default function AvatarHero3D({ speech = "", onText, onDiagnosis }) {
+export default function AvatarHero3D({
+  speech = "",
+  onText,
+  onDiagnosis,
+  tenant = "public",
+  token = "",
+}) {
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [brainFailed, setBrainFailed] = useState(false);
   const [speaking, setSpeaking] = useState(false);
-  const utteranceRef = useRef(null);
+  const audioRef = useRef(null);
+
+  const effectiveSpeech = useMemo(() => {
+    return typeof speech === "string" && speech.trim()
+      ? speech.trim()
+      : "Olá. Eu sou o Orkio. Posso ajudar você a transformar perguntas soltas em diagnóstico, clareza operacional e próximos passos.";
+  }, [speech]);
 
   const safeCallback = useCallback((fn) => {
     if (typeof fn === "function") fn();
   }, []);
 
-  const handleSpeak = useCallback(() => {
-    const text =
-      typeof speech === "string" && speech.trim()
-        ? speech.trim()
-        : "Olá. Eu sou o Orkio. Posso ajudar você a organizar contexto, entender desafios e iniciar uma evolução com clareza.";
+  function getApiRoot() {
+    const env = typeof window !== "undefined" && window.__ORKIO_ENV__ ? window.__ORKIO_ENV__ : {};
+    const base = String(env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
+    return base.endsWith("/api") ? base.slice(0, -4) : base;
+  }
+
+  function cleanupAudioUrl(audio) {
+    try {
+      if (audio?.dataset?.blobUrl) URL.revokeObjectURL(audio.dataset.blobUrl);
+    } catch {}
+  }
+
+  function fallbackBrowserSpeech() {
+    if (typeof window === "undefined" || !("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+      return false;
+    }
 
     try {
-      if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
-        safeCallback(onText);
-        return;
-      }
-
       window.speechSynthesis.cancel();
-
-      const utterance = new SpeechSynthesisUtterance(text);
+      const utterance = new SpeechSynthesisUtterance(effectiveSpeech);
       utterance.lang = "pt-BR";
-      utterance.rate = 0.96;
-      utterance.pitch = 0.92;
+      utterance.rate = 0.95;
+      utterance.pitch = 0.94;
       utterance.volume = 1;
-
       utterance.onstart = () => setSpeaking(true);
       utterance.onend = () => setSpeaking(false);
       utterance.onerror = () => setSpeaking(false);
-
-      utteranceRef.current = utterance;
       window.speechSynthesis.speak(utterance);
+      return true;
     } catch {
-      setSpeaking(false);
-      safeCallback(onText);
+      return false;
     }
-  }, [onText, safeCallback, speech]);
+  }
+
+  async function requestTts(endpoint) {
+    const res = await fetch(`${getApiRoot()}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(tenant ? { "X-Org-Slug": tenant } : {}),
+      },
+      body: JSON.stringify({
+        text: effectiveSpeech,
+        speed: 0.92,
+        locale: "pt-BR",
+      }),
+    });
+
+    if (!res.ok) throw new Error(`${endpoint} ${res.status}`);
+    return res.blob();
+  }
+
+  const handleSpeak = useCallback(async () => {
+    if (speaking) return;
+    setSpeaking(true);
+
+    try {
+      if (audioRef.current) {
+        try { audioRef.current.pause(); } catch {}
+        cleanupAudioUrl(audioRef.current);
+        audioRef.current = null;
+      }
+
+      let blob;
+      try {
+        blob = await requestTts(token ? "/api/tts" : "/api/public/tts");
+      } catch (primaryErr) {
+        if (token) throw primaryErr;
+        blob = await requestTts("/api/tts/public");
+      }
+
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.dataset.blobUrl = url;
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        cleanupAudioUrl(audio);
+        setSpeaking(false);
+      };
+      audio.onerror = () => {
+        cleanupAudioUrl(audio);
+        setSpeaking(false);
+      };
+
+      await audio.play();
+    } catch (err) {
+      console.warn("ORKIO_AVATAR_TTS_FAILED", err?.message || err);
+      const browserFallbackOk = fallbackBrowserSpeech();
+      if (!browserFallbackOk) {
+        setSpeaking(false);
+        safeCallback(onText);
+      }
+    }
+  }, [effectiveSpeech, onText, safeCallback, speaking, tenant, token]);
 
   return (
     <section className={`orkio-avatar-hero ${speaking ? "is-speaking" : ""}`} aria-label="Assistente Orkio">
@@ -77,11 +151,15 @@ export default function AvatarHero3D({ speech = "", onText, onDiagnosis }) {
           isolation: isolate;
         }
 
+        .orkio-avatar-hero,
+        .orkio-avatar-hero * {
+          box-sizing: border-box;
+        }
+
         .orkio-avatar-hero::before,
         .orkio-avatar-hero::after {
           content: "";
           position: absolute;
-          inset: auto;
           pointer-events: none;
           z-index: 0;
         }
@@ -111,7 +189,7 @@ export default function AvatarHero3D({ speech = "", onText, onDiagnosis }) {
           z-index: 2;
           min-height: 520px;
           display: grid;
-          grid-template-columns: 0.95fr 1.05fr;
+          grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
           align-items: stretch;
         }
 
@@ -121,6 +199,7 @@ export default function AvatarHero3D({ speech = "", onText, onDiagnosis }) {
           flex-direction: column;
           justify-content: center;
           gap: 18px;
+          min-width: 0;
         }
 
         .orkio-avatar-hero__eyebrow {
@@ -137,6 +216,7 @@ export default function AvatarHero3D({ speech = "", onText, onDiagnosis }) {
           font-size: clamp(34px, 4.2vw, 58px);
           line-height: 0.98;
           letter-spacing: -0.06em;
+          overflow-wrap: anywhere;
         }
 
         .orkio-avatar-hero__copy h2 span {
@@ -250,6 +330,21 @@ export default function AvatarHero3D({ speech = "", onText, onDiagnosis }) {
           animation: orkioAvatarFloat 2.2s ease-in-out infinite;
         }
 
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__visual::after {
+          content: "";
+          position: absolute;
+          right: 24%;
+          top: 22%;
+          width: 90px;
+          height: 90px;
+          border-radius: 999px;
+          border: 1px solid rgba(247,200,98,0.32);
+          box-shadow: 0 0 34px rgba(247,200,98,0.18);
+          animation: orkioAvatarVoiceRing 1.4s ease-in-out infinite;
+          z-index: 2;
+          pointer-events: none;
+        }
+
         .orkio-avatar-hero__fallback {
           position: relative;
           z-index: 3;
@@ -263,32 +358,6 @@ export default function AvatarHero3D({ speech = "", onText, onDiagnosis }) {
             rgba(4,8,15,0.72);
           border: 1px solid rgba(247,200,98,0.30);
           box-shadow: inset 0 0 60px rgba(247,200,98,0.09), 0 30px 60px rgba(0,0,0,0.46);
-        }
-
-        .orkio-avatar-hero__fallback::before {
-          content: "";
-          position: absolute;
-          left: 50%;
-          top: 10%;
-          width: 42%;
-          aspect-ratio: 1;
-          transform: translateX(-50%);
-          border-radius: 44% 44% 48% 48%;
-          border: 1px solid rgba(247,200,98,0.42);
-          background: radial-gradient(circle at 50% 52%, rgba(247,200,98,0.18), transparent 62%);
-        }
-
-        .orkio-avatar-hero__fallback::after {
-          content: "";
-          position: absolute;
-          left: 50%;
-          top: 38%;
-          width: 62%;
-          height: 52%;
-          transform: translateX(-50%);
-          border-radius: 38% 38% 18% 18%;
-          border: 1px solid rgba(247,200,98,0.30);
-          background: linear-gradient(180deg, rgba(247,200,98,0.10), rgba(0,0,0,0.18));
         }
 
         .orkio-avatar-hero__brainFallback {
@@ -314,7 +383,13 @@ export default function AvatarHero3D({ speech = "", onText, onDiagnosis }) {
 
         @keyframes orkioAvatarFloat {
           0%, 100% { transform: translateX(8px) translateY(0); }
-          50% { transform: translateX(8px) translateY(-4px); }
+          50% { transform: translateX(8px) translateY(-5px); }
+        }
+
+        @keyframes orkioAvatarVoiceRing {
+          0% { opacity: 0.3; transform: scale(0.8); }
+          55% { opacity: 0.75; transform: scale(1.18); }
+          100% { opacity: 0; transform: scale(1.42); }
         }
 
         @media (max-width: 960px) {
@@ -381,7 +456,7 @@ export default function AvatarHero3D({ speech = "", onText, onDiagnosis }) {
 
           <div className="orkio-avatar-hero__actions">
             <button type="button" className="orkio-avatar-hero__action" onClick={handleSpeak}>
-              <span>Falar com Orkio</span>
+              <span>{speaking ? "Orkio falando..." : "Falar com Orkio"}</span>
               <b>≋</b>
             </button>
             <button type="button" className="orkio-avatar-hero__action" onClick={() => safeCallback(onText)}>
@@ -394,7 +469,7 @@ export default function AvatarHero3D({ speech = "", onText, onDiagnosis }) {
             </button>
           </div>
 
-          <div className="orkio-avatar-hero__status">
+          <div className="orkio-avatar-hero__status" aria-live="polite">
             <span className="orkio-avatar-hero__pulse" aria-hidden="true" />
             <span>{speaking ? "Respondendo por voz." : "Respondo por voz e por texto."}</span>
           </div>
