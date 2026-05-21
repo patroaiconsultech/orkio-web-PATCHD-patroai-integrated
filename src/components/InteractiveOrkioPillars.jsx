@@ -1,3 +1,8 @@
+CAMINHO REAL DO PROJETO:
+src/components/InteractiveOrkioPillars.jsx
+
+COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
+================================================================================
 import React, { useMemo, useState } from "react";
 import OrkioMysticAvatar from "./OrkioMysticAvatar.jsx";
 
@@ -314,3 +319,5 @@ export default function InteractiveOrkioPillars({ locale = "pt" }) {
     </section>
   );
 }
+
+================================================================================
