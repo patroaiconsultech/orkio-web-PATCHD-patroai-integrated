@@ -12,7 +12,6 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
  */
 
 const AVATAR_SRC = "/patroai-assets/orkio-mystic-tech-v1.webp";
-const BRAIN_SRC = "/patroai-assets/patroai-brain-hero.webp";
 
 export default function AvatarHero3D({
   speech = "",
@@ -22,7 +21,6 @@ export default function AvatarHero3D({
   token = "",
 }) {
   const [avatarFailed, setAvatarFailed] = useState(false);
-  const [brainFailed, setBrainFailed] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const audioRef = useRef(null);
 
@@ -316,49 +314,75 @@ export default function AvatarHero3D({
           display: flex;
           align-items: flex-end;
           justify-content: center;
+          padding: 62px 20px 0;
           overflow: hidden;
         }
 
-        .orkio-avatar-hero__brain {
+        .orkio-avatar-hero__visual::before {
+          content: "";
           position: absolute;
-          left: -90px;
-          bottom: 20px;
-          width: min(390px, 58%);
-          max-height: 390px;
-          object-fit: contain;
-          opacity: 0.92;
-          filter: drop-shadow(0 0 28px rgba(247,200,98,0.34));
+          inset: 18% 8% -18% 4%;
+          border-radius: 42% 42% 0 0;
+          background:
+            radial-gradient(circle at 50% 28%, rgba(247,200,98,0.18), transparent 34%),
+            radial-gradient(circle at 58% 66%, rgba(67,213,255,0.08), transparent 46%),
+            linear-gradient(180deg, rgba(247,200,98,0.08), rgba(255,255,255,0.018));
+          border: 1px solid rgba(247,200,98,0.16);
+          box-shadow: inset 0 0 80px rgba(247,200,98,0.07), 0 30px 80px rgba(0,0,0,0.30);
+          opacity: 0.9;
           z-index: 1;
+          pointer-events: none;
         }
 
         .orkio-avatar-hero__avatar {
           position: relative;
           z-index: 3;
-          width: min(430px, 94%);
-          max-height: 500px;
+          width: min(390px, 88%);
+          max-height: 440px;
           object-fit: contain;
           object-position: bottom center;
           filter: drop-shadow(0 34px 46px rgba(0,0,0,0.62));
-          transform: translateX(8px);
+          transform: translateX(8px) translateY(28px);
         }
 
         .orkio-avatar-hero.is-speaking .orkio-avatar-hero__avatar {
           animation: orkioAvatarFloat 2.2s ease-in-out infinite;
         }
 
-        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__visual::after {
-          content: "";
+        .orkio-avatar-hero__voiceWaves {
           position: absolute;
-          right: 24%;
+          right: 18%;
           top: 22%;
-          width: 90px;
-          height: 90px;
+          width: 118px;
+          height: 118px;
           border-radius: 999px;
-          border: 1px solid rgba(247,200,98,0.32);
-          box-shadow: 0 0 34px rgba(247,200,98,0.18);
-          animation: orkioAvatarVoiceRing 1.4s ease-in-out infinite;
-          z-index: 2;
           pointer-events: none;
+          z-index: 4;
+          opacity: 0;
+          transform: scale(0.84);
+        }
+
+        .orkio-avatar-hero__voiceWaves span {
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          border: 1px solid rgba(247,200,98,0.28);
+          box-shadow: 0 0 34px rgba(247,200,98,0.16);
+        }
+
+        .orkio-avatar-hero__voiceWaves span:nth-child(2) {
+          inset: 18px;
+          border-color: rgba(67,213,255,0.20);
+        }
+
+        .orkio-avatar-hero__voiceWaves span:nth-child(3) {
+          inset: 36px;
+          border-color: rgba(255,255,255,0.12);
+        }
+
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__voiceWaves {
+          opacity: 1;
+          animation: orkioAvatarVoiceRing 1.4s ease-in-out infinite;
         }
 
         .orkio-avatar-hero__fallback {
@@ -377,36 +401,20 @@ export default function AvatarHero3D({
           box-shadow: inset 0 0 60px rgba(247,200,98,0.09), 0 30px 60px rgba(0,0,0,0.46);
         }
 
-        .orkio-avatar-hero__brainFallback {
-          position: absolute;
-          left: -64px;
-          bottom: 44px;
-          width: 290px;
-          height: 290px;
-          z-index: 1;
-          border-radius: 999px;
-          border: 1px solid rgba(247,200,98,0.25);
-          background:
-            radial-gradient(circle at 50% 50%, rgba(247,200,98,0.44), transparent 0 2%, transparent 3%),
-            repeating-radial-gradient(circle, rgba(247,200,98,0.12) 0 1px, transparent 1px 18px),
-            radial-gradient(circle, rgba(247,200,98,0.20), transparent 66%);
-          box-shadow: 0 0 54px rgba(247,200,98,0.22);
-        }
-
         @keyframes orkioAvatarPulse {
           0%, 100% { box-shadow: 0 0 0 0 rgba(247,200,98,0.26); transform: scale(1); }
           50% { box-shadow: 0 0 0 9px rgba(247,200,98,0.04); transform: scale(1.06); }
         }
 
         @keyframes orkioAvatarFloat {
-          0%, 100% { transform: translateX(8px) translateY(0); }
-          50% { transform: translateX(8px) translateY(-5px); }
+          0%, 100% { transform: translateX(8px) translateY(28px); }
+          50% { transform: translateX(8px) translateY(20px); }
         }
 
         @keyframes orkioAvatarVoiceRing {
-          0% { opacity: 0.3; transform: scale(0.8); }
-          55% { opacity: 0.75; transform: scale(1.18); }
-          100% { opacity: 0; transform: scale(1.42); }
+          0% { opacity: 0.24; transform: scale(0.84); }
+          55% { opacity: 0.72; transform: scale(1.04); }
+          100% { opacity: 0; transform: scale(1.22); }
         }
 
         @media (max-width: 960px) {
@@ -428,14 +436,13 @@ export default function AvatarHero3D({
             min-height: 360px;
           }
 
-          .orkio-avatar-hero__brain {
-            left: 8px;
-            bottom: 8px;
-            width: 260px;
+          .orkio-avatar-hero__visual {
+            padding-top: 24px;
           }
 
           .orkio-avatar-hero__avatar {
-            width: min(360px, 84%);
+            width: min(340px, 82%);
+            transform: translateX(0) translateY(18px);
           }
         }
 
@@ -452,9 +459,11 @@ export default function AvatarHero3D({
             min-height: 310px;
           }
 
-          .orkio-avatar-hero__brain,
-          .orkio-avatar-hero__brainFallback {
-            display: none;
+          .orkio-avatar-hero__voiceWaves {
+            right: 10%;
+            top: 26%;
+            width: 84px;
+            height: 84px;
           }
         }
       `}</style>
@@ -493,19 +502,6 @@ export default function AvatarHero3D({
         </div>
 
         <div className="orkio-avatar-hero__visual" aria-hidden="true">
-          {!brainFailed ? (
-            <img
-              className="orkio-avatar-hero__brain"
-              src={BRAIN_SRC}
-              alt=""
-              loading="eager"
-              decoding="async"
-              onError={() => setBrainFailed(true)}
-            />
-          ) : (
-            <div className="orkio-avatar-hero__brainFallback" />
-          )}
-
           {!avatarFailed ? (
             <img
               className="orkio-avatar-hero__avatar"
@@ -518,6 +514,12 @@ export default function AvatarHero3D({
           ) : (
             <div className="orkio-avatar-hero__fallback" />
           )}
+
+          <div className="orkio-avatar-hero__voiceWaves">
+            <span />
+            <span />
+            <span />
+          </div>
         </div>
       </div>
     </section>
