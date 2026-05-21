@@ -213,7 +213,7 @@ export default function PatroaiLanding() {
         }
 
         .patroai-topbar__inner {
-          min-height: 92px;
+          min-height: 104px;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -229,8 +229,8 @@ export default function PatroaiLanding() {
         }
 
         .patroai-logo img {
-          width: 75px;
-          height: 75px;
+          width: 84px;
+          height: 84px;
           border-radius: 999px;
           object-fit: cover;
           border: 1px solid rgba(255,214,119,0.28);
@@ -240,7 +240,7 @@ export default function PatroaiLanding() {
 
         .patroai-logo strong {
           display: block;
-          font-size: 34px;
+          font-size: 36px;
           line-height: 0.95;
           font-weight: 950;
           letter-spacing: -0.03em;
@@ -625,6 +625,47 @@ export default function PatroaiLanding() {
           transform: rotate(-8deg);
         }
 
+        .patroai-orkio__content,
+        .patroai-orkio__visual {
+          position: relative;
+          z-index: 2;
+        }
+
+        .patroai-orkio__visual {
+          display: grid;
+          align-items: stretch;
+        }
+
+        .patroai-orkio__inline-avatar {
+          max-width: 440px;
+          margin-top: 22px;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          border: 1px solid rgba(247,200,98,0.18);
+          border-radius: 26px;
+          padding: 12px 14px;
+          background: rgba(0,0,0,0.24);
+          box-shadow: inset 0 0 38px rgba(247,200,98,0.04), 0 18px 48px rgba(0,0,0,0.22);
+        }
+
+        .patroai-orkio__inline-avatar span {
+          display: block;
+          color: rgba(248,250,252,0.70);
+          font-size: 13px;
+          line-height: 1.45;
+          font-weight: 720;
+        }
+
+        .patroai-orkio__inline-avatar strong {
+          display: block;
+          margin-bottom: 4px;
+          color: #f7c862;
+          font-size: 12px;
+          letter-spacing: 0.13em;
+          text-transform: uppercase;
+        }
+
         .patroai-orkio__grid {
           position: relative;
           z-index: 2;
@@ -731,8 +772,8 @@ export default function PatroaiLanding() {
             grid-template-columns: 1fr;
           }
 
-          .patroai-orkio__avatar {
-            min-height: 260px;
+          .patroai-orkio__inline-avatar {
+            max-width: 100%;
           }
         }
 
@@ -742,12 +783,12 @@ export default function PatroaiLanding() {
           }
 
           .patroai-topbar__inner {
-            min-height: 78px;
+            min-height: 82px;
           }
 
           .patroai-logo img {
-            width: 60px;
-            height: 60px;
+            width: 64px;
+            height: 64px;
           }
 
           .patroai-logo strong {
@@ -909,7 +950,7 @@ export default function PatroaiLanding() {
 
         <section id="orkio" className="patroai-shell patroai-orkio">
           <div className="patroai-orkio__inner">
-            <div>
+            <div className="patroai-orkio__content">
               <div className="patroai-section-label">Conheça a Orkio</div>
               <h2>Conheça a Orkio, a inteligência operacional da PatroAI.</h2>
               <p>
@@ -925,13 +966,17 @@ export default function PatroaiLanding() {
                   Conversar com a Orkio
                 </button>
               </div>
+
+              <div className="patroai-orkio__inline-avatar" aria-hidden="true">
+                <OrkioMysticAvatar size={118} variant="portrait" label="A Orkio — presença místico-tecnológica da PatroAI" />
+                <span>
+                  <strong>Presença da Orkio</strong>
+                  Avatar místico-tecnológico preparado para voz, texto e diagnóstico guiado.
+                </span>
+              </div>
             </div>
 
             <div className="patroai-orkio__visual">
-              <div className="patroai-orkio__avatar">
-                <OrkioMysticAvatar size={210} variant="portrait" label="A Orkio — presença místico-tecnológica da PatroAI" />
-              </div>
-
               <div className="patroai-orkio__grid">
                 {ORKIO_BENEFITS.map(([icon, label]) => (
                   <article key={label}>
