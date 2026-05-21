@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import OrkioMysticAvatar from "./OrkioMysticAvatar.jsx";
 
 const PILLARS = [
   {
@@ -22,23 +23,22 @@ const PILLARS = [
   {
     key: "automacao",
     title: "Automação",
-    example: "Sugere agentes, integrações e rotinas para acelerar execução.",
+    example: "Sugere agentes, rotinas e automações para acelerar a execução.",
     metric: "velocidade",
   },
+  {
+    key: "integracoes",
+    title: "Integrações",
+    example: "Conecta sistemas, equipes e informações sem perder governança.",
+    metric: "conexão",
+  },
 ];
-
-const INTEGRATIONS = {
-  key: "integracoes",
-  title: "Integrações",
-  example: "Conecta sistemas, equipes e informações sem perder governança.",
-  metric: "conexão",
-};
 
 export default function InteractiveOrkioPillars() {
   const [activeKey, setActiveKey] = useState("estrategia");
 
   const active = useMemo(() => {
-    return [...PILLARS, INTEGRATIONS].find((item) => item.key === activeKey) || PILLARS[0];
+    return PILLARS.find((item) => item.key === activeKey) || PILLARS[0];
   }, [activeKey]);
 
   return (
@@ -46,55 +46,44 @@ export default function InteractiveOrkioPillars() {
       <style>{`
         .orkio-pillars {
           position: relative;
-          min-height: 440px;
+          min-height: 520px;
           display: grid;
-          grid-template-rows: auto 1fr auto;
-          gap: 16px;
+          grid-template-rows: minmax(210px, auto) auto auto;
+          gap: 14px;
           padding: 18px;
           border-radius: 34px;
           border: 1px solid rgba(245,185,56,0.16);
           background:
-            radial-gradient(circle at center, rgba(84,213,104,0.14), rgba(67,213,255,0.06) 34%, transparent 64%),
+            radial-gradient(circle at center, rgba(84,213,104,0.12), rgba(67,213,255,0.045) 34%, transparent 64%),
             linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015));
           box-shadow: 0 28px 90px rgba(0,0,0,0.22);
           overflow: hidden;
+          isolation: isolate;
         }
 
         .orkio-pillars::before {
           content: "";
           position: absolute;
-          inset: 9%;
+          inset: 10%;
           border-radius: 999px;
-          border: 1px solid rgba(245,185,56,0.18);
-          animation: orkioPillarsSpin 52s linear infinite;
+          border: 1px solid rgba(245,185,56,0.16);
+          animation: orkioPillarsSpin 58s linear infinite;
           pointer-events: none;
+          z-index: 0;
         }
 
-        .orkio-pillars__top {
-          position: relative;
-          z-index: 2;
-          display: flex;
-          justify-content: flex-end;
-        }
-
-        .orkio-pillars__integration {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          border: 1px solid rgba(245,185,56,0.34);
-          border-radius: 999px;
-          padding: 10px 14px;
-          background: rgba(0,0,0,0.46);
-          color: #f8dfa3;
-          font-size: 12px;
-          font-weight: 900;
-          letter-spacing: 0.04em;
-          cursor: pointer;
-        }
-
-        .orkio-pillars__integration.is-active {
-          background: rgba(245,185,56,0.16);
-          box-shadow: 0 0 30px rgba(245,185,56,0.18);
+        .orkio-pillars::after {
+          content: "";
+          position: absolute;
+          left: -22%;
+          right: -22%;
+          top: 39%;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(245,185,56,0.20), transparent);
+          transform: rotate(-7deg);
+          opacity: 0.65;
+          pointer-events: none;
+          z-index: 0;
         }
 
         .orkio-pillars__center {
@@ -102,32 +91,43 @@ export default function InteractiveOrkioPillars() {
           z-index: 1;
           display: grid;
           place-items: center;
-          min-height: 250px;
+          min-height: 230px;
         }
 
         .orkio-pillars__core {
-          width: min(270px, 68vw);
+          position: relative;
+          width: min(260px, 68vw);
           aspect-ratio: 1;
           display: grid;
           place-items: center;
           border-radius: 999px;
-          border: 1px solid rgba(136,243,160,0.28);
+          border: 1px solid rgba(136,243,160,0.22);
           background:
-            radial-gradient(circle at 38% 26%, rgba(136,243,160,0.18), transparent 36%),
-            radial-gradient(circle at 68% 70%, rgba(67,213,255,0.16), transparent 42%),
-            rgba(4,8,14,0.72);
+            radial-gradient(circle at 38% 26%, rgba(136,243,160,0.14), transparent 38%),
+            radial-gradient(circle at 68% 70%, rgba(67,213,255,0.12), transparent 42%),
+            rgba(4,8,14,0.64);
           box-shadow:
-            inset 0 0 80px rgba(84,213,104,0.09),
-            0 0 90px rgba(67,213,255,0.12),
+            inset 0 0 80px rgba(84,213,104,0.08),
+            0 0 90px rgba(67,213,255,0.09),
             0 0 80px rgba(245,185,56,0.10);
         }
 
-        .orkio-pillars__core strong {
-          color: #f5c451;
-          font-size: clamp(34px, 4vw, 56px);
-          font-weight: 950;
-          letter-spacing: -0.04em;
-          text-shadow: 0 0 28px rgba(245,196,81,0.45);
+        .orkio-pillars__core::before,
+        .orkio-pillars__core::after {
+          content: "";
+          position: absolute;
+          border-radius: 999px;
+          pointer-events: none;
+        }
+
+        .orkio-pillars__core::before {
+          inset: -18%;
+          border: 1px solid rgba(245,185,56,0.12);
+        }
+
+        .orkio-pillars__core::after {
+          inset: 14%;
+          border: 1px solid rgba(67,213,255,0.10);
         }
 
         .orkio-pillars__buttons {
@@ -142,13 +142,14 @@ export default function InteractiveOrkioPillars() {
           text-align: left;
           display: grid;
           gap: 4px;
+          min-height: 86px;
           border: 1px solid rgba(255,255,255,0.09);
           border-radius: 18px;
           padding: 13px 14px;
           background: rgba(0,0,0,0.30);
           color: rgba(255,255,255,0.84);
           cursor: pointer;
-          transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+          transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
         }
 
         .orkio-pillars__button:hover {
@@ -159,6 +160,11 @@ export default function InteractiveOrkioPillars() {
         .orkio-pillars__button.is-active {
           border-color: rgba(245,185,56,0.42);
           background: rgba(245,185,56,0.11);
+          box-shadow: 0 0 28px rgba(245,185,56,0.10);
+        }
+
+        .orkio-pillars__button.is-integration {
+          border-color: rgba(84,213,104,0.22);
         }
 
         .orkio-pillars__button strong {
@@ -216,11 +222,18 @@ export default function InteractiveOrkioPillars() {
           }
         }
 
+        @media (min-width: 560px) {
+          .orkio-pillars__button:last-child:nth-child(odd) {
+            grid-column: 1 / -1;
+          }
+        }
+
         @media (max-width: 560px) {
           .orkio-pillars {
             min-height: auto;
             border-radius: 28px;
             padding: 14px;
+            grid-template-rows: auto auto auto;
           }
 
           .orkio-pillars__buttons {
@@ -230,22 +243,16 @@ export default function InteractiveOrkioPillars() {
           .orkio-pillars__center {
             min-height: 220px;
           }
+
+          .orkio-pillars__core {
+            width: min(230px, 76vw);
+          }
         }
       `}</style>
 
-      <div className="orkio-pillars__top">
-        <button
-          type="button"
-          className={`orkio-pillars__integration ${activeKey === INTEGRATIONS.key ? "is-active" : ""}`}
-          onClick={() => setActiveKey(INTEGRATIONS.key)}
-        >
-          ✦ {INTEGRATIONS.title}
-        </button>
-      </div>
-
       <div className="orkio-pillars__center" aria-hidden="true">
         <div className="orkio-pillars__core">
-          <strong>ORKIO OS</strong>
+          <OrkioMysticAvatar size="min(220px, 58vw)" speaking={activeKey === "integracoes"} />
         </div>
       </div>
 
@@ -254,7 +261,7 @@ export default function InteractiveOrkioPillars() {
           <button
             key={pillar.key}
             type="button"
-            className={`orkio-pillars__button ${activeKey === pillar.key ? "is-active" : ""}`}
+            className={`orkio-pillars__button ${activeKey === pillar.key ? "is-active" : ""} ${pillar.key === "integracoes" ? "is-integration" : ""}`}
             onClick={() => setActiveKey(pillar.key)}
           >
             <strong>{pillar.title}</strong>
