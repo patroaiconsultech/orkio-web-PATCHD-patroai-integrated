@@ -93,6 +93,22 @@ export default function OrkioVoiceHero({
     } catch {}
   }
 
+  function pickBrowserVoice() {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
+
+    const voices = window.speechSynthesis.getVoices?.() || [];
+    const localePrefix = isPt ? "pt" : "en";
+    const preferredNames = isPt
+      ? ["francisca", "maria", "luciana", "helena", "google português", "brasil", "female"]
+      : ["samantha", "victoria", "zira", "jenny", "aria", "female"];
+
+    return (
+      voices.find((voice) => preferredNames.some((name) => voice.name.toLowerCase().includes(name))) ||
+      voices.find((voice) => voice.lang?.toLowerCase().startsWith(localePrefix)) ||
+      null
+    );
+  }
+
   function fallbackBrowserSpeech() {
     if (typeof window === "undefined" || !("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
       return false;
@@ -101,9 +117,11 @@ export default function OrkioVoiceHero({
     try {
       window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(effectiveSpeech);
+      const voice = pickBrowserVoice();
+      if (voice) utter.voice = voice;
       utter.lang = isPt ? "pt-BR" : "en-US";
       utter.rate = resolvedTtsSpeed;
-      utter.pitch = 1.06;
+      utter.pitch = 1.12;
       utter.volume = 1;
       utter.onstart = () => setPlaying(true);
       utter.onend = () => setPlaying(false);
@@ -185,9 +203,9 @@ export default function OrkioVoiceHero({
           border-radius: 34px;
           border: 1px solid rgba(148,163,184,0.16);
           background:
-            radial-gradient(720px 380px at 8% 0%, rgba(124,58,237,0.26), transparent 58%),
-            radial-gradient(620px 340px at 95% 8%, rgba(37,99,235,0.16), transparent 54%),
-            linear-gradient(180deg, rgba(12,19,34,0.98) 0%, rgba(7,11,21,1) 100%);
+            radial-gradient(720px 380px at 8% 0%, rgba(84,213,104,0.13), transparent 58%),
+            radial-gradient(620px 340px at 95% 8%, rgba(245,185,56,0.12), transparent 54%),
+            linear-gradient(180deg, rgba(8,16,26,0.98) 0%, rgba(4,9,16,1) 100%);
           box-shadow: 0 34px 90px rgba(2,6,23,0.42);
           overflow: hidden;
           position: relative;
@@ -204,9 +222,9 @@ export default function OrkioVoiceHero({
           position: absolute;
           inset: 0;
           background:
-            radial-gradient(circle at top left, rgba(124,58,237,0.24), transparent 34%),
-            radial-gradient(circle at top right, rgba(37,99,235,0.18), transparent 26%),
-            radial-gradient(circle at bottom center, rgba(245,158,11,0.18), transparent 32%);
+            radial-gradient(circle at top left, rgba(84,213,104,0.14), transparent 34%),
+            radial-gradient(circle at top right, rgba(245,185,56,0.14), transparent 26%),
+            radial-gradient(circle at bottom center, rgba(67,213,255,0.08), transparent 32%);
           pointer-events: none;
         }
 
@@ -260,7 +278,7 @@ export default function OrkioVoiceHero({
 
         .orkio-voice-hero__grid {
           display: grid;
-          grid-template-columns: minmax(0, 1.18fr) minmax(280px, 0.82fr);
+          grid-template-columns: 1fr;
           gap: 18px;
           align-items: stretch;
           min-width: 0;
@@ -379,10 +397,9 @@ export default function OrkioVoiceHero({
           border: 1px solid rgba(148,163,184,0.16);
           background: linear-gradient(180deg, rgba(15,23,42,0.88) 0%, rgba(10,14,24,0.98) 100%);
           padding: 22px;
-          min-height: 360px;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
+          min-height: auto;
+          display: grid;
+          gap: 16px;
           min-width: 0;
         }
 
@@ -402,7 +419,7 @@ export default function OrkioVoiceHero({
 
         .orkio-voice-hero__sideList {
           display: grid;
-          gap: 12px;
+          gap: 10px;
         }
 
         .orkio-voice-hero__sideItem {
