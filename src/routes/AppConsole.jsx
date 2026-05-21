@@ -1087,6 +1087,7 @@ const [onboardingAutoSpeak, setOnboardingAutoSpeak] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const [threads, setThreads] = useState([]);
+  const [threadSearch, setThreadSearch] = useState("");
   const [threadId, setThreadId] = useState("");
   const [messages, setMessages] = useState([]);
   const [agents, setAgents] = useState([]);
@@ -1156,6 +1157,45 @@ const [onboardingAutoSpeak, setOnboardingAutoSpeak] = useState(false);
   function consumeStoredThreadBootstrap(nextId = "") {
     storageBootstrapConsumedRef.current = true;
     initialStoredThreadIdRef.current = String(nextId || "").trim();
+  }
+
+  function parseThreadTimestamp(value) {
+    if (value == null || value === "") return 0;
+    if (typeof value === "number") {
+      return value > 100000000000 ? value : value * 1000;
+    }
+    const raw = String(value || "").trim();
+    if (!raw) return 0;
+    const asNumber = Number(raw);
+    if (Number.isFinite(asNumber)) {
+      return asNumber > 100000000000 ? asNumber : asNumber * 1000;
+    }
+    const parsed = Date.parse(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function scoreThreadForResume(thread) {
+    const t = thread || {};
+    const updated =
+      parseThreadTimestamp(t.updated_at) ||
+      parseThreadTimestamp(t.last_message_at) ||
+      parseThreadTimestamp(t.last_activity_at) ||
+      parseThreadTimestamp(t.created_at);
+    const hasUsefulTitle = String(t.title || "").trim() && String(t.title || "").trim().toLowerCase() !== "nova conversa";
+    const hasMessages = Number(t.message_count || t.messages_count || t.total_messages || 0) > 0;
+    return updated + (hasMessages ? 1000 : 0) + (hasUsefulTitle ? 250 : 0);
+  }
+
+  function sortThreadsForResume(list) {
+    return [...(Array.isArray(list) ? list : [])].sort((a, b) => scoreThreadForResume(b) - scoreThreadForResume(a));
+  }
+
+  function pickThreadToResume(list, preferredId = "") {
+    const safePreferred = String(preferredId || "").trim();
+    const items = Array.isArray(list) ? list : [];
+    if (safePreferred && items.some((t) => String(t?.id || "") === safePreferred)) return safePreferred;
+    const sorted = sortThreadsForResume(items);
+    return String(sorted?.[0]?.id || "").trim();
   }
 
   function lockThreadSelection(nextId = "", ttlMs = 15000) {
@@ -1418,6 +1458,7 @@ const messagesEndRef = useRef(null);
   const rtcLastAssistantFinalRef = useRef("");
   const rtcAssistantFinalCommittedRef = useRef(false);
   const rtcResponseTimeoutRef = useRef(null);
+  const rtcAutoResponseTimerRef = useRef(null);
   const rtcFallbackActiveRef = useRef(false);
   const rtcResponseInFlightRef = useRef(false);
 
@@ -1847,7 +1888,8 @@ useEffect(() => {
       const preserveThreadId = String(explicitPreserveThreadId || bootstrapThreadId || "").trim();
 
       const { data } = await apiFetch("/api/threads", { token, org: tenant });
-      const list = Array.isArray(data) ? data : [];
+      const listRaw = Array.isArray(data) ? data : [];
+      const list = sortThreadsForResume(listRaw);
       setThreads(list);
 
       const hasPreserved = preserveThreadId && list.some((t) => String(t?.id || "") === preserveThreadId);
@@ -1863,7 +1905,9 @@ useEffect(() => {
         return list;
       }
 
-      if (bootstrapThreadId) {
+      if (bootstrapThreadId && !hasPreserved) {
+        // Stored thread no longer exists in the backend response. Consume it,
+        // but do not create a new conversation while valid history exists.
         consumeStoredThreadBootstrap("");
       }
 
@@ -1871,13 +1915,16 @@ useEffect(() => {
         return list;
       }
 
-      if (!currentActive && list?.[0]?.id) {
-        activateThread(list[0].id, { clearMessages: true, persist: true, lockMs: 5000 });
+      if (!currentActive) {
+        const resumeId = pickThreadToResume(list, "");
+        if (resumeId) {
+          activateThread(resumeId, { clearMessages: true, persist: true, lockMs: 5000 });
+        }
         return list;
       }
 
       if (currentActive && !list.some((t) => String(t?.id || "") === currentActive)) {
-        const fallbackId = String(list?.[0]?.id || "");
+        const fallbackId = pickThreadToResume(list, "");
         if (fallbackId) {
           activateThread(fallbackId, { clearMessages: true, persist: true, lockMs: 5000 });
         } else {
@@ -3835,6 +3882,39 @@ async function confirmFounderHandoff() {
       try { clearTimeout(rtcResponseTimeoutRef.current); } catch {}
       rtcResponseTimeoutRef.current = null;
     }
+    clearRealtimeAutoResponseTimer();
+  }
+
+  function clearRealtimeAutoResponseTimer() {
+    if (rtcAutoResponseTimerRef.current) {
+      try { clearTimeout(rtcAutoResponseTimerRef.current); } catch {}
+      rtcAutoResponseTimerRef.current = null;
+    }
+  }
+
+  function scheduleRealtimeAutoResponseFallback(transcript, reason = "transcript_final") {
+    clearRealtimeAutoResponseTimer();
+    if (!REALTIME_AUTO_RESPONSE_ENABLED) return;
+    const captured = String(transcript || "").trim();
+    if (!captured) return;
+
+    rtcAutoResponseTimerRef.current = setTimeout(() => {
+      try {
+        if (!realtimeModeRef.current) return;
+        if (rtcResponseInFlightRef.current) return;
+        const latest = String(rtcLastFinalTranscriptRef.current || "").trim();
+        if (!latest || latest !== captured) return;
+        const dc = rtcDcRef.current;
+        if (!dc || dc.readyState !== "open") {
+          logRealtimeStep("response:auto_fallback_skip_channel", { reason });
+          return;
+        }
+        logRealtimeStep("response:auto_fallback_trigger", { reason, transcript: captured });
+        triggerRealtimeResponse("auto_transcript_fallback");
+      } catch (err) {
+        logRealtimeStep("response:auto_fallback_error", { reason, message: err?.message || null });
+      }
+    }, 2600);
   }
 
 
@@ -4198,9 +4278,11 @@ function scheduleRealtimeIdleFollowup() {
                   console.warn('[Realtime] magic trigger failed', err);
                 }
               } else if (raw.trim()) {
-                setRtcReadyToRespond(false);
+                setRtcReadyToRespond(true);
+                scheduleRealtimeAutoResponseFallback(raw, "server_vad_no_response_yet");
                 logRealtimeStep('runtime:awaiting_server_auto_response', {
                   transcript: raw,
+                  auto_fallback_ms: 2600,
                 });
               }
             });
@@ -4367,6 +4449,7 @@ function scheduleRealtimeIdleFollowup() {
         return;
       }
       rtcResponseInFlightRef.current = true;
+      clearRealtimeAutoResponseTimer();
       clearRealtimeResponseTimeout();
       clearRealtimeIdleFollowup();
       rtcResponseTimeoutRef.current = setTimeout(() => {
@@ -5348,6 +5431,11 @@ async function stopRealtime(reason = 'client_stop') {
 
   const meName = user?.name || user?.email || "Você";
 
+  const normalizedThreadSearch = String(threadSearch || "").trim().toLowerCase();
+  const visibleThreads = normalizedThreadSearch
+    ? threads.filter((t) => String(t?.title || "").toLowerCase().includes(normalizedThreadSearch))
+    : threads;
+
   const pendingApprovedPatchExecution = findPendingApprovedPatchExecution(messages);
 
   if (!onboardingChecked && !bootstrapFailOpen) {
@@ -5462,11 +5550,32 @@ async function stopRealtime(reason = 'client_stop') {
           </button>
         </div>
 
+        <input
+          value={threadSearch}
+          onChange={(e) => setThreadSearch(e.target.value)}
+          placeholder="Buscar conversas..."
+          aria-label="Buscar conversas"
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 14,
+            background: "rgba(255,255,255,0.04)",
+            color: "#fff",
+            padding: "11px 12px",
+            outline: "none",
+            margin: "12px 0 8px",
+            fontWeight: 700,
+          }}
+        />
+
         <div style={styles.threads}>
           {threads.length === 0 ? (
             <div style={styles.emptyThreads}>Nenhuma conversa ainda.</div>
+          ) : visibleThreads.length === 0 ? (
+            <div style={styles.emptyThreads}>Nenhuma conversa encontrada.</div>
           ) : (
-            threads.map((t) => (
+            visibleThreads.map((t) => (
               <button
                 key={t.id}
                 onClick={() => {
