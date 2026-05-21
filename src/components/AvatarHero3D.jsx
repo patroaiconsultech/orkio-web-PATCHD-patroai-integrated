@@ -5,15 +5,16 @@ import {
   requestOrkioTtsBlob,
   speakWithOrkioBrowserVoice,
 } from "../lib/orkioTts.js";
+import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
 
 /**
- * AO-04B — Avatar com fala natural e movimento audio-reativo
+ * AO-04D — Avatar com vídeo idle/speaking + fala natural
  *
- * Objetivo deste patch:
- * - remover o fundo/moldura oval estranha atrás da Orkio;
- * - deixar o retrato em card limpo, no mesmo idioma visual das demais imagens;
- * - preservar a fala por TTS público e o fallback do navegador;
- * - reforçar o estado visual de "falando" com glow e equalizer discreto.
+ * Evolução do AO-04B:
+ * - Usa OrkioVideoMedia para exibir vídeo idle/speaking
+ * - Fallback automático para imagem estática se vídeo falhar
+ * - Preserva TTS atual (orkioTts.js) sem alteração
+ * - Mantém orkioSpeechMotion como complemento (CSS vars para glow/pulse)
  */
 
 const AVATAR_SRC = "/patroai-assets/orkio-mystic-tech-v1.webp";
@@ -27,6 +28,7 @@ export default function AvatarHero3D({
 }) {
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [videoAvailable, setVideoAvailable] = useState(true);
   const audioRef = useRef(null);
   const heroRef = useRef(null);
   const motionRef = useRef(null);
@@ -307,7 +309,7 @@ export default function AvatarHero3D({
           position: relative;
           z-index: 2;
           width: min(360px, 90%);
-          aspect-ratio: 0.8;
+          aspect-ratio: 0.75;
           border-radius: 28px;
           overflow: hidden;
           border: 1px solid rgba(247,200,98,0.26);
@@ -318,185 +320,41 @@ export default function AvatarHero3D({
             inset 0 1px 0 rgba(255,255,255,0.04),
             0 20px 60px rgba(0,0,0,0.42),
             0 0 42px rgba(247,200,98,0.08);
-          transform:
-            translate3d(0, calc(-7px * var(--orkio-voice-level)), 0)
-            rotate(calc(var(--orkio-head-tilt) * 1deg))
-            scale(calc(1 + (var(--orkio-voice-level) * 0.018)));
           transform-origin: 50% 58%;
           transition: transform 120ms linear, box-shadow 180ms ease;
           will-change: transform;
         }
 
-        .orkio-avatar-hero__portraitShell::before {
-          content: "";
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-          background: linear-gradient(180deg, rgba(255,255,255,0.035), transparent 26%, transparent 74%, rgba(247,200,98,0.06));
-          z-index: 2;
-        }
-
-        .orkio-avatar-hero__avatar {
-          position: relative;
-          z-index: 1;
-          width: 100%;
-          height: 100%;
-          display: block;
-          object-fit: cover;
-          object-position: center center;
-          filter: saturate(calc(1.02 + (var(--orkio-voice-level) * 0.05))) contrast(calc(1.02 + (var(--orkio-voice-level) * 0.04)));
-          transform: scale(calc(1.006 + (var(--orkio-breath) * 0.008)));
-          transform-origin: 50% 52%;
-          transition: filter 140ms ease;
-          will-change: transform, filter;
-        }
-
-        .orkio-avatar-hero__fallback {
-          width: 100%;
-          height: 100%;
-          background:
-            radial-gradient(circle at 50% 18%, rgba(247,200,98,0.24), transparent 30%),
-            radial-gradient(circle at 50% 48%, rgba(67,213,255,0.10), transparent 44%),
-            linear-gradient(140deg, rgba(247,200,98,0.18), rgba(255,255,255,0.04) 42%, rgba(247,200,98,0.08)),
-            rgba(4,8,15,0.72);
-        }
-
-
-        .orkio-avatar-hero__mouthRig {
-          position: absolute;
-          left: 50%;
-          top: 43.2%;
-          z-index: 5;
-          width: 62px;
-          height: 24px;
-          pointer-events: none;
-          transform:
-            translate(-50%, -50%)
-            rotate(calc(var(--orkio-head-tilt) * 0.16deg))
-            scaleX(calc(0.86 + (var(--orkio-mouth-wide) * 0.18)));
-          opacity: calc(0.18 + (var(--orkio-voice-level) * 0.34));
-          mix-blend-mode: screen;
-          transition: opacity 90ms linear, transform 70ms linear;
-        }
-
-        .orkio-avatar-hero__mouthShadow,
-        .orkio-avatar-hero__mouthLine,
-        .orkio-avatar-hero__mouthGlow {
-          position: absolute;
-          left: 50%;
-          top: 50%;
-          display: block;
-          border-radius: 999px;
-          transform-origin: center center;
-        }
-
-        .orkio-avatar-hero__mouthShadow {
-          width: 38px;
-          height: 10px;
-          background: radial-gradient(ellipse at center, rgba(2,6,14,0.66), rgba(2,6,14,0.28) 52%, transparent 76%);
-          transform:
-            translate(-50%, -50%)
-            scaleX(calc(0.58 + (var(--orkio-mouth-wide) * 0.46)))
-            scaleY(calc(0.12 + (var(--orkio-jaw-drop) * 0.82)));
-          opacity: calc(0.08 + (var(--orkio-mouth-open) * 0.42));
-          filter: blur(0.45px);
-        }
-
-        .orkio-avatar-hero__mouthLine {
-          width: 42px;
-          height: 2px;
-          background: linear-gradient(90deg, transparent, rgba(255,226,157,0.52), rgba(247,200,98,0.72), rgba(255,226,157,0.52), transparent);
-          transform:
-            translate(-50%, calc(-50% + (var(--orkio-jaw-drop) * 2.2px)))
-            scaleX(calc(0.62 + (var(--orkio-mouth-wide) * 0.44)))
-            scaleY(calc(0.70 + (var(--orkio-mouth-round) * 0.50)));
-          opacity: calc(0.16 + (var(--orkio-mouth-open) * 0.46));
-          box-shadow: 0 0 calc(6px + (var(--orkio-voice-glow) * 14px)) rgba(247,200,98,0.22);
-        }
-
-        .orkio-avatar-hero__mouthGlow {
-          width: 52px;
-          height: 16px;
-          background: radial-gradient(ellipse at center, rgba(247,200,98,0.30), rgba(96,165,250,0.08) 48%, transparent 72%);
-          transform:
-            translate(-50%, -50%)
-            scaleX(calc(0.72 + (var(--orkio-mouth-wide) * 0.32)))
-            scaleY(calc(0.26 + (var(--orkio-mouth-open) * 0.98)));
-          opacity: calc(0.05 + (var(--orkio-mouth-open) * 0.24));
-          filter: blur(3.4px);
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__portraitShell {
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.04),
+            0 20px 60px rgba(0,0,0,0.42),
+            0 0 58px rgba(247,200,98,0.22);
         }
 
         .orkio-avatar-hero__voiceAura {
           position: absolute;
-          inset: 0;
-          z-index: 3;
+          inset: -12%;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(247,200,98,0.12), transparent 58%);
+          opacity: 0;
+          transition: opacity 300ms ease;
           pointer-events: none;
-          background:
-            radial-gradient(circle at 50% 35%, rgba(247,200,98,0.12), transparent 42%),
-            radial-gradient(circle at 48% 28%, rgba(99,102,241,0.08), transparent 38%);
-          opacity: calc(0.22 + (var(--orkio-voice-glow) * 0.52));
-          transition: opacity 140ms linear;
         }
 
-        .orkio-avatar-hero__equalizer {
-          position: absolute;
-          left: 18px;
-          bottom: 18px;
-          z-index: 3;
-          display: inline-flex;
-          align-items: flex-end;
-          gap: 5px;
-          padding: 10px 12px;
-          border-radius: 999px;
-          border: 1px solid rgba(247,200,98,0.22);
-          background: rgba(3,7,14,0.72);
-          box-shadow: 0 10px 24px rgba(0,0,0,0.32);
-          opacity: 0.9;
-        }
-
-        .orkio-avatar-hero__equalizer span {
-          width: 4px;
-          height: 12px;
-          border-radius: 999px;
-          background: linear-gradient(180deg, #ffe5a0, #f7c862 58%, #7b520f);
-          transform-origin: center bottom;
-          opacity: calc(0.45 + (var(--orkio-voice-level) * 0.55));
-          transform: scaleY(calc(0.42 + (var(--orkio-mouth-open) * 1.15)));
-          transition: transform 80ms linear, opacity 120ms linear;
-        }
-
-        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__portraitShell {
-          box-shadow:
-            inset 0 1px 0 rgba(255,255,255,0.05),
-            0 24px 70px rgba(0,0,0,0.46),
-            0 0 calc(42px + (var(--orkio-voice-glow) * 36px)) rgba(247,200,98,0.18);
-        }
-
-        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__equalizer span {
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__voiceAura {
           opacity: 1;
-        }
-
-        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__equalizer span:nth-child(2) {
-          transform: scaleY(calc(0.36 + (var(--orkio-mouth-open) * 1.32)));
-        }
-
-        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__equalizer span:nth-child(3) {
-          transform: scaleY(calc(0.28 + (var(--orkio-mouth-open) * 1.48)));
-        }
-
-        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__equalizer span:nth-child(4) {
-          transform: scaleY(calc(0.40 + (var(--orkio-mouth-open) * 1.18)));
+          animation: orkioAuraBreath 2s ease-in-out infinite;
         }
 
         @keyframes orkioAvatarPulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(247,200,98,0.26); transform: scale(1); }
-          50% { box-shadow: 0 0 0 9px rgba(247,200,98,0.04); transform: scale(1.06); }
+          0%, 100% { box-shadow: 0 0 0 rgba(247,200,98,0); }
+          50% { box-shadow: 0 0 0 8px rgba(247,200,98,0.14); }
         }
 
-        @keyframes orkioEqualizer {
-          0%, 100% { transform: scaleY(0.45); }
-          40% { transform: scaleY(1.2); }
-          70% { transform: scaleY(0.7); }
+        @keyframes orkioAuraBreath {
+          0%, 100% { transform: scale(1); opacity: 0.6; }
+          50% { transform: scale(1.06); opacity: 1; }
         }
 
         @media (max-width: 960px) {
@@ -583,32 +441,42 @@ export default function AvatarHero3D({
 
         <div className="orkio-avatar-hero__visual" aria-hidden="true">
           <div className="orkio-avatar-hero__portraitShell">
-            {!avatarFailed ? (
+            {videoAvailable ? (
+              <OrkioVideoMedia
+                speaking={speaking}
+                borderRadius="28px"
+                onError={() => setVideoAvailable(false)}
+              />
+            ) : !avatarFailed ? (
               <img
                 className="orkio-avatar-hero__avatar"
                 src={AVATAR_SRC}
                 alt=""
                 loading="eager"
                 decoding="async"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  borderRadius: "28px",
+                }}
                 onError={() => setAvatarFailed(true)}
               />
             ) : (
-              <div className="orkio-avatar-hero__fallback" />
+              <div className="orkio-avatar-hero__fallback" style={{
+                width: "100%",
+                height: "100%",
+                borderRadius: "28px",
+                background: "radial-gradient(circle at 42% 24%, rgba(245,196,81,0.34), transparent 30%), radial-gradient(circle at 50% 60%, rgba(129,140,248,0.18), transparent 44%), linear-gradient(180deg, rgba(11,18,32,0.96), rgba(3,7,18,1))",
+                display: "grid",
+                placeItems: "center",
+                color: "#f8dfa3",
+                fontSize: "42px",
+                fontWeight: 950,
+              }}>O</div>
             )}
 
             <div className="orkio-avatar-hero__voiceAura" aria-hidden="true" />
-            <div className="orkio-avatar-hero__mouthRig" aria-hidden="true">
-              <span className="orkio-avatar-hero__mouthShadow" />
-              <span className="orkio-avatar-hero__mouthLine" />
-              <span className="orkio-avatar-hero__mouthGlow" />
-            </div>
-
-            <div className="orkio-avatar-hero__equalizer" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
           </div>
         </div>
       </div>
