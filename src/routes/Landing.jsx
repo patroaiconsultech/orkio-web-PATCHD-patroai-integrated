@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import OrkioVoiceHero from "../components/OrkioVoiceHero.jsx";
 import InteractiveOrkioPillars from "../components/InteractiveOrkioPillars.jsx";
 import LegalFooter from "../components/LegalFooter.jsx";
+import OrkioMysticAvatar from "../components/OrkioMysticAvatar.jsx";
 
 /**
  * ORKIO OS — LANDING DE PRODUTO
@@ -832,9 +833,10 @@ export default function Landing() {
 
         .orkio-assistant-section {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(360px, 0.58fr);
+          grid-template-columns: minmax(0, 0.98fr) minmax(0, 1.02fr);
           gap: 18px;
           margin-top: 24px;
+          align-items: stretch;
         }
 
         .orkio-assistant-card {
@@ -845,6 +847,25 @@ export default function Landing() {
           background:
             radial-gradient(circle at 85% 15%, rgba(245,185,56,0.13), transparent 42%),
             rgba(255,255,255,0.035);
+        }
+
+        .orkio-assistant-card__grid {
+          position: relative;
+          z-index: 2;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(180px, 260px);
+          gap: 20px;
+          align-items: center;
+        }
+
+        .orkio-assistant-card__visual {
+          display: grid;
+          place-items: center;
+          min-height: 260px;
+        }
+
+        .orkio-assistant-card__content {
+          min-width: 0;
         }
 
         .orkio-assistant-card h2 {
@@ -951,8 +972,14 @@ export default function Landing() {
 
           .orkio-capabilities,
           .orkio-flow,
-          .orkio-assistant-section {
+          .orkio-assistant-section,
+          .orkio-assistant-card__grid {
             grid-template-columns: 1fr;
+          }
+
+          .orkio-assistant-card__visual {
+            min-height: 220px;
+            order: -1;
           }
 
           .orkio-dashboard__split {
@@ -1095,33 +1122,41 @@ export default function Landing() {
 
         <section id="assistente" className="orkio-assistant-section">
           <div className="orkio-assistant-card">
-            <h2>
-              Olá, eu sou a <span>Orkio.</span>
-            </h2>
+            <div className="orkio-assistant-card__grid">
+              <div className="orkio-assistant-card__content">
+                <h2>
+                  Olá, eu sou a <span>Orkio.</span>
+                </h2>
 
-            <p>
-              Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional
-              em poucos minutos. Meu papel é preservar continuidade, reduzir repetição e conduzir próximos passos com clareza.
-            </p>
+                <p>
+                  Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional
+                  em poucos minutos. Meu papel é preservar continuidade, reduzir repetição e conduzir próximos passos com clareza.
+                </p>
 
-            <div className="orkio-assistant-actions">
-              <button type="button" className="orkio-button orkio-button--gold" onClick={() => goToAuth({ entry: "voice", mode: "register" })}>
-                ≋ Falar com a Orkio
-              </button>
-              <button type="button" className="orkio-button orkio-button--ghost" onClick={() => goToAuth({ entry: "text", mode: "register" })}>
-                □ Digitar mensagem
-              </button>
-              <button type="button" className="orkio-button" onClick={() => goToAuth({ entry: "diagnosis", mode: "register" })}>
-                ✦ Começar diagnóstico
-              </button>
-            </div>
+                <div className="orkio-assistant-actions">
+                  <button type="button" className="orkio-button orkio-button--gold" onClick={() => goToAuth({ entry: "voice", mode: "register" })}>
+                    ≋ Falar com a Orkio
+                  </button>
+                  <button type="button" className="orkio-button orkio-button--ghost" onClick={() => goToAuth({ entry: "text", mode: "register" })}>
+                    □ Digitar mensagem
+                  </button>
+                  <button type="button" className="orkio-button" onClick={() => goToAuth({ entry: "diagnosis", mode: "register" })}>
+                    ✦ Começar diagnóstico
+                  </button>
+                </div>
 
-            <div className="orkio-status-row">
-              <span>● Ouvindo...</span>
-              <span>● Pensando...</span>
-              <span>● Respondendo...</span>
-              <span>● Registrando contexto...</span>
-              <span>● Próximo passo sugerido...</span>
+                <div className="orkio-status-row">
+                  <span>● Ouvindo...</span>
+                  <span>● Pensando...</span>
+                  <span>● Respondendo...</span>
+                  <span>● Registrando contexto...</span>
+                  <span>● Próximo passo sugerido...</span>
+                </div>
+              </div>
+
+              <div className="orkio-assistant-card__visual" aria-hidden="true">
+                <OrkioMysticAvatar size="min(260px, 72vw)" variant="portrait" />
+              </div>
             </div>
           </div>
 
