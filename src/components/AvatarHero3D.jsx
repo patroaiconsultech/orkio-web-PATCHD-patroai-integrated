@@ -18,6 +18,37 @@ import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
  */
 
 const AVATAR_SRC = "/patroai-assets/orkio-mystic-tech-v1.webp";
+const AVATAR_VIDEO_LEAD_MS = 120;
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function waitForAudioReady(audio, timeoutMs = 900) {
+  if (!audio || audio.readyState >= 2) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    let done = false;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(timer);
+      audio.removeEventListener("loadeddata", finish);
+      audio.removeEventListener("canplay", finish);
+      audio.removeEventListener("error", finish);
+      resolve();
+    };
+
+    const timer = window.setTimeout(finish, timeoutMs);
+
+    audio.addEventListener("loadeddata", finish, { once: true });
+    audio.addEventListener("canplay", finish, { once: true });
+    audio.addEventListener("error", finish, { once: true });
+
+    try { audio.load?.(); } catch {}
+  });
+}
 
 export default function AvatarHero3D({
   speech = "",
@@ -28,6 +59,8 @@ export default function AvatarHero3D({
 }) {
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [preparingSpeech, setPreparingSpeech] = useState(false);
+  const [speechSyncKey, setSpeechSyncKey] = useState(0);
   const [videoAvailable, setVideoAvailable] = useState(true);
   const audioRef = useRef(null);
   const heroRef = useRef(null);
@@ -72,18 +105,20 @@ export default function AvatarHero3D({
       },
       onEnd: () => {
         getMotionController().stop();
+        setPreparingSpeech(false);
         setSpeaking(false);
       },
       onError: () => {
         getMotionController().stop();
+        setPreparingSpeech(false);
         setSpeaking(false);
       },
     });
   }
 
   const handleSpeak = useCallback(async () => {
-    if (speaking) return;
-    setSpeaking(true);
+    if (speaking || preparingSpeech) return;
+    setPreparingSpeech(true);
 
     try {
       if (audioRef.current) {
@@ -105,31 +140,44 @@ export default function AvatarHero3D({
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.dataset.blobUrl = url;
+      audio.preload = "auto";
       audioRef.current = audio;
 
       audio.onended = () => {
         cleanupAudioUrl(audio);
         getMotionController().stop();
+        setPreparingSpeech(false);
         setSpeaking(false);
       };
       audio.onerror = () => {
         cleanupAudioUrl(audio);
         getMotionController().stop();
+        setPreparingSpeech(false);
         setSpeaking(false);
       };
 
+      await waitForAudioReady(audio);
       await getMotionController().startAudioElement(audio, { strength: 1 });
+
+      // Sincronização visual: reinicia o loop speaking e dá um pequeno lead ao vídeo
+      // antes de soltar o áudio, reduzindo atraso perceptivo boca/voz.
+      setSpeechSyncKey((current) => current + 1);
+      setSpeaking(true);
+      await sleep(AVATAR_VIDEO_LEAD_MS);
+
       await audio.play();
+      setPreparingSpeech(false);
     } catch (err) {
       console.warn("ORKIO_AVATAR_TTS_FAILED", err?.message || err);
       const browserFallbackOk = fallbackBrowserSpeech();
       if (!browserFallbackOk) {
         getMotionController().stop();
+        setPreparingSpeech(false);
         setSpeaking(false);
         safeCallback(onText);
       }
     }
-  }, [effectiveSpeech, getMotionController, onText, safeCallback, speaking, tenant, token]);
+  }, [effectiveSpeech, getMotionController, onText, preparingSpeech, safeCallback, speaking, tenant, token]);
 
   return (
     <section ref={heroRef} className={`orkio-avatar-hero ${speaking ? "is-speaking" : ""}`} aria-label="Assistente Orkio">
@@ -420,7 +468,7 @@ export default function AvatarHero3D({
 
           <div className="orkio-avatar-hero__actions">
             <button type="button" className="orkio-avatar-hero__action" onClick={handleSpeak}>
-              <span>{speaking ? "A Orkio falando..." : "Falar com a Orkio"}</span>
+              <span>{preparingSpeech ? "Preparando voz..." : speaking ? "A Orkio falando..." : "Falar com a Orkio"}</span>
               <b>≋</b>
             </button>
             <button type="button" className="orkio-avatar-hero__action" onClick={() => safeCallback(onText)}>
@@ -435,7 +483,7 @@ export default function AvatarHero3D({
 
           <div className="orkio-avatar-hero__status" aria-live="polite">
             <span className="orkio-avatar-hero__pulse" aria-hidden="true" />
-            <span>{speaking ? "Respondendo por voz." : "Respondo por voz e por texto."}</span>
+            <span>{preparingSpeech ? "Sincronizando voz e avatar." : speaking ? "Respondendo por voz." : "Respondo por voz e por texto."}</span>
           </div>
         </div>
 
@@ -444,6 +492,8 @@ export default function AvatarHero3D({
             {videoAvailable ? (
               <OrkioVideoMedia
                 speaking={speaking}
+                speakingSyncKey={speechSyncKey}
+                speakingStartOffset={0.18}
                 borderRadius="28px"
                 onError={() => setVideoAvailable(false)}
               />
