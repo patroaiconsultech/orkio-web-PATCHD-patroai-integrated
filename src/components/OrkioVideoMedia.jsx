@@ -1,3 +1,8 @@
+CAMINHO REAL DO PROJETO:
+src/components/OrkioVideoMedia.jsx
+
+COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
+================================================================================
 import React, { useEffect, useRef, useState } from "react";
 
 /**
@@ -207,3 +212,5 @@ export default function OrkioVideoMedia({
     </div>
   );
 }
+
+================================================================================
