@@ -1,0 +1,98 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+export const LANDING_LOCALE_KEY = "orkio_landing_locale";
+export const LANDING_LOCALE_EVENT = "orkio:landing-locale-change";
+
+export const LANDING_LOCALES = [
+  { value: "pt", label: "PT", title: "Português" },
+  { value: "en", label: "EN", title: "English" },
+];
+
+export function normalizeLandingLocale(value) {
+  return value === "en" || value === "en-US" ? "en" : "pt";
+}
+
+export function landingLocaleToTts(locale) {
+  return normalizeLandingLocale(locale) === "en" ? "en-US" : "pt-BR";
+}
+
+export function readLandingLocale() {
+  if (typeof window === "undefined") return "pt";
+
+  try {
+    const query = new URLSearchParams(window.location.search);
+    const urlLang = query.get("lang");
+    if (urlLang) {
+      const normalized = normalizeLandingLocale(urlLang);
+      window.localStorage?.setItem(LANDING_LOCALE_KEY, normalized);
+      return normalized;
+    }
+  } catch {}
+
+  try {
+    const stored = window.localStorage?.getItem(LANDING_LOCALE_KEY);
+    if (stored) return normalizeLandingLocale(stored);
+  } catch {}
+
+  try {
+    const navLang = String(window.navigator?.language || "").toLowerCase();
+    if (navLang.startsWith("en")) return "en";
+  } catch {}
+
+  return "pt";
+}
+
+export function writeLandingLocale(nextLocale) {
+  const normalized = normalizeLandingLocale(nextLocale);
+
+  try {
+    window.localStorage?.setItem(LANDING_LOCALE_KEY, normalized);
+  } catch {}
+
+  try {
+    window.dispatchEvent(
+      new CustomEvent(LANDING_LOCALE_EVENT, {
+        detail: { locale: normalized },
+      })
+    );
+  } catch {}
+
+  return normalized;
+}
+
+export function useLandingLocale() {
+  const [locale, setLocaleState] = useState(() => readLandingLocale());
+
+  useEffect(() => {
+    function handleStorage(event) {
+      if (event?.key && event.key !== LANDING_LOCALE_KEY) return;
+      setLocaleState(readLandingLocale());
+    }
+
+    function handleCustom(event) {
+      setLocaleState(normalizeLandingLocale(event?.detail?.locale));
+    }
+
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(LANDING_LOCALE_EVENT, handleCustom);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(LANDING_LOCALE_EVENT, handleCustom);
+    };
+  }, []);
+
+  const setLocale = useCallback((nextLocale) => {
+    setLocaleState(writeLandingLocale(nextLocale));
+  }, []);
+
+  return useMemo(
+    () => ({
+      locale,
+      setLocale,
+      isEnglish: locale === "en",
+      ttsLocale: landingLocaleToTts(locale),
+    }),
+    [locale, setLocale]
+  );
+}
