@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * AO-04I — OrkioVideoMedia com speaking pré-aquecido.
+ * AO-04J — OrkioVideoMedia com reset de fase no início real do áudio.
  *
  * Regra operacional:
  * - O áudio continua sendo a fonte de verdade.
@@ -10,7 +10,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
  * - O vídeo nunca volta para idle antes de speaking=false enviado pelo pai.
  */
 
-const ASSET_VERSION = "ao04i";
+const ASSET_VERSION = "ao04j";
+const SPEAKING_START_OFFSET_SECONDS = 0.14; // calibração fina: pula frames neutros iniciais do speaking
 const IDLE_MP4 = `/patroai-assets/orkio-idle-loop.mp4?v=${ASSET_VERSION}`;
 const IDLE_WEBM = `/patroai-assets/orkio-idle-loop.webm?v=${ASSET_VERSION}`;
 const SPEAKING_MP4 = `/patroai-assets/orkio-speaking-loop.mp4?v=${ASSET_VERSION}`;
@@ -37,6 +38,22 @@ async function safePlay(videoEl, retries = 3) {
   return false;
 }
 
+function seekSpeakingStart(videoEl) {
+  if (!videoEl) return;
+
+  try {
+    if (typeof videoEl.fastSeek === "function") {
+      videoEl.fastSeek(SPEAKING_START_OFFSET_SECONDS);
+    } else {
+      videoEl.currentTime = SPEAKING_START_OFFSET_SECONDS;
+    }
+  } catch {
+    try {
+      videoEl.currentTime = 0;
+    } catch {}
+  }
+}
+
 export default function OrkioVideoMedia({
   speaking = false,
   syncKey = 0,
@@ -53,6 +70,7 @@ export default function OrkioVideoMedia({
   const [videoFailed, setVideoFailed] = useState(false);
   const isSpeakingRef = useRef(false);
   const didSignalReadyRef = useRef(false);
+  const lastSyncKeyRef = useRef(null);
 
   isSpeakingRef.current = speaking;
 
@@ -61,7 +79,7 @@ export default function OrkioVideoMedia({
     if (!el) return;
 
     try {
-      el.currentTime = 0;
+      el.currentTime = SPEAKING_START_OFFSET_SECONDS;
     } catch {}
 
     // Se ainda estiver falando, reinicia. Se estiver idle, mantém pré-aquecido.
@@ -96,6 +114,10 @@ export default function OrkioVideoMedia({
     if (speaking) {
       if (idleEl) idleEl.style.opacity = "0";
       if (speakingEl) {
+        if (lastSyncKeyRef.current !== syncKey) {
+          lastSyncKeyRef.current = syncKey;
+          seekSpeakingStart(speakingEl);
+        }
         speakingEl.style.opacity = "1";
         safePlay(speakingEl);
       }
@@ -134,7 +156,7 @@ export default function OrkioVideoMedia({
     height: "100%",
     objectFit: "cover",
     borderRadius,
-    transition: "opacity 45ms linear",
+    transition: "opacity 0ms linear",
     willChange: "opacity",
   };
 
