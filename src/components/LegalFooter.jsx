@@ -1,3 +1,8 @@
+CAMINHO REAL DO PROJETO:
+src/components/LegalFooter.jsx
+
+COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
+================================================================================
 import React from "react";
 
 const LEGAL_COPY = {
@@ -111,3 +116,5 @@ export default function LegalFooter({ compact = false, locale = "pt" }) {
     </section>
   );
 }
+
+================================================================================
