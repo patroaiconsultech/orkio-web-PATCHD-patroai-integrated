@@ -1287,6 +1287,14 @@ export default function Landing() {
         }
       `}</style>
 
+      <LandingLanguageSwitch
+        locale={locale}
+        onChange={setLocale}
+        compact
+        fixed
+      />
+
+
       <header className="orkio-header">
         <div className="orkio-shell orkio-header__inner">
           <Link to={ROUTES.orkioOS} aria-label={copy.headerAria}>
@@ -1301,7 +1309,6 @@ export default function Landing() {
           </nav>
 
           <div className="orkio-actions">
-            <LandingLanguageSwitch locale={locale} onChange={setLocale} />
             <Link to={ROUTES.patroai}>{copy.nav.patroai}</Link>
           </div>
         </div>
