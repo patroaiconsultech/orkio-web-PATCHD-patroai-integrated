@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getTenant, getToken } from "../lib/auth.js";
+import {
+  cleanupAudioUrl,
+  requestOrkioTtsBlob,
+  speakWithOrkioBrowserVoice,
+} from "../lib/orkioTts.js";
 
 const USER_TYPES = [
   { value: "founder", label: "Fundador(a)" },
@@ -351,26 +356,63 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
   const trialDays = Number(prechat?.trial_days || 7);
   const isAvatarEntry = String(entrySource || "").trim().toLowerCase() === "avatar";
   const autoSpeakDoneRef = useRef(false);
+  const onboardingAudioRef = useRef(null);
 
   useEffect(() => {
     if (!autoSpeak || autoSpeakDoneRef.current) return undefined;
-    if (typeof window === "undefined" || !window.speechSynthesis) return undefined;
+    if (typeof window === "undefined") return undefined;
+
+    let cancelled = false;
 
     const intro = isAvatarEntry
-      ? "Olá. Eu sou a Orkio. Vou conduzir seu onboarding inicial com clareza, leveza e presença."
-      : "Olá. Vamos concluir seu onboarding inicial para personalizar sua experiência no Orkio.";
+      ? "Olá. Eu sou a Orkio. Vou conduzir seu onboarding inicial com a mesma voz do avatar, clareza e presença."
+      : "Olá. Vamos concluir seu onboarding inicial para personalizar sua experiência na Orkio.";
 
-    try {
-      const utterance = new window.SpeechSynthesisUtterance(intro);
-      utterance.lang = "pt-BR";
-      utterance.rate = 0.96;
-      utterance.pitch = 1.04;
+    async function speakIntro() {
       autoSpeakDoneRef.current = true;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-    } catch {}
+
+      try {
+        try {
+          onboardingAudioRef.current?.pause?.();
+          cleanupAudioUrl(onboardingAudioRef.current);
+        } catch {}
+
+        const token = getToken();
+        const tenant = getTenant() || "public";
+        const blob = await requestOrkioTtsBlob({
+          text: intro,
+          token,
+          tenant,
+          locale: "pt-BR",
+        });
+
+        if (cancelled) return;
+
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.dataset.blobUrl = url;
+        onboardingAudioRef.current = audio;
+
+        audio.onended = () => cleanupAudioUrl(audio);
+        audio.onerror = () => cleanupAudioUrl(audio);
+
+        await audio.play();
+      } catch (err) {
+        console.warn("ORKIO_ONBOARDING_TTS_FAILED", err?.message || err);
+        if (cancelled) return;
+        speakWithOrkioBrowserVoice(intro, { locale: "pt-BR" });
+      }
+    }
+
+    speakIntro();
 
     return () => {
+      cancelled = true;
+      try {
+        onboardingAudioRef.current?.pause?.();
+        cleanupAudioUrl(onboardingAudioRef.current);
+        onboardingAudioRef.current = null;
+      } catch {}
       try { window.speechSynthesis?.cancel?.(); } catch {}
     };
   }, [autoSpeak, isAvatarEntry]);
