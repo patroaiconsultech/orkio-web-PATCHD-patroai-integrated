@@ -1,9 +1,10 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import OrkioMysticAvatar from "./OrkioMysticAvatar.jsx";
 import { ORKIO_DEFAULT_VOICE_ID, coerceTtsSpeed, coerceVoiceId } from "../lib/voices.js";
+import { createOrkioSpeechMotion } from "../lib/orkioSpeechMotion.js";
 
 /**
- * AO-02 — OrkioVoiceHero responsivo e seguro
+ * AO-04B — OrkioVoiceHero com movimento de fala audio-reativo
  *
  * Corrige a sobreposição da /orkio no mobile:
  * - remove grid inline rígido que mantinha duas colunas em telas pequenas;
@@ -38,8 +39,30 @@ export default function OrkioVoiceHero({
   const [locale, setLocale] = useState(defaultLocale === "en-US" ? "en-US" : "pt-BR");
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef(null);
+  const heroRef = useRef(null);
+  const motionRef = useRef(null);
 
   const isPt = locale === "pt-BR";
+
+  const getMotionController = useCallback(() => {
+    if (!motionRef.current) {
+      motionRef.current = createOrkioSpeechMotion(heroRef, {
+        intensity: 0.92,
+        smoothing: 0.78,
+      });
+    }
+
+    return motionRef.current;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      motionRef.current?.dispose?.();
+      try {
+        audioRef.current?.pause?.();
+      } catch {}
+    };
+  }, []);
 
   const effectiveSpeech = useMemo(() => {
     if (typeof speech === "string" && speech.trim()) return speech.trim();
@@ -123,9 +146,18 @@ export default function OrkioVoiceHero({
       utter.rate = resolvedTtsSpeed;
       utter.pitch = 1.12;
       utter.volume = 1;
-      utter.onstart = () => setPlaying(true);
-      utter.onend = () => setPlaying(false);
-      utter.onerror = () => setPlaying(false);
+      utter.onstart = () => {
+        setPlaying(true);
+        getMotionController().startSynthetic({ strength: 0.62 });
+      };
+      utter.onend = () => {
+        getMotionController().stop();
+        setPlaying(false);
+      };
+      utter.onerror = () => {
+        getMotionController().stop();
+        setPlaying(false);
+      };
       window.speechSynthesis.speak(utter);
       return true;
     } catch {
@@ -161,6 +193,7 @@ export default function OrkioVoiceHero({
       if (audioRef.current) {
         try { audioRef.current.pause(); } catch {}
         cleanupAudioUrl(audioRef.current);
+        getMotionController().stop();
         audioRef.current = null;
       }
 
@@ -179,23 +212,29 @@ export default function OrkioVoiceHero({
 
       audio.onended = () => {
         cleanupAudioUrl(audio);
+        getMotionController().stop();
         setPlaying(false);
       };
       audio.onerror = () => {
         cleanupAudioUrl(audio);
+        getMotionController().stop();
         setPlaying(false);
       };
 
+      await getMotionController().startAudioElement(audio, { strength: 0.94 });
       await audio.play();
     } catch (err) {
       console.warn("ORKIO_VOICE_HERO_TTS_FAILED", err?.message || err);
       const browserFallbackOk = fallbackBrowserSpeech();
-      if (!browserFallbackOk) setPlaying(false);
+      if (!browserFallbackOk) {
+        getMotionController().stop();
+        setPlaying(false);
+      }
     }
   }
 
   return (
-    <section className={`orkio-voice-hero ${playing ? "is-playing" : ""}`} aria-label="Orkio OS voz e texto">
+    <section ref={heroRef} className={`orkio-voice-hero ${playing ? "is-playing" : ""}`} aria-label="Orkio OS voz e texto">
       <style>{`
         .orkio-voice-hero {
           width: 100%;
@@ -210,6 +249,11 @@ export default function OrkioVoiceHero({
           overflow: hidden;
           position: relative;
           box-sizing: border-box;
+          --orkio-voice-level: 0;
+          --orkio-mouth-open: 0;
+          --orkio-head-tilt: 0;
+          --orkio-breath: 0;
+          --orkio-voice-glow: 0;
         }
 
         .orkio-voice-hero,
@@ -316,8 +360,14 @@ export default function OrkioVoiceHero({
 
         .orkio-voice-hero.is-playing .orkio-voice-hero__orbButton {
           background: linear-gradient(135deg, rgba(124,58,237,0.22), rgba(37,99,235,0.18));
-          box-shadow: 0 0 0 12px rgba(124,58,237,0.12), 0 18px 42px rgba(2,6,23,0.32);
-          animation: orkioVoiceFloat 2.2s ease-in-out infinite;
+          box-shadow:
+            0 0 0 calc(8px + (var(--orkio-voice-level) * 14px)) rgba(124,58,237,0.10),
+            0 18px 42px rgba(2,6,23,0.32),
+            0 0 calc(22px + (var(--orkio-voice-glow) * 28px)) rgba(124,58,237,0.16);
+          transform:
+            translateY(calc(-5px * var(--orkio-voice-level)))
+            rotate(calc(var(--orkio-head-tilt) * 1deg))
+            scale(calc(1 + (var(--orkio-voice-level) * 0.04)));
         }
 
         .orkio-voice-hero__copy {
@@ -331,6 +381,26 @@ export default function OrkioVoiceHero({
           letter-spacing: 0.14em;
           font-weight: 900;
           margin-bottom: 10px;
+        }
+
+        .orkio-voice-hero__voiceMeter {
+          width: min(180px, 100%);
+          height: 5px;
+          border-radius: 999px;
+          overflow: hidden;
+          background: rgba(148,163,184,0.12);
+          margin-bottom: 10px;
+        }
+
+        .orkio-voice-hero__voiceMeter span {
+          display: block;
+          height: 100%;
+          width: calc(18% + (var(--orkio-mouth-open) * 82%));
+          border-radius: inherit;
+          background: linear-gradient(90deg, rgba(134,239,172,0.95), rgba(96,165,250,0.92), rgba(247,200,98,0.86));
+          box-shadow: 0 0 18px rgba(96,165,250,0.18);
+          opacity: calc(0.42 + (var(--orkio-voice-glow) * 0.58));
+          transition: width 80ms linear, opacity 120ms linear;
         }
 
         .orkio-voice-hero__title {
@@ -604,6 +674,9 @@ export default function OrkioVoiceHero({
               <div className="orkio-voice-hero__copy">
                 <div className="orkio-voice-hero__badge">
                   {playing ? (isPt ? "A Orkio falando" : "Orkio speaking") : badgeLabel}
+                </div>
+                <div className="orkio-voice-hero__voiceMeter" aria-hidden="true">
+                  <span />
                 </div>
                 <div className="orkio-voice-hero__title">{title}</div>
               </div>
