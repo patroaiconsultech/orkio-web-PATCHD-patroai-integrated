@@ -15,16 +15,58 @@ import {
  * Princípio: O ÁUDIO é a fonte de verdade do estado playing/speaking.
  *
  * Fluxo:
- * 1. Clique → playing=true + incrementa syncKey
- * 2. Vídeo speaking inicia imediatamente via OrkioMysticAvatar
- * 3. TTS blob é carregado e audio.play() é chamado sem roteamento Web Audio
+ * 1. Clique → mantém vídeo idle enquanto o TTS carrega
+ * 2. TTS blob é carregado e o áudio é preparado
+ * 3. Speaking video é disparado apenas no início real do áudio
  * 4. playing permanece true durante TODA a duração do áudio
  * 5. SOMENTE audio.onended → playing=false → vídeo volta para idle
  *
  * O vídeo NUNCA decide quando parar. O áudio manda.
  */
 
-const VIDEO_LEAD_MS = 120;
+
+function waitForAudioReady(audio, timeoutMs = 2600) {
+  if (!audio || audio.readyState >= 3) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      audio.removeEventListener("canplay", finish);
+      audio.removeEventListener("canplaythrough", finish);
+      audio.removeEventListener("loadeddata", finish);
+      audio.removeEventListener("error", finish);
+      resolve();
+    };
+
+    audio.addEventListener("canplay", finish, { once: true });
+    audio.addEventListener("canplaythrough", finish, { once: true });
+    audio.addEventListener("loadeddata", finish, { once: true });
+    audio.addEventListener("error", finish, { once: true });
+
+    timer = setTimeout(finish, timeoutMs);
+
+    try {
+      audio.load?.();
+    } catch {
+      finish();
+    }
+  });
+}
+
+function nextAnimationFrame() {
+  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
 
 export default function OrkioVoiceHero({
   tenant,
@@ -47,6 +89,7 @@ export default function OrkioVoiceHero({
 }) {
   const [locale, setLocale] = useState(defaultLocale === "en-US" ? "en-US" : "pt-BR");
   const [playing, setPlaying] = useState(false);
+  const [voiceLoading, setVoiceLoading] = useState(false);
   const [speakingSyncKey, setSpeakingSyncKey] = useState(0);
   const audioRef = useRef(null);
   const heroRef = useRef(null);
@@ -102,6 +145,7 @@ export default function OrkioVoiceHero({
   // Função para encerrar a fala de forma segura
   const endPlaying = useCallback(() => {
     playingLockRef.current = false;
+    setVoiceLoading(false);
     getMotionController().stop();
     setPlaying(false);
   }, [getMotionController]);
@@ -110,7 +154,10 @@ export default function OrkioVoiceHero({
     return speakWithOrkioBrowserVoice(effectiveSpeech, {
       locale,
       onStart: () => {
-        // playing já está true desde o clique
+        setVoiceLoading(false);
+        playingLockRef.current = true;
+        setPlaying(true);
+        setSpeakingSyncKey((k) => k + 1);
         getMotionController().startSynthetic({ strength: 0.64 });
       },
       onEnd: () => {
@@ -123,17 +170,14 @@ export default function OrkioVoiceHero({
   }
 
   async function speak() {
-    if (playing || playingLockRef.current) return;
+    if (playing || voiceLoading || playingLockRef.current) return;
 
-    // 1. Setar playing IMEDIATAMENTE (vídeo speaking começa)
+    // AO-04I: durante o carregamento do TTS, a Orkio permanece em idle.
+    // O vídeo speaking só entra quando o áudio está pronto para começar.
     playingLockRef.current = true;
-    setPlaying(true);
-
-    // 2. Incrementar syncKey (força restart do vídeo speaking)
-    setSpeakingSyncKey((k) => k + 1);
+    setVoiceLoading(true);
 
     try {
-      // Limpar áudio anterior se existir
       if (audioRef.current) {
         try { audioRef.current.pause(); } catch {}
         cleanupAudioUrl(audioRef.current);
@@ -141,7 +185,6 @@ export default function OrkioVoiceHero({
         audioRef.current = null;
       }
 
-      // 3. Buscar TTS blob (vídeo já está tocando durante esta espera)
       const blob = await requestOrkioTtsBlob({
         text: effectiveSpeech,
         token,
@@ -152,9 +195,9 @@ export default function OrkioVoiceHero({
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.dataset.blobUrl = url;
+      audio.preload = "auto";
       audioRef.current = audio;
 
-      // 5. SOMENTE audio.onended volta para idle
       audio.onended = () => {
         cleanupAudioUrl(audio);
         endPlaying();
@@ -164,20 +207,23 @@ export default function OrkioVoiceHero({
         endPlaying();
       };
 
-      // AO-04H: não roteamos o áudio real pelo Web Audio antes do play().
-      // Em alguns browsers isso deixa o AudioContext suspenso e silencia a voz.
-      // A voz real manda no estado; a animação visual usa motion sintético seguro.
+      await waitForAudioReady(audio);
+
+      if (!playingLockRef.current) return;
+
+      setVoiceLoading(false);
+      setSpeakingSyncKey((k) => k + 1);
+      setPlaying(true);
       getMotionController().startSynthetic({ strength: 0.64 });
 
-      // 4. Aguardar lead visual antes de iniciar áudio
-      await new Promise((r) => setTimeout(r, VIDEO_LEAD_MS));
+      await nextAnimationFrame();
 
-      // Verificar se ainda estamos no estado playing
       if (playingLockRef.current) {
         await audio.play();
       }
     } catch (err) {
       console.warn("ORKIO_VOICE_HERO_TTS_FAILED", err?.message || err);
+      setVoiceLoading(false);
       const browserFallbackOk = fallbackBrowserSpeech();
       if (!browserFallbackOk) {
         endPlaying();
@@ -186,7 +232,7 @@ export default function OrkioVoiceHero({
   }
 
   return (
-    <section ref={heroRef} className={`orkio-voice-hero ${playing ? "is-playing" : ""}`} aria-label="Orkio OS voz e texto">
+    <section ref={heroRef} className={`orkio-voice-hero ${playing ? "is-playing" : ""} ${voiceLoading ? "is-loading-voice" : ""}`} aria-label="Orkio OS voz e texto">
       <style>{`
         .orkio-voice-hero {
           width: 100%;
