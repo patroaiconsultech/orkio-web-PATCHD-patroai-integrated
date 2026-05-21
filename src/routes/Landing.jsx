@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import OrkioVoiceHero from "../components/OrkioVoiceHero.jsx";
+import InteractiveOrkioPillars from "../components/InteractiveOrkioPillars.jsx";
+import LegalFooter from "../components/LegalFooter.jsx";
 
 /**
  * ORKIO OS — LANDING DE PRODUTO
@@ -78,7 +80,7 @@ const CAPABILITIES = [
   {
     number: "06",
     title: "Voz e Texto",
-    text: "Permite interação natural com o Orkio por conversa escrita ou falada.",
+    text: "Permite interação natural com a Orkio por conversa escrita ou falada.",
     icon: "≋",
   },
 ];
@@ -255,8 +257,8 @@ export default function Landing() {
         }
 
         .orkio-logo img {
-          width: 58px;
-          height: 58px;
+          width: 75px;
+          height: 75px;
           border-radius: 999px;
           object-fit: cover;
           border: 1px solid rgba(136,243,160,0.30);
@@ -267,7 +269,7 @@ export default function Landing() {
         .orkio-logo strong {
           display: block;
           color: #f5c451;
-          font-size: 30px;
+          font-size: 34px;
           line-height: 1;
           font-weight: 950;
           letter-spacing: 0.02em;
@@ -982,8 +984,8 @@ export default function Landing() {
           }
 
           .orkio-logo img {
-            width: 48px;
-            height: 48px;
+            width: 60px;
+            height: 60px;
           }
 
           .orkio-logo span {
@@ -1061,30 +1063,17 @@ export default function Landing() {
                 Iniciar diagnóstico inteligente →
               </button>
               <button type="button" className="orkio-button orkio-button--ghost" onClick={() => document.getElementById("assistente")?.scrollIntoView({ behavior: "smooth" })}>
-                Ver Orkio em ação
+                Ver a Orkio em ação
               </button>
             </div>
           </div>
 
-          <div className="orkio-orb" aria-hidden="true">
-            <div className="orkio-orb__ring" />
-            <div className="orkio-orb__core">
-              <span />
-              <span />
-              <strong>ORKIO OS</strong>
-            </div>
-            {["Estratégia", "Processos", "Dados", "Automação", "Agentes", "Integrações"].map((label) => (
-              <div key={label} className="orkio-orb__label">
-                <small>✦</small>
-                {label}
-              </div>
-            ))}
-          </div>
+          <InteractiveOrkioPillars />
 
           <LiveDashboard />
         </section>
 
-        <section id="recursos" className="orkio-capabilities" aria-label="Recursos do Orkio OS">
+        <section id="recursos" className="orkio-capabilities" aria-label="Recursos da Orkio OS">
           {CAPABILITIES.map((capability) => (
             <article key={capability.title} className="orkio-capability">
               <b>{capability.icon}</b>
@@ -1107,7 +1096,7 @@ export default function Landing() {
         <section id="assistente" className="orkio-assistant-section">
           <div className="orkio-assistant-card">
             <h2>
-              Olá, eu sou o <span>Orkio.</span>
+              Olá, eu sou a <span>Orkio.</span>
             </h2>
 
             <p>
@@ -1117,7 +1106,7 @@ export default function Landing() {
 
             <div className="orkio-assistant-actions">
               <button type="button" className="orkio-button orkio-button--gold" onClick={() => goToAuth({ entry: "voice", mode: "register" })}>
-                ≋ Falar com Orkio
+                ≋ Falar com a Orkio
               </button>
               <button type="button" className="orkio-button orkio-button--ghost" onClick={() => goToAuth({ entry: "text", mode: "register" })}>
                 □ Digitar mensagem
@@ -1140,12 +1129,12 @@ export default function Landing() {
             tenant="public"
             kicker="Orkio OS • Voz e texto"
             title="Uma interface viva para entender, organizar e executar."
-            subtitle="O Orkio conversa, registra contexto, entende prioridades e ajuda a conduzir a evolução da empresa com agentes inteligentes e governança."
-            speech="Olá. Eu sou o Orkio. Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional em poucos minutos."
+            subtitle="A Orkio conversa, registra contexto, entende prioridades e ajuda a conduzir a evolução da empresa com agentes inteligentes e governança."
+            speech="Olá. Eu sou a Orkio. Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional em poucos minutos."
             primaryLabel="Iniciar diagnóstico"
             secondaryLabel="Conhecer a Patroai"
             tertiaryLabel="Falar com especialista"
-            quickTitle="Perguntas que o Orkio pode responder"
+            quickTitle="Perguntas que a Orkio pode responder"
             quickPrompts={[
               "Como organizar melhor meus processos internos?",
               "Quais agentes de IA fazem sentido para minha empresa?",
@@ -1172,6 +1161,8 @@ export default function Landing() {
           ))}
         </section>
       </main>
+
+      <LegalFooter />
 
       <footer className="orkio-footer">
         <div className="orkio-shell orkio-footer__inner">
