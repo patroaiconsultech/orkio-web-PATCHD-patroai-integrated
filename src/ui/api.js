@@ -734,6 +734,7 @@ export async function getRealtimeSession({
       method: "GET",
       token,
       org: org || tenant,
+      skipAuthRedirect: true,
     }
   );
   return data;
