@@ -4,6 +4,8 @@ import OrkioVoiceHero from "../components/OrkioVoiceHero.jsx";
 import InteractiveOrkioPillars from "../components/InteractiveOrkioPillars.jsx";
 import LegalFooter from "../components/LegalFooter.jsx";
 import OrkioMysticAvatar from "../components/OrkioMysticAvatar.jsx";
+import LandingLanguageSwitch from "../components/LandingLanguageSwitch.jsx";
+import { useLandingLocale } from "../lib/landingLocale.js";
 
 /**
  * ORKIO OS — LANDING DE PRODUTO
@@ -12,9 +14,10 @@ import OrkioMysticAvatar from "../components/OrkioMysticAvatar.jsx";
  * Link institucional Patroai: /patroai
  * Login/cadastro: /auth
  *
- * Importante:
- * - Este arquivo não cria rotas novas.
- * - Ele apenas preserva os caminhos já usados pelo projeto.
+ * AO-05 — Internacionalização PT/EN:
+ * - Adiciona seleção visível de idioma no header.
+ * - Mantém português como padrão.
+ * - Sincroniza copy da landing com voz/TTS da Orkio.
  */
 
 const ROUTES = {
@@ -27,7 +30,296 @@ const ROUTES = {
 const LOGO_PRIMARY = "/patroai-assets/logo-patroai-novo.png";
 const LOGO_FALLBACK = "/patroai-assets/logo-patroai-novo.webp";
 
-function ProductLogo() {
+
+const ORKIO_PAGE_COPY = {
+  pt: {
+    logoTagline: "Sistema Operacional de Inteligência Empresarial",
+    headerAria: "Ir para Orkio OS",
+    navAria: "Navegação principal",
+    nav: {
+      resources: "Recursos",
+      how: "Como funciona",
+      integrations: "Integrações",
+      assistant: "Assistente",
+      patroai: "Patroai Consultech",
+    },
+    hero: {
+      kicker: "Orkio OS • Inteligência contínua para sua empresa",
+      titleBefore: "Seu negócio operando com",
+      titleHighlight: "inteligência contínua.",
+      subtitle:
+        "Orkio OS conecta estratégia, dados, automação, agentes inteligentes e execução em uma plataforma viva que entende o contexto da empresa e conduz próximos passos com clareza.",
+      primary: "Iniciar diagnóstico inteligente →",
+      secondary: "Ver a Orkio em ação",
+    },
+    dashboard: {
+      headerTitle: "Orkio OS",
+      status: "Online",
+      metricsTitle: "Indicadores estratégicos",
+      updated: "Atualizado agora",
+      metrics: [
+        ["Processos ativos", "128", "+18%"],
+        ["Tarefas em andamento", "342", "+22%"],
+        ["Riscos monitorados", "27", "-8%"],
+        ["Oportunidades", "19", "+15%"],
+      ],
+      flowTitle: "Fluxo de operações",
+      live: "Ao vivo",
+      flowItems: ["Planejamento", "Execução", "Monitoramento", "Ajustes", "Resultados"],
+      activityTitle: "Atividade em tempo real",
+      seeAll: "Ver todas",
+      events: [
+        "Novo processo mapeado em Operações",
+        "Indicador de desempenho atualizado",
+        "Risco operacional identificado",
+        "Agente de Atendimento concluiu análise",
+      ],
+      minutesAgo: (value) => `há ${value} min`,
+      whereStopped: "Onde paramos",
+      planExecution: "do plano em execução",
+      nextStep: "Próximo passo recomendado",
+      recommendation: "Revisar gargalos no fluxo de aprovação de pedidos.",
+      seeRecommendation: "Ver recomendação →",
+    },
+    capabilitiesAria: "Recursos da Orkio OS",
+    capabilities: [
+      {
+        number: "01",
+        title: "Memória Contextual",
+        text: "Preserva histórico, decisões, etapas e próximos passos para evitar repetição e perda de contexto.",
+        icon: "✺",
+      },
+      {
+        number: "02",
+        title: "Agentes Especializados",
+        text: "Permite criar agentes para áreas, processos, equipes, clientes ou operações específicas.",
+        icon: "◌",
+      },
+      {
+        number: "03",
+        title: "Execução Assistida",
+        text: "Ajuda a transformar planejamento em ação, com acompanhamento contínuo e recomendações práticas.",
+        icon: "↗",
+      },
+      {
+        number: "04",
+        title: "Painel Vivo",
+        text: "Mostra indicadores, status, tarefas, riscos e oportunidades em tempo real.",
+        icon: "▤",
+      },
+      {
+        number: "05",
+        title: "Governança e Segurança",
+        text: "Organiza permissões, registros, rastreabilidade e controle operacional.",
+        icon: "⌂",
+      },
+      {
+        number: "06",
+        title: "Voz e Texto",
+        text: "Permite interação natural com a Orkio por conversa escrita ou falada.",
+        icon: "≋",
+      },
+    ],
+    howAria: "Como funciona",
+    flow: [
+      ["Entender", "Capturamos contexto, dados e objetivos."],
+      ["Organizar", "Estruturamos informações, processos e prioridades."],
+      ["Automatizar", "Criamos fluxos, regras e ações inteligentes."],
+      ["Executar", "Acompanhamos a execução com clareza e foco."],
+      ["Aprender", "Aprendemos com a operação e sugerimos melhorias."],
+    ],
+    assistant: {
+      titleBefore: "Olá, eu sou a",
+      titleHighlight: "Orkio.",
+      text:
+        "Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional em poucos minutos. Meu papel é preservar continuidade, reduzir repetição e conduzir próximos passos com clareza.",
+      voice: "≋ Falar com a Orkio",
+      textButton: "□ Digitar mensagem",
+      diagnosis: "✦ Começar diagnóstico",
+      statuses: [
+        "● Ouvindo...",
+        "● Pensando...",
+        "● Respondendo...",
+        "● Registrando contexto...",
+        "● Próximo passo sugerido...",
+      ],
+    },
+    voiceHero: {
+      kicker: "Orkio OS • Voz e texto",
+      title: "Uma interface viva para entender, organizar e executar.",
+      subtitle:
+        "A Orkio conversa, registra contexto, entende prioridades e ajuda a conduzir a evolução da empresa com agentes inteligentes e governança.",
+      speech:
+        "Olá. Eu sou a Orkio. Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional em poucos minutos.",
+      primaryLabel: "Iniciar diagnóstico",
+      secondaryLabel: "Conhecer a Patroai",
+      tertiaryLabel: "Falar com especialista",
+      quickTitle: "Perguntas que a Orkio pode responder",
+      quickPrompts: [
+        "Como organizar melhor meus processos internos?",
+        "Quais agentes de IA fazem sentido para minha empresa?",
+        "Como transformar estratégia em execução acompanhada?",
+      ],
+    },
+    integrationsAria: "Integrações e governança",
+    integrations: [
+      ["Sistemas internos", "Conecte processos, dados e fluxos já existentes."],
+      ["Equipes e áreas", "Crie agentes para times, rotinas e objetivos específicos."],
+      ["Governança", "Mantenha rastreabilidade, permissões e histórico de decisões."],
+      ["Relatórios vivos", "Acompanhe indicadores, aprendizados e próximos passos."],
+      ["Evolução contínua", "A plataforma aprende com a operação e melhora com o tempo."],
+    ],
+    footer: {
+      platform: "Plataforma criada pela Patroai Consultech.",
+      rights: "© 2026 Patroai. Todos os direitos reservados.",
+    },
+  },
+  en: {
+    logoTagline: "Business Intelligence Operating System",
+    headerAria: "Go to Orkio OS",
+    navAria: "Main navigation",
+    nav: {
+      resources: "Features",
+      how: "How it works",
+      integrations: "Integrations",
+      assistant: "Assistant",
+      patroai: "Patroai Consultech",
+    },
+    hero: {
+      kicker: "Orkio OS • Continuous intelligence for your company",
+      titleBefore: "Your business operating with",
+      titleHighlight: "continuous intelligence.",
+      subtitle:
+        "Orkio OS connects strategy, data, automation, intelligent agents and execution in a living platform that understands the company context and guides next steps with clarity.",
+      primary: "Start intelligent diagnosis →",
+      secondary: "See Orkio in action",
+    },
+    dashboard: {
+      headerTitle: "Orkio OS",
+      status: "Online",
+      metricsTitle: "Strategic indicators",
+      updated: "Updated now",
+      metrics: [
+        ["Active processes", "128", "+18%"],
+        ["Tasks in progress", "342", "+22%"],
+        ["Risks monitored", "27", "-8%"],
+        ["Opportunities", "19", "+15%"],
+      ],
+      flowTitle: "Operations flow",
+      live: "Live",
+      flowItems: ["Planning", "Execution", "Monitoring", "Adjustments", "Results"],
+      activityTitle: "Real-time activity",
+      seeAll: "See all",
+      events: [
+        "New process mapped in Operations",
+        "Performance indicator updated",
+        "Operational risk identified",
+        "Support Agent completed analysis",
+      ],
+      minutesAgo: (value) => `${value} min ago`,
+      whereStopped: "Where we stopped",
+      planExecution: "of the plan in execution",
+      nextStep: "Recommended next step",
+      recommendation: "Review bottlenecks in the order approval flow.",
+      seeRecommendation: "See recommendation →",
+    },
+    capabilitiesAria: "Orkio OS features",
+    capabilities: [
+      {
+        number: "01",
+        title: "Contextual Memory",
+        text: "Preserves history, decisions, stages and next steps to avoid repetition and context loss.",
+        icon: "✺",
+      },
+      {
+        number: "02",
+        title: "Specialized Agents",
+        text: "Allows you to create agents for areas, processes, teams, clients or specific operations.",
+        icon: "◌",
+      },
+      {
+        number: "03",
+        title: "Assisted Execution",
+        text: "Helps turn planning into action with continuous follow-up and practical recommendations.",
+        icon: "↗",
+      },
+      {
+        number: "04",
+        title: "Living Dashboard",
+        text: "Shows indicators, status, tasks, risks and opportunities in real time.",
+        icon: "▤",
+      },
+      {
+        number: "05",
+        title: "Governance and Security",
+        text: "Organizes permissions, records, traceability and operational control.",
+        icon: "⌂",
+      },
+      {
+        number: "06",
+        title: "Voice and Text",
+        text: "Enables natural interaction with Orkio through written or spoken conversation.",
+        icon: "≋",
+      },
+    ],
+    howAria: "How it works",
+    flow: [
+      ["Understand", "We capture context, data and goals."],
+      ["Organize", "We structure information, processes and priorities."],
+      ["Automate", "We create intelligent flows, rules and actions."],
+      ["Execute", "We follow execution with clarity and focus."],
+      ["Learn", "We learn from operations and suggest improvements."],
+    ],
+    assistant: {
+      titleBefore: "Hello, I am",
+      titleHighlight: "Orkio.",
+      text:
+        "I can talk by voice or text, understand your company context and start an operational diagnosis in a few minutes. My role is to preserve continuity, reduce repetition and guide next steps with clarity.",
+      voice: "≋ Talk to Orkio",
+      textButton: "□ Type a message",
+      diagnosis: "✦ Start diagnosis",
+      statuses: [
+        "● Listening...",
+        "● Thinking...",
+        "● Responding...",
+        "● Saving context...",
+        "● Suggested next step...",
+      ],
+    },
+    voiceHero: {
+      kicker: "Orkio OS • Voice and text",
+      title: "A living interface to understand, organize and execute.",
+      subtitle:
+        "Orkio talks, records context, understands priorities and helps guide company evolution with intelligent agents and governance.",
+      speech:
+        "Hello. I am Orkio. I can talk by voice or text, understand your company context and start an operational diagnosis in just a few minutes.",
+      primaryLabel: "Start diagnosis",
+      secondaryLabel: "Meet Patroai",
+      tertiaryLabel: "Talk to a specialist",
+      quickTitle: "Questions Orkio can answer",
+      quickPrompts: [
+        "How can I better organize my internal processes?",
+        "Which AI agents make sense for my company?",
+        "How can I turn strategy into tracked execution?",
+      ],
+    },
+    integrationsAria: "Integrations and governance",
+    integrations: [
+      ["Internal systems", "Connect existing processes, data and flows."],
+      ["Teams and departments", "Create agents for teams, routines and specific goals."],
+      ["Governance", "Keep traceability, permissions and decision history."],
+      ["Living reports", "Track indicators, learnings and next steps."],
+      ["Continuous evolution", "The platform learns from operations and improves over time."],
+    ],
+    footer: {
+      platform: "Platform created by Patroai Consultech.",
+      rights: "© 2026 Patroai. All rights reserved.",
+    },
+  },
+};
+
+
+function ProductLogo({ tagline = ORKIO_PAGE_COPY.pt.logoTagline }) {
   const [src, setSrc] = useState(LOGO_PRIMARY);
 
   return (
@@ -41,65 +333,11 @@ function ProductLogo() {
       />
       <div>
         <strong>ORKIO OS</strong>
-        <span>Sistema Operacional de Inteligência Empresarial</span>
+        <span>{tagline}</span>
       </div>
     </div>
   );
 }
-
-const CAPABILITIES = [
-  {
-    number: "01",
-    title: "Memória Contextual",
-    text: "Preserva histórico, decisões, etapas e próximos passos para evitar repetição e perda de contexto.",
-    icon: "✺",
-  },
-  {
-    number: "02",
-    title: "Agentes Especializados",
-    text: "Permite criar agentes para áreas, processos, equipes, clientes ou operações específicas.",
-    icon: "◌",
-  },
-  {
-    number: "03",
-    title: "Execução Assistida",
-    text: "Ajuda a transformar planejamento em ação, com acompanhamento contínuo e recomendações práticas.",
-    icon: "↗",
-  },
-  {
-    number: "04",
-    title: "Painel Vivo",
-    text: "Mostra indicadores, status, tarefas, riscos e oportunidades em tempo real.",
-    icon: "▤",
-  },
-  {
-    number: "05",
-    title: "Governança e Segurança",
-    text: "Organiza permissões, registros, rastreabilidade e controle operacional.",
-    icon: "⌂",
-  },
-  {
-    number: "06",
-    title: "Voz e Texto",
-    text: "Permite interação natural com a Orkio por conversa escrita ou falada.",
-    icon: "≋",
-  },
-];
-
-const FLOW = [
-  ["Entender", "Capturamos contexto, dados e objetivos."],
-  ["Organizar", "Estruturamos informações, processos e prioridades."],
-  ["Automatizar", "Criamos fluxos, regras e ações inteligentes."],
-  ["Executar", "Acompanhamos a execução com clareza e foco."],
-  ["Aprender", "Aprendemos com a operação e sugerimos melhorias."],
-];
-
-const LIVE_EVENTS = [
-  "Novo processo mapeado em Operações",
-  "Indicador de desempenho atualizado",
-  "Risco operacional identificado",
-  "Agente de Atendimento concluiu análise",
-];
 
 function MiniMetric({ label, value, delta }) {
   return (
@@ -111,39 +349,38 @@ function MiniMetric({ label, value, delta }) {
   );
 }
 
-function LiveDashboard() {
+function LiveDashboard({ copy = ORKIO_PAGE_COPY.pt.dashboard }) {
   return (
     <aside className="orkio-dashboard" aria-label="Painel Orkio OS">
       <div className="orkio-dashboard__header">
         <div>
-          <strong>Orkio OS</strong>
-          <span>Online</span>
+          <strong>{copy.headerTitle}</strong>
+          <span>{copy.status}</span>
         </div>
         <i />
       </div>
 
       <section className="orkio-dashboard__block">
         <div className="orkio-dashboard__title">
-          <strong>Indicadores estratégicos</strong>
-          <span>Atualizado agora</span>
+          <strong>{copy.metricsTitle}</strong>
+          <span>{copy.updated}</span>
         </div>
 
         <div className="orkio-metrics">
-          <MiniMetric label="Processos ativos" value="128" delta="+18%" />
-          <MiniMetric label="Tarefas em andamento" value="342" delta="+22%" />
-          <MiniMetric label="Riscos monitorados" value="27" delta="-8%" />
-          <MiniMetric label="Oportunidades" value="19" delta="+15%" />
+          {copy.metrics.map(([label, value, delta]) => (
+            <MiniMetric key={label} label={label} value={value} delta={delta} />
+          ))}
         </div>
       </section>
 
       <section className="orkio-dashboard__block">
         <div className="orkio-dashboard__title">
-          <strong>Fluxo de operações</strong>
-          <span>Ao vivo</span>
+          <strong>{copy.flowTitle}</strong>
+          <span>{copy.live}</span>
         </div>
 
         <div className="orkio-flowline">
-          {["Planejamento", "Execução", "Monitoramento", "Ajustes", "Resultados"].map((item) => (
+          {copy.flowItems.map((item) => (
             <div key={item}>
               <b>✓</b>
               <small>{item}</small>
@@ -155,35 +392,35 @@ function LiveDashboard() {
       <div className="orkio-dashboard__split">
         <section className="orkio-dashboard__block">
           <div className="orkio-dashboard__title">
-            <strong>Atividade em tempo real</strong>
-            <span>Ver todas</span>
+            <strong>{copy.activityTitle}</strong>
+            <span>{copy.seeAll}</span>
           </div>
 
           <ul className="orkio-live-list">
-            {LIVE_EVENTS.map((event, index) => (
+            {copy.events.map((event, index) => (
               <li key={event}>
                 <span>{event}</span>
-                <small>há {index + 2} min</small>
+                <small>{copy.minutesAgo(index + 2)}</small>
               </li>
             ))}
           </ul>
         </section>
 
         <section className="orkio-dashboard__block orkio-progress-card">
-          <strong>Onde paramos</strong>
+          <strong>{copy.whereStopped}</strong>
           <div className="orkio-progress">
             <b>72%</b>
           </div>
-          <span>do plano em execução</span>
+          <span>{copy.planExecution}</span>
         </section>
       </div>
 
       <section className="orkio-dashboard__recommendation">
         <div>
-          <strong>Próximo passo recomendado</strong>
-          <span>Revisar gargalos no fluxo de aprovação de pedidos.</span>
+          <strong>{copy.nextStep}</strong>
+          <span>{copy.recommendation}</span>
         </div>
-        <button type="button">Ver recomendação →</button>
+        <button type="button">{copy.seeRecommendation}</button>
       </section>
     </aside>
   );
@@ -191,12 +428,10 @@ function LiveDashboard() {
 
 export default function Landing() {
   const nav = useNavigate();
+  const { locale, setLocale, ttsLocale } = useLandingLocale();
+  const copy = ORKIO_PAGE_COPY[locale] || ORKIO_PAGE_COPY.pt;
 
-  const heroSubtitle = useMemo(
-    () =>
-      "Orkio OS conecta estratégia, dados, automação, agentes inteligentes e execução em uma plataforma viva que entende o contexto da empresa e conduz próximos passos com clareza.",
-    []
-  );
+  const heroSubtitle = useMemo(() => copy.hero.subtitle, [copy.hero.subtitle]);
 
   function goToAuth(params = {}) {
     const query = new URLSearchParams();
@@ -1054,19 +1289,20 @@ export default function Landing() {
 
       <header className="orkio-header">
         <div className="orkio-shell orkio-header__inner">
-          <Link to={ROUTES.orkioOS} aria-label="Ir para Orkio OS">
-            <ProductLogo />
+          <Link to={ROUTES.orkioOS} aria-label={copy.headerAria}>
+            <ProductLogo tagline={copy.logoTagline} />
           </Link>
 
-          <nav className="orkio-nav" aria-label="Navegação principal">
-            <a href="#recursos">Recursos</a>
-            <a href="#como-funciona">Como funciona</a>
-            <a href="#integracoes">Integrações</a>
-            <a href="#assistente">Assistente</a>
+          <nav className="orkio-nav" aria-label={copy.navAria}>
+            <a href="#recursos">{copy.nav.resources}</a>
+            <a href="#como-funciona">{copy.nav.how}</a>
+            <a href="#integracoes">{copy.nav.integrations}</a>
+            <a href="#assistente">{copy.nav.assistant}</a>
           </nav>
 
           <div className="orkio-actions">
-            <Link to={ROUTES.patroai}>Patroai Consultech</Link>
+            <LandingLanguageSwitch locale={locale} onChange={setLocale} />
+            <Link to={ROUTES.patroai}>{copy.nav.patroai}</Link>
           </div>
         </div>
       </header>
@@ -1074,31 +1310,31 @@ export default function Landing() {
       <main className="orkio-shell">
         <section className="orkio-hero">
           <div>
-            <div className="orkio-kicker">Orkio OS • Inteligência contínua para sua empresa</div>
+            <div className="orkio-kicker">{copy.hero.kicker}</div>
 
             <h1>
-              Seu negócio operando com <span className="orkio-gradient-text">inteligência contínua.</span>
+              {copy.hero.titleBefore} <span className="orkio-gradient-text">{copy.hero.titleHighlight}</span>
             </h1>
 
             <p>{heroSubtitle}</p>
 
             <div className="orkio-hero__cta">
-              <button type="button" className="orkio-button" onClick={() => goToAuth({ entry: "diagnosis", mode: "register" })}>
-                Iniciar diagnóstico inteligente →
+              <button type="button" className="orkio-button" onClick={() => goToAuth({ entry: "diagnosis", mode: "register", lang: locale })}>
+                {copy.hero.primary}
               </button>
               <button type="button" className="orkio-button orkio-button--ghost" onClick={() => document.getElementById("assistente")?.scrollIntoView({ behavior: "smooth" })}>
-                Ver a Orkio em ação
+                {copy.hero.secondary}
               </button>
             </div>
           </div>
 
-          <InteractiveOrkioPillars />
+          <InteractiveOrkioPillars locale={locale} />
 
-          <LiveDashboard />
+          <LiveDashboard copy={copy.dashboard} />
         </section>
 
-        <section id="recursos" className="orkio-capabilities" aria-label="Recursos da Orkio OS">
-          {CAPABILITIES.map((capability) => (
+        <section id="recursos" className="orkio-capabilities" aria-label={copy.capabilitiesAria}>
+          {copy.capabilities.map((capability) => (
             <article key={capability.title} className="orkio-capability">
               <b>{capability.icon}</b>
               <small>{capability.number}</small>
@@ -1108,8 +1344,8 @@ export default function Landing() {
           ))}
         </section>
 
-        <section id="como-funciona" className="orkio-flow" aria-label="Como funciona">
-          {FLOW.map(([title, text]) => (
+        <section id="como-funciona" className="orkio-flow" aria-label={copy.howAria}>
+          {copy.flow.map(([title, text]) => (
             <article key={title} className="orkio-flow-card">
               <strong>{title}</strong>
               <p>{text}</p>
@@ -1122,32 +1358,27 @@ export default function Landing() {
             <div className="orkio-assistant-card__grid">
               <div className="orkio-assistant-card__content">
                 <h2>
-                  Olá, eu sou a <span>Orkio.</span>
+                  {copy.assistant.titleBefore} <span>{copy.assistant.titleHighlight}</span>
                 </h2>
 
-                <p>
-                  Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional
-                  em poucos minutos. Meu papel é preservar continuidade, reduzir repetição e conduzir próximos passos com clareza.
-                </p>
+                <p>{copy.assistant.text}</p>
 
                 <div className="orkio-assistant-actions">
-                  <button type="button" className="orkio-button orkio-button--gold" onClick={() => goToAuth({ entry: "voice", mode: "register" })}>
-                    ≋ Falar com a Orkio
+                  <button type="button" className="orkio-button orkio-button--gold" onClick={() => goToAuth({ entry: "voice", mode: "register", lang: locale })}>
+                    {copy.assistant.voice}
                   </button>
-                  <button type="button" className="orkio-button orkio-button--ghost" onClick={() => goToAuth({ entry: "text", mode: "register" })}>
-                    □ Digitar mensagem
+                  <button type="button" className="orkio-button orkio-button--ghost" onClick={() => goToAuth({ entry: "text", mode: "register", lang: locale })}>
+                    {copy.assistant.textButton}
                   </button>
-                  <button type="button" className="orkio-button" onClick={() => goToAuth({ entry: "diagnosis", mode: "register" })}>
-                    ✦ Começar diagnóstico
+                  <button type="button" className="orkio-button" onClick={() => goToAuth({ entry: "diagnosis", mode: "register", lang: locale })}>
+                    {copy.assistant.diagnosis}
                   </button>
                 </div>
 
                 <div className="orkio-status-row">
-                  <span>● Ouvindo...</span>
-                  <span>● Pensando...</span>
-                  <span>● Respondendo...</span>
-                  <span>● Registrando contexto...</span>
-                  <span>● Próximo passo sugerido...</span>
+                  {copy.assistant.statuses.map((status) => (
+                    <span key={status}>{status}</span>
+                  ))}
                 </div>
               </div>
 
@@ -1159,33 +1390,24 @@ export default function Landing() {
 
           <OrkioVoiceHero
             tenant="public"
-            kicker="Orkio OS • Voz e texto"
-            title="Uma interface viva para entender, organizar e executar."
-            subtitle="A Orkio conversa, registra contexto, entende prioridades e ajuda a conduzir a evolução da empresa com agentes inteligentes e governança."
-            speech="Olá. Eu sou a Orkio. Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional em poucos minutos."
-            primaryLabel="Iniciar diagnóstico"
-            secondaryLabel="Conhecer a Patroai"
-            tertiaryLabel="Falar com especialista"
-            quickTitle="Perguntas que a Orkio pode responder"
-            quickPrompts={[
-              "Como organizar melhor meus processos internos?",
-              "Quais agentes de IA fazem sentido para minha empresa?",
-              "Como transformar estratégia em execução acompanhada?",
-            ]}
-            onPrimaryAction={() => goToAuth({ entry: "voice_hero", mode: "register" })}
-            onSecondaryAction={() => nav(ROUTES.patroai)}
+            defaultLocale={ttsLocale}
+            kicker={copy.voiceHero.kicker}
+            title={copy.voiceHero.title}
+            subtitle={copy.voiceHero.subtitle}
+            speech={copy.voiceHero.speech}
+            primaryLabel={copy.voiceHero.primaryLabel}
+            secondaryLabel={copy.voiceHero.secondaryLabel}
+            tertiaryLabel={copy.voiceHero.tertiaryLabel}
+            quickTitle={copy.voiceHero.quickTitle}
+            quickPrompts={copy.voiceHero.quickPrompts}
+            onPrimaryAction={() => goToAuth({ entry: "voice_hero", mode: "register", lang: locale })}
+            onSecondaryAction={() => nav(`${ROUTES.patroai}?lang=${locale}`)}
             onTertiaryAction={() => nav(ROUTES.contact)}
           />
         </section>
 
-        <section id="integracoes" className="orkio-flow" aria-label="Integrações e governança">
-          {[
-            ["Sistemas internos", "Conecte processos, dados e fluxos já existentes."],
-            ["Equipes e áreas", "Crie agentes para times, rotinas e objetivos específicos."],
-            ["Governança", "Mantenha rastreabilidade, permissões e histórico de decisões."],
-            ["Relatórios vivos", "Acompanhe indicadores, aprendizados e próximos passos."],
-            ["Evolução contínua", "A plataforma aprende com a operação e melhora com o tempo."],
-          ].map(([title, text]) => (
+        <section id="integracoes" className="orkio-flow" aria-label={copy.integrationsAria}>
+          {copy.integrations.map(([title, text]) => (
             <article key={title} className="orkio-flow-card">
               <strong>{title}</strong>
               <p>{text}</p>
@@ -1194,13 +1416,13 @@ export default function Landing() {
         </section>
       </main>
 
-      <LegalFooter />
+      <LegalFooter locale={locale} />
 
       <footer className="orkio-footer">
         <div className="orkio-shell orkio-footer__inner">
-          <ProductLogo />
-          <span>Plataforma criada pela Patroai Consultech.</span>
-          <span>© 2026 Patroai. Todos os direitos reservados.</span>
+          <ProductLogo tagline={copy.logoTagline} />
+          <span>{copy.footer.platform}</span>
+          <span>{copy.footer.rights}</span>
         </div>
       </footer>
     </div>
