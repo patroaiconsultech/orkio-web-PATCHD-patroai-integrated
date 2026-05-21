@@ -8,7 +8,7 @@ import {
 import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
 
 /**
- * AO-04H — Avatar com áudio restaurado + sincronização vídeo/voz
+ * AO-04J — Avatar com disparo visual no início real do áudio
  *
  * Princípio: O ÁUDIO é a fonte de verdade do estado speaking.
  *
@@ -170,6 +170,18 @@ export default function AvatarHero3D({
       audio.preload = "auto";
       audioRef.current = audio;
 
+      let visualStarted = false;
+      const startVisualOnAudioStart = () => {
+        if (visualStarted || !speakingLockRef.current) return;
+        visualStarted = true;
+        setVoiceLoading(false);
+        setSpeakingSyncKey((k) => k + 1);
+        setSpeaking(true);
+        getMotionController().startSynthetic({ strength: 0.66 });
+      };
+
+      audio.addEventListener("playing", startVisualOnAudioStart, { once: true });
+
       audio.onended = () => {
         cleanupAudioUrl(audio);
         endSpeaking();
@@ -179,22 +191,15 @@ export default function AvatarHero3D({
         endSpeaking();
       };
 
-      // Prepara o áudio antes de trocar o vídeo para speaking.
+      // Prepara o áudio, mas mantém o vídeo em idle. O speaking só liga no evento real "playing" do áudio.
       await waitForAudioReady(audio);
 
       if (!speakingLockRef.current) return;
 
-      setVoiceLoading(false);
-      setSpeakingSyncKey((k) => k + 1);
-      setSpeaking(true);
-      getMotionController().startSynthetic({ strength: 0.66 });
-
-      // Entrega um frame ao React/CSS para trocar idle→speaking antes do áudio.
-      // Isso remove o delay visual sem iniciar speaking durante o carregamento do TTS.
-      await nextAnimationFrame();
-
       if (speakingLockRef.current) {
         await audio.play();
+        // Fallback para browsers que resolvem play() sem disparar eventos na ordem esperada.
+        if (!visualStarted && !audio.paused) startVisualOnAudioStart();
       }
     } catch (err) {
       console.warn("ORKIO_AVATAR_TTS_FAILED", err?.message || err);
