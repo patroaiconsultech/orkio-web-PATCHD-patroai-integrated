@@ -1,3 +1,8 @@
+CAMINHO REAL DO PROJETO:
+src/lib/orkioSpeechMotion.js
+
+COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
+================================================================================
 /**
  * AO-04C — Orkio speech motion runtime com boca digital
  *
@@ -251,3 +256,5 @@ export function createOrkioSpeechMotion(target, options = {}) {
     dispose: stop,
   };
 }
+
+================================================================================
