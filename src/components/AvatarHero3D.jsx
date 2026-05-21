@@ -1,14 +1,14 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createOrkioSpeechMotion } from "../lib/orkioSpeechMotion.js";
 
 /**
- * AO-02 — AvatarHero3D vivo e seguro
+ * AO-04B — Avatar com fala natural e movimento audio-reativo
  *
- * Componente puro:
- * - não importa a landing;
- * - não importa a si mesmo;
- * - usa TTS público quando disponível;
- * - faz fallback seguro para speechSynthesis;
- * - anima o avatar durante a fala.
+ * Objetivo deste patch:
+ * - remover o fundo/moldura oval estranha atrás da Orkio;
+ * - deixar o retrato em card limpo, no mesmo idioma visual das demais imagens;
+ * - preservar a fala por TTS público e o fallback do navegador;
+ * - reforçar o estado visual de "falando" com glow e equalizer discreto.
  */
 
 const AVATAR_SRC = "/patroai-assets/orkio-mystic-tech-v1.webp";
@@ -23,6 +23,8 @@ export default function AvatarHero3D({
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const audioRef = useRef(null);
+  const heroRef = useRef(null);
+  const motionRef = useRef(null);
 
   const effectiveSpeech = useMemo(() => {
     return typeof speech === "string" && speech.trim()
@@ -34,9 +36,31 @@ export default function AvatarHero3D({
     if (typeof fn === "function") fn();
   }, []);
 
+  const getMotionController = useCallback(() => {
+    if (!motionRef.current) {
+      motionRef.current = createOrkioSpeechMotion(heroRef, {
+        intensity: 1,
+        smoothing: 0.76,
+      });
+    }
+
+    return motionRef.current;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      motionRef.current?.dispose?.();
+      try {
+        audioRef.current?.pause?.();
+      } catch {}
+    };
+  }, []);
+
   function getApiRoot() {
     const env = typeof window !== "undefined" && window.__ORKIO_ENV__ ? window.__ORKIO_ENV__ : {};
-    const base = String(env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
+    const base = String(env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || "")
+      .trim()
+      .replace(/\/$/, "");
     return base.endsWith("/api") ? base.slice(0, -4) : base;
   }
 
@@ -50,17 +74,31 @@ export default function AvatarHero3D({
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
 
     const voices = window.speechSynthesis.getVoices?.() || [];
-    const preferredNames = ["francisca", "maria", "luciana", "helena", "google português", "brasil", "female"];
+    const preferredNames = [
+      "francisca",
+      "maria",
+      "helena",
+      "luciana",
+      "google português",
+      "portuguese",
+      "brasil",
+      "female",
+    ];
 
     return (
       voices.find((voice) => preferredNames.some((name) => voice.name.toLowerCase().includes(name))) ||
+      voices.find((voice) => voice.lang?.toLowerCase().startsWith("pt-br")) ||
       voices.find((voice) => voice.lang?.toLowerCase().startsWith("pt")) ||
       null
     );
   }
 
   function fallbackBrowserSpeech() {
-    if (typeof window === "undefined" || !("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+    if (
+      typeof window === "undefined" ||
+      !("speechSynthesis" in window) ||
+      !("SpeechSynthesisUtterance" in window)
+    ) {
       return false;
     }
 
@@ -71,11 +109,20 @@ export default function AvatarHero3D({
       if (voice) utterance.voice = voice;
       utterance.lang = "pt-BR";
       utterance.rate = 0.92;
-      utterance.pitch = 1.12;
+      utterance.pitch = 1.08;
       utterance.volume = 1;
-      utterance.onstart = () => setSpeaking(true);
-      utterance.onend = () => setSpeaking(false);
-      utterance.onerror = () => setSpeaking(false);
+      utterance.onstart = () => {
+        setSpeaking(true);
+        getMotionController().startSynthetic({ strength: 0.66 });
+      };
+      utterance.onend = () => {
+        getMotionController().stop();
+        setSpeaking(false);
+      };
+      utterance.onerror = () => {
+        getMotionController().stop();
+        setSpeaking(false);
+      };
       window.speechSynthesis.speak(utterance);
       return true;
     } catch {
@@ -109,8 +156,11 @@ export default function AvatarHero3D({
 
     try {
       if (audioRef.current) {
-        try { audioRef.current.pause(); } catch {}
+        try {
+          audioRef.current.pause();
+        } catch {}
         cleanupAudioUrl(audioRef.current);
+        getMotionController().stop();
         audioRef.current = null;
       }
 
@@ -129,26 +179,30 @@ export default function AvatarHero3D({
 
       audio.onended = () => {
         cleanupAudioUrl(audio);
+        getMotionController().stop();
         setSpeaking(false);
       };
       audio.onerror = () => {
         cleanupAudioUrl(audio);
+        getMotionController().stop();
         setSpeaking(false);
       };
 
+      await getMotionController().startAudioElement(audio, { strength: 1 });
       await audio.play();
     } catch (err) {
       console.warn("ORKIO_AVATAR_TTS_FAILED", err?.message || err);
       const browserFallbackOk = fallbackBrowserSpeech();
       if (!browserFallbackOk) {
+        getMotionController().stop();
         setSpeaking(false);
         safeCallback(onText);
       }
     }
-  }, [effectiveSpeech, onText, safeCallback, speaking, tenant, token]);
+  }, [effectiveSpeech, getMotionController, onText, safeCallback, speaking, tenant, token]);
 
   return (
-    <section className={`orkio-avatar-hero ${speaking ? "is-speaking" : ""}`} aria-label="Assistente Orkio">
+    <section ref={heroRef} className={`orkio-avatar-hero ${speaking ? "is-speaking" : ""}`} aria-label="Assistente Orkio">
       <style>{`
         .orkio-avatar-hero {
           position: relative;
@@ -157,12 +211,17 @@ export default function AvatarHero3D({
           border-radius: 34px;
           overflow: hidden;
           background:
-            radial-gradient(520px 360px at 55% 28%, rgba(247,200,98,0.19), transparent 62%),
-            radial-gradient(420px 320px at 92% 35%, rgba(247,200,98,0.15), transparent 64%),
-            linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.032)),
-            rgba(2,6,11,0.76);
+            radial-gradient(620px 380px at 16% 50%, rgba(247,200,98,0.14), transparent 60%),
+            radial-gradient(520px 340px at 96% 10%, rgba(247,200,98,0.08), transparent 54%),
+            linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.028)),
+            rgba(2,6,11,0.82);
           box-shadow: 0 32px 90px rgba(0,0,0,0.42);
           isolation: isolate;
+          --orkio-voice-level: 0;
+          --orkio-mouth-open: 0;
+          --orkio-head-tilt: 0;
+          --orkio-breath: 0;
+          --orkio-voice-glow: 0;
         }
 
         .orkio-avatar-hero,
@@ -170,37 +229,19 @@ export default function AvatarHero3D({
           box-sizing: border-box;
         }
 
-        .orkio-avatar-hero::before,
         .orkio-avatar-hero::after {
           content: "";
           position: absolute;
+          inset: auto 0 0 0;
+          height: 34%;
           pointer-events: none;
+          background: linear-gradient(180deg, transparent, rgba(0,0,0,0.24));
           z-index: 0;
-        }
-
-        .orkio-avatar-hero::before {
-          width: 520px;
-          height: 520px;
-          right: -190px;
-          top: -140px;
-          border-radius: 999px;
-          background: radial-gradient(circle, rgba(247,200,98,0.16), transparent 66%);
-          filter: blur(2px);
-        }
-
-        .orkio-avatar-hero::after {
-          left: 0;
-          right: 0;
-          bottom: 0;
-          height: 46%;
-          background:
-            radial-gradient(ellipse at 56% 100%, rgba(247,200,98,0.20), transparent 56%),
-            linear-gradient(180deg, transparent, rgba(0,0,0,0.28));
         }
 
         .orkio-avatar-hero__grid {
           position: relative;
-          z-index: 2;
+          z-index: 1;
           min-height: 520px;
           display: grid;
           grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
@@ -312,93 +353,164 @@ export default function AvatarHero3D({
           position: relative;
           min-height: 520px;
           display: flex;
-          align-items: flex-end;
+          align-items: center;
           justify-content: center;
-          padding: 62px 20px 0;
+          padding: 24px 26px 24px 14px;
           overflow: hidden;
         }
 
         .orkio-avatar-hero__visual::before {
           content: "";
           position: absolute;
-          inset: 18% 8% -18% 4%;
-          border-radius: 42% 42% 0 0;
+          inset: 28px 28px 28px 12px;
+          border-radius: 30px;
           background:
-            radial-gradient(circle at 50% 28%, rgba(247,200,98,0.18), transparent 34%),
-            radial-gradient(circle at 58% 66%, rgba(67,213,255,0.08), transparent 46%),
-            linear-gradient(180deg, rgba(247,200,98,0.08), rgba(255,255,255,0.018));
-          border: 1px solid rgba(247,200,98,0.16);
-          box-shadow: inset 0 0 80px rgba(247,200,98,0.07), 0 30px 80px rgba(0,0,0,0.30);
-          opacity: 0.9;
-          z-index: 1;
+            radial-gradient(320px 220px at 50% 12%, rgba(247,200,98,0.10), transparent 58%),
+            linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+          border: 1px solid rgba(247,200,98,0.12);
+          opacity: 0.6;
           pointer-events: none;
+        }
+
+        .orkio-avatar-hero__portraitShell {
+          position: relative;
+          z-index: 2;
+          width: min(360px, 90%);
+          aspect-ratio: 0.8;
+          border-radius: 28px;
+          overflow: hidden;
+          border: 1px solid rgba(247,200,98,0.26);
+          background:
+            radial-gradient(circle at 50% 10%, rgba(247,200,98,0.13), transparent 32%),
+            linear-gradient(180deg, rgba(7,12,22,0.98), rgba(4,8,15,0.96));
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.04),
+            0 20px 60px rgba(0,0,0,0.42),
+            0 0 42px rgba(247,200,98,0.08);
+          transform:
+            translate3d(0, calc(-7px * var(--orkio-voice-level)), 0)
+            rotate(calc(var(--orkio-head-tilt) * 1deg))
+            scale(calc(1 + (var(--orkio-voice-level) * 0.018)));
+          transform-origin: 50% 58%;
+          transition: transform 120ms linear, box-shadow 180ms ease;
+          will-change: transform;
+        }
+
+        .orkio-avatar-hero__portraitShell::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background: linear-gradient(180deg, rgba(255,255,255,0.035), transparent 26%, transparent 74%, rgba(247,200,98,0.06));
+          z-index: 2;
         }
 
         .orkio-avatar-hero__avatar {
           position: relative;
-          z-index: 3;
-          width: min(390px, 88%);
-          max-height: 440px;
-          object-fit: contain;
-          object-position: bottom center;
-          filter: drop-shadow(0 34px 46px rgba(0,0,0,0.62));
-          transform: translateX(8px) translateY(28px);
-        }
-
-        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__avatar {
-          animation: orkioAvatarFloat 2.2s ease-in-out infinite;
-        }
-
-        .orkio-avatar-hero__voiceWaves {
-          position: absolute;
-          right: 18%;
-          top: 22%;
-          width: 118px;
-          height: 118px;
-          border-radius: 999px;
-          pointer-events: none;
-          z-index: 4;
-          opacity: 0;
-          transform: scale(0.84);
-        }
-
-        .orkio-avatar-hero__voiceWaves span {
-          position: absolute;
-          inset: 0;
-          border-radius: inherit;
-          border: 1px solid rgba(247,200,98,0.28);
-          box-shadow: 0 0 34px rgba(247,200,98,0.16);
-        }
-
-        .orkio-avatar-hero__voiceWaves span:nth-child(2) {
-          inset: 18px;
-          border-color: rgba(67,213,255,0.20);
-        }
-
-        .orkio-avatar-hero__voiceWaves span:nth-child(3) {
-          inset: 36px;
-          border-color: rgba(255,255,255,0.12);
-        }
-
-        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__voiceWaves {
-          opacity: 1;
-          animation: orkioAvatarVoiceRing 1.4s ease-in-out infinite;
+          z-index: 1;
+          width: 100%;
+          height: 100%;
+          display: block;
+          object-fit: cover;
+          object-position: center center;
+          filter: saturate(calc(1.02 + (var(--orkio-voice-level) * 0.05))) contrast(calc(1.02 + (var(--orkio-voice-level) * 0.04)));
+          transform: scale(calc(1.006 + (var(--orkio-breath) * 0.008)));
+          transform-origin: 50% 52%;
+          transition: filter 140ms ease;
+          will-change: transform, filter;
         }
 
         .orkio-avatar-hero__fallback {
-          position: relative;
-          z-index: 3;
-          width: min(360px, 78%);
-          aspect-ratio: 0.68;
-          margin-bottom: 10px;
-          border-radius: 48% 48% 30% 30%;
+          width: 100%;
+          height: 100%;
           background:
             radial-gradient(circle at 50% 18%, rgba(247,200,98,0.24), transparent 30%),
             radial-gradient(circle at 50% 48%, rgba(67,213,255,0.10), transparent 44%),
             linear-gradient(140deg, rgba(247,200,98,0.18), rgba(255,255,255,0.04) 42%, rgba(247,200,98,0.08)),
             rgba(4,8,15,0.72);
-          border: 1px solid rgba(247,200,98,0.30);
-          box-shadow: inset 0 0 60px rgba(247,200,98,0.09), 0 30px 60px rgba(0,0,0,0.46);
+        }
+
+
+        .orkio-avatar-hero__voiceAperture {
+          position: absolute;
+          left: 50%;
+          top: 43.5%;
+          z-index: 4;
+          width: 54px;
+          height: 10px;
+          border-radius: 999px;
+          transform:
+            translate(-50%, -50%)
+            scaleX(calc(0.84 + (var(--orkio-mouth-open) * 0.22)))
+            scaleY(calc(0.38 + (var(--orkio-mouth-open) * 0.78)));
+          background: radial-gradient(ellipse at center, rgba(247,200,98,0.62), rgba(247,200,98,0.16) 52%, transparent 72%);
+          filter: blur(4px);
+          opacity: calc(0.05 + (var(--orkio-mouth-open) * 0.20));
+          mix-blend-mode: screen;
+          pointer-events: none;
+          transition: opacity 90ms linear, transform 80ms linear;
+        }
+
+        .orkio-avatar-hero__voiceAura {
+          position: absolute;
+          inset: 0;
+          z-index: 3;
+          pointer-events: none;
+          background:
+            radial-gradient(circle at 50% 35%, rgba(247,200,98,0.12), transparent 42%),
+            radial-gradient(circle at 48% 28%, rgba(99,102,241,0.08), transparent 38%);
+          opacity: calc(0.22 + (var(--orkio-voice-glow) * 0.52));
+          transition: opacity 140ms linear;
+        }
+
+        .orkio-avatar-hero__equalizer {
+          position: absolute;
+          left: 18px;
+          bottom: 18px;
+          z-index: 3;
+          display: inline-flex;
+          align-items: flex-end;
+          gap: 5px;
+          padding: 10px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(247,200,98,0.22);
+          background: rgba(3,7,14,0.72);
+          box-shadow: 0 10px 24px rgba(0,0,0,0.32);
+          opacity: 0.9;
+        }
+
+        .orkio-avatar-hero__equalizer span {
+          width: 4px;
+          height: 12px;
+          border-radius: 999px;
+          background: linear-gradient(180deg, #ffe5a0, #f7c862 58%, #7b520f);
+          transform-origin: center bottom;
+          opacity: calc(0.45 + (var(--orkio-voice-level) * 0.55));
+          transform: scaleY(calc(0.42 + (var(--orkio-mouth-open) * 1.15)));
+          transition: transform 80ms linear, opacity 120ms linear;
+        }
+
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__portraitShell {
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.05),
+            0 24px 70px rgba(0,0,0,0.46),
+            0 0 calc(42px + (var(--orkio-voice-glow) * 36px)) rgba(247,200,98,0.18);
+        }
+
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__equalizer span {
+          opacity: 1;
+        }
+
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__equalizer span:nth-child(2) {
+          transform: scaleY(calc(0.36 + (var(--orkio-mouth-open) * 1.32)));
+        }
+
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__equalizer span:nth-child(3) {
+          transform: scaleY(calc(0.28 + (var(--orkio-mouth-open) * 1.48)));
+        }
+
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__equalizer span:nth-child(4) {
+          transform: scaleY(calc(0.40 + (var(--orkio-mouth-open) * 1.18)));
         }
 
         @keyframes orkioAvatarPulse {
@@ -406,15 +518,10 @@ export default function AvatarHero3D({
           50% { box-shadow: 0 0 0 9px rgba(247,200,98,0.04); transform: scale(1.06); }
         }
 
-        @keyframes orkioAvatarFloat {
-          0%, 100% { transform: translateX(8px) translateY(28px); }
-          50% { transform: translateX(8px) translateY(20px); }
-        }
-
-        @keyframes orkioAvatarVoiceRing {
-          0% { opacity: 0.24; transform: scale(0.84); }
-          55% { opacity: 0.72; transform: scale(1.04); }
-          100% { opacity: 0; transform: scale(1.22); }
+        @keyframes orkioEqualizer {
+          0%, 100% { transform: scaleY(0.45); }
+          40% { transform: scaleY(1.2); }
+          70% { transform: scaleY(0.7); }
         }
 
         @media (max-width: 960px) {
@@ -433,16 +540,16 @@ export default function AvatarHero3D({
           }
 
           .orkio-avatar-hero__visual {
-            min-height: 360px;
+            min-height: 380px;
+            padding: 12px 18px 24px;
           }
 
-          .orkio-avatar-hero__visual {
-            padding-top: 24px;
+          .orkio-avatar-hero__visual::before {
+            inset: 12px 18px 18px;
           }
 
-          .orkio-avatar-hero__avatar {
-            width: min(340px, 82%);
-            transform: translateX(0) translateY(18px);
+          .orkio-avatar-hero__portraitShell {
+            width: min(360px, 92%);
           }
         }
 
@@ -456,14 +563,12 @@ export default function AvatarHero3D({
           }
 
           .orkio-avatar-hero__visual {
-            min-height: 310px;
+            min-height: 320px;
           }
 
-          .orkio-avatar-hero__voiceWaves {
-            right: 10%;
-            top: 26%;
-            width: 84px;
-            height: 84px;
+          .orkio-avatar-hero__portraitShell {
+            width: min(300px, 92%);
+            border-radius: 24px;
           }
         }
       `}</style>
@@ -502,23 +607,29 @@ export default function AvatarHero3D({
         </div>
 
         <div className="orkio-avatar-hero__visual" aria-hidden="true">
-          {!avatarFailed ? (
-            <img
-              className="orkio-avatar-hero__avatar"
-              src={AVATAR_SRC}
-              alt=""
-              loading="eager"
-              decoding="async"
-              onError={() => setAvatarFailed(true)}
-            />
-          ) : (
-            <div className="orkio-avatar-hero__fallback" />
-          )}
+          <div className="orkio-avatar-hero__portraitShell">
+            {!avatarFailed ? (
+              <img
+                className="orkio-avatar-hero__avatar"
+                src={AVATAR_SRC}
+                alt=""
+                loading="eager"
+                decoding="async"
+                onError={() => setAvatarFailed(true)}
+              />
+            ) : (
+              <div className="orkio-avatar-hero__fallback" />
+            )}
 
-          <div className="orkio-avatar-hero__voiceWaves">
-            <span />
-            <span />
-            <span />
+            <div className="orkio-avatar-hero__voiceAura" aria-hidden="true" />
+            <div className="orkio-avatar-hero__voiceAperture" aria-hidden="true" />
+
+            <div className="orkio-avatar-hero__equalizer" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
           </div>
         </div>
       </div>
