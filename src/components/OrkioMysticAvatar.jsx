@@ -2,10 +2,14 @@ import React, { useState } from "react";
 import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
 
 /**
- * OrkioMysticAvatar — Componente reutilizável de avatar com vídeo
+ * AO-04G — OrkioMysticAvatar com repasse de syncKey
  *
- * Evolução: agora usa OrkioVideoMedia quando variant="card" ou "portrait",
- * com fallback para imagem estática se vídeo falhar.
+ * Evolução: aceita e repassa `syncKey` para OrkioVideoMedia,
+ * garantindo que a troca idle→speaking seja sincronizada com o áudio.
+ *
+ * Props adicionadas:
+ * - syncKey: incrementado a cada nova sessão de fala
+ *
  * Mantém compatibilidade total com a API existente.
  */
 
@@ -15,10 +19,10 @@ export default function OrkioMysticAvatar({
   size = 92,
   variant = "orb",
   speaking = false,
+  syncKey = 0,
   label = "A Orkio — presença místico-tecnológica",
   onClick,
   useVideo = true,
-  speechSyncKey = 0,
 }) {
   const [failed, setFailed] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
@@ -49,135 +53,86 @@ export default function OrkioMysticAvatar({
           padding: 0;
           color: inherit;
           background: transparent;
-          isolation: isolate;
-          flex: 0 0 auto;
-        }
-
-        button.orkio-mystic-avatar {
-          cursor: pointer;
-        }
-
-        .orkio-mystic-avatar::before,
-        .orkio-mystic-avatar::after {
-          content: "";
-          position: absolute;
+          cursor: ${onClick ? "pointer" : "default"};
+          overflow: hidden;
           border-radius: 999px;
-          pointer-events: none;
-        }
-
-        .orkio-mystic-avatar::before {
-          inset: -8%;
-          background:
-            radial-gradient(circle at 50% 45%, rgba(245,196,81,0.28), transparent 54%),
-            radial-gradient(circle at 50% 50%, rgba(129,140,248,0.22), transparent 62%);
-          filter: blur(10px);
-          opacity: 0.86;
-          z-index: -2;
-        }
-
-        .orkio-mystic-avatar::after {
-          inset: -2%;
-          border: 1px solid rgba(245,196,81,0.28);
-          box-shadow:
-            0 0 34px rgba(245,196,81,0.18),
-            inset 0 0 28px rgba(129,140,248,0.12);
-          z-index: 1;
+          transition: transform 180ms ease;
         }
 
         .orkio-mystic-avatar.is-card {
-          height: calc(var(--orkio-avatar-size) * 1.22);
           border-radius: 30px;
+          width: var(--orkio-avatar-size);
+          height: auto;
+          aspect-ratio: 0.75;
         }
 
-        .orkio-mystic-avatar.is-card::before,
-        .orkio-mystic-avatar.is-card::after {
-          border-radius: 30px;
+        .orkio-mystic-avatar:hover {
+          transform: ${onClick ? "scale(1.02)" : "none"};
         }
 
-        .orkio-mystic-avatar__img,
-        .orkio-mystic-avatar__fallback {
+        .orkio-mystic-avatar__img {
           width: 100%;
           height: 100%;
-          display: block;
           object-fit: cover;
-          border-radius: 999px;
-          border: 1px solid rgba(245,196,81,0.34);
-          background: #05070d;
-          box-shadow:
-            0 20px 54px rgba(0,0,0,0.36),
-            0 0 46px rgba(245,196,81,0.16);
+          border-radius: inherit;
         }
 
-        .orkio-mystic-avatar.is-card .orkio-mystic-avatar__img,
-        .orkio-mystic-avatar.is-card .orkio-mystic-avatar__fallback {
-          border-radius: 30px;
-        }
-
-        .orkio-mystic-avatar__fallback {
+        .orkio-mystic-avatar__placeholder {
+          width: 100%;
+          height: 100%;
+          border-radius: inherit;
+          background: radial-gradient(circle at 42% 24%, rgba(245,196,81,0.34), transparent 30%),
+                      radial-gradient(circle at 50% 60%, rgba(129,140,248,0.18), transparent 44%),
+                      linear-gradient(180deg, rgba(11,18,32,0.96), rgba(3,7,18,1));
           display: grid;
           place-items: center;
-          background:
-            radial-gradient(circle at 42% 24%, rgba(245,196,81,0.34), transparent 30%),
-            radial-gradient(circle at 50% 60%, rgba(129,140,248,0.18), transparent 44%),
-            linear-gradient(180deg, rgba(11,18,32,0.96), rgba(3,7,18,1));
           color: #f8dfa3;
-          font-size: clamp(22px, 22%, 42px);
+          font-size: 22px;
           font-weight: 950;
-          letter-spacing: -0.06em;
         }
 
-        .orkio-mystic-avatar__halo {
+        .orkio-mystic-avatar__voiceRing {
           position: absolute;
-          inset: 10%;
+          inset: -6px;
           border-radius: inherit;
-          background:
-            linear-gradient(120deg, transparent 0%, rgba(245,196,81,0.18) 44%, transparent 62%);
-          mix-blend-mode: screen;
-          opacity: 0.58;
-          transform: rotate(-8deg);
+          border: 2px solid rgba(247,200,98,0.38);
+          opacity: 0;
+          transition: opacity 200ms ease;
           pointer-events: none;
-          z-index: 2;
         }
 
-        .orkio-mystic-avatar.is-speaking {
-          animation: orkioMysticFloat 2.4s ease-in-out infinite;
-        }
-
-        .orkio-mystic-avatar.is-speaking::after {
-          animation: orkioMysticPulse 1.05s ease-in-out infinite;
-        }
-
-        @keyframes orkioMysticFloat {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-4px); }
+        .orkio-mystic-avatar.is-speaking .orkio-mystic-avatar__voiceRing {
+          opacity: 1;
+          animation: orkioMysticPulse 1.2s ease-in-out infinite;
         }
 
         @keyframes orkioMysticPulse {
-          0%, 100% { box-shadow: 0 0 34px rgba(245,196,81,0.18), inset 0 0 28px rgba(129,140,248,0.12); }
-          50% { box-shadow: 0 0 58px rgba(245,196,81,0.34), 0 0 0 10px rgba(245,196,81,0.06), inset 0 0 34px rgba(129,140,248,0.18); }
+          0%, 100% { transform: scale(1); opacity: 0.6; }
+          50% { transform: scale(1.06); opacity: 1; }
         }
       `}</style>
 
       {shouldUseVideo ? (
         <OrkioVideoMedia
           speaking={speaking}
-          speakingSyncKey={speechSyncKey}
+          syncKey={syncKey}
           borderRadius={isCard ? "30px" : "999px"}
-          onError={() => setVideoFailed(true)}
+          onVideoError={() => setVideoFailed(true)}
         />
-      ) : failed ? (
-        <span className="orkio-mystic-avatar__fallback">O</span>
-      ) : (
+      ) : !failed ? (
         <img
           className="orkio-mystic-avatar__img"
           src={AVATAR_SRC}
-          alt={label}
-          loading="lazy"
+          alt=""
+          loading="eager"
           decoding="async"
           onError={() => setFailed(true)}
         />
+      ) : (
+        <div className="orkio-mystic-avatar__placeholder">O</div>
       )}
-      <span className="orkio-mystic-avatar__halo" aria-hidden="true" />
+
+      <div className="orkio-mystic-avatar__voiceRing" aria-hidden="true" />
     </Wrapper>
   );
 }
