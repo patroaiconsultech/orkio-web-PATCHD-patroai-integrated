@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch, createPublicCheckout } from "../ui/api.js";
-import OrkioSphereMark from "../ui/OrkioSphereMark.jsx";
 import {
   setTenant,
   savePendingOtpContext,
@@ -1393,27 +1392,41 @@ export default function AuthPage() {
 
           <div style={{ position: "relative" }}>
             <div style={sideChip}>
-              <OrkioSphereMark size={18} glow={false} ring={false} />
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 999,
+                  background: "radial-gradient(circle at center, rgba(247,200,98,1), rgba(247,200,98,0.55))",
+                  boxShadow: "0 0 12px rgba(247,200,98,0.35)",
+                  flex: "0 0 auto",
+                }}
+              />
               {presentation.badge}
             </div>
 
-            <div style={{ marginTop: 26, display: "flex", alignItems: "center", gap: 16 }}>
-              <OrkioSphereMark size={72} badge />
-              <div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.18em",
-                    color: palette.faint,
-                    fontWeight: 950,
-                  }}
-                >
-                  PatroAI + Orkio
-                </div>
-                <div style={{ marginTop: 7, fontSize: 30, lineHeight: 1.04, fontWeight: 950 }}>
-                  {presentation.panelTitle}
-                </div>
+            <div
+              style={{
+                marginTop: 26,
+                display: "grid",
+                gap: 10,
+                alignItems: "start",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.18em",
+                  color: palette.faint,
+                  fontWeight: 950,
+                }}
+              >
+                PatroAI + Orkio
+              </div>
+              <div style={{ fontSize: 30, lineHeight: 1.04, fontWeight: 950, maxWidth: 420 }}>
+                {presentation.panelTitle}
               </div>
             </div>
 
