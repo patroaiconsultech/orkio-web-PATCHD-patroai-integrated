@@ -4269,13 +4269,14 @@ function scheduleRealtimeIdleFollowup() {
                     type: "server_vad",
                     silence_duration_ms: REALTIME_SERVER_VAD_SILENCE_MS,
                     prefix_padding_ms: REALTIME_SERVER_VAD_PREFIX_MS,
-                    create_response: true
+                    // AO19E: guard transcript before creating model response.
+                    create_response: false
                   }
                 }
               }
             }
           }));
-          queueRealtimeTelemetry('SESSION_UPDATED', { transcription_model: transcription.model, language: langHint || null, create_response: true });
+          queueRealtimeTelemetry('SESSION_UPDATED', { transcription_model: transcription.model, language: langHint || null, create_response: false, guarded_response: true });
         } catch (err) { queueRealtimeTelemetry('SESSION_UPDATE_ERROR', { message: err?.message || null }); }
       });
 
@@ -4285,10 +4286,9 @@ function scheduleRealtimeIdleFollowup() {
           if (ev?.type) queueRealtimeTelemetry('EVENT_RECEIVED', { type: ev.type });
 
                     // Turn arming + optional Magic Words (B3)
-          // server_vad + create_response=true is the source of truth.
-          // We do not auto-fire response.create on final transcript here; we wait for the server
-          // to emit the response events, while still allowing optional manual / magic-word triggers
-          // when explicitly requested by the user.
+          // AO19E: server_vad detects the turn only.
+          // The frontend calls /api/realtime/guard first and only then sends response.create.
+          // This prevents stale context drift on short presence/ack commands.
           if (ev?.type === 'conversation.item.input_audio_transcription.completed') {
             const raw = (ev?.transcript || ev?.text || ev?.result?.transcript || '').toString();
             queueRealtimeEvent({ event_type: 'transcript.final', role: 'user', content: raw, is_final: true });
@@ -4298,7 +4298,10 @@ function scheduleRealtimeIdleFollowup() {
             markRealtimeUserActivity();
 
             Promise.resolve(guardAndMaybeBlockRealtimeTranscript(raw)).then((blocked) => {
-              if (blocked) return;
+              if (blocked) {
+                queueRealtimeTelemetry('VOICE_INTENT_GUARD_BLOCKED', { transcript_length: raw.length });
+                return;
+              }
               setRtcReadyToRespond(!!raw.trim());
               const norm = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
               const endsWithCmd = (s, cmd) => s === cmd || s.endsWith(' ' + cmd);
@@ -4313,13 +4316,12 @@ function scheduleRealtimeIdleFollowup() {
                   console.warn('[Realtime] magic trigger failed', err);
                 }
               } else if (raw.trim()) {
+                // AO19E: server_vad only detects the turn. The frontend triggers the
+                // response after the backend guard approves the transcript.
                 setRtcReadyToRespond(true);
-                scheduleRealtimeAutoResponseFallback(raw, "server_vad_no_response_yet");
-                logRealtimeStep('runtime:awaiting_server_auto_response', {
-                  transcript: raw,
-                  auto_fallback_ms: 2600,
-                });
-                queueRealtimeTelemetry('VAD_AWAITING_AUTO_RESPONSE', { transcript_length: raw.length, auto_fallback_ms: 2600 });
+                logRealtimeStep('runtime:guard_passed_trigger_response', { transcript: raw });
+                queueRealtimeTelemetry('VOICE_INTENT_GUARD_PASSED', { transcript_length: raw.length });
+                triggerRealtimeResponse("guarded_transcript");
               }
             });
           }
@@ -4701,6 +4703,19 @@ function scheduleRealtimeIdleFollowup() {
         const data = await getRealtimeSession({ session_id: sid, finals_only: true });
         await handleBackendRealtimeAssistantResponses(data || {});
       } catch (err) {
+        // AO19E: a stale realtime poll may receive 401/404 after session rotation/end.
+        // This must not poison the active conversation or trigger auth/logout behavior.
+        if (err?.status === 401 || err?.status === 403 || err?.status === 404) {
+          queueRealtimeTelemetry('LIVE_POLL_STOPPED_STALE_SESSION', {
+            status: err?.status || null,
+            session_id: sid,
+            current_session_id: rtcSessionIdRef.current || null,
+          });
+          if (sid !== rtcSessionIdRef.current || !realtimeModeRef.current || err?.status === 404) {
+            clearRealtimeLivePoll();
+            return;
+          }
+        }
         console.warn("[Realtime] live poll failed", err);
       }
     }, 1400);
