@@ -2,15 +2,17 @@ import React, { useState } from "react";
 import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
 
 /**
- * AO-04G — OrkioMysticAvatar com repasse de syncKey
+ * AO-04K — OrkioMysticAvatar corretivo
  *
- * Evolução: aceita e repassa `syncKey` para OrkioVideoMedia,
- * garantindo que a troca idle→speaking seja sincronizada com o áudio.
+ * Simplificado: syncKey removido (desnecessário com a nova abordagem
+ * de opacidade contínua no OrkioVideoMedia).
  *
- * Props adicionadas:
- * - syncKey: incrementado a cada nova sessão de fala
+ * O vídeo speaking roda continuamente em background.
+ * Quando speaking=true, a opacidade do idle vai para 0 instantaneamente,
+ * revelando o speaking por baixo.
  *
  * Mantém compatibilidade total com a API existente.
+ * syncKey ainda é aceito como prop mas ignorado internamente.
  */
 
 const AVATAR_SRC = "/patroai-assets/orkio-mystic-tech-v1.webp";
@@ -19,7 +21,7 @@ export default function OrkioMysticAvatar({
   size = 92,
   variant = "orb",
   speaking = false,
-  syncKey = 0,
+  syncKey = 0, // aceito para compatibilidade, não usado
   label = "A Orkio — presença místico-tecnológica",
   onClick,
   useVideo = true,
@@ -115,7 +117,6 @@ export default function OrkioMysticAvatar({
       {shouldUseVideo ? (
         <OrkioVideoMedia
           speaking={speaking}
-          syncKey={syncKey}
           borderRadius={isCard ? "30px" : "999px"}
           onVideoError={() => setVideoFailed(true)}
         />
