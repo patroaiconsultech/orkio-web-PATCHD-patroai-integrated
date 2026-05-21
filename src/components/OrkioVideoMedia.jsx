@@ -1,23 +1,37 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * OrkioVideoMedia — Componente centralizado de mídia de vídeo da Orkio
+ * OrkioVideoMedia — runtime robusto para vídeo da Orkio
  *
- * Responsabilidades:
- * - Reproduzir orkio-idle-loop quando não estiver falando
- * - Reproduzir orkio-speaking-loop quando estiver falando
- * - Fallback para imagem estática se vídeo falhar
- * - Suporte a .webm com fallback para .mp4
- * - playsInline, muted, loop, preload="metadata"
- * - Responsivo e não trava a UI
+ * AO-04E
+ * - Usa um único <video> ativo por estado para evitar conflitos de autoplay/opacity.
+ * - Prioriza MP4/H.264, que é o caminho mais estável em mobile e desktop.
+ * - Mantém WebM como fallback.
+ * - Usa autoplay real + play() programático + retry em eventos do browser.
+ * - Aplica cache-buster nos assets para evitar CDN/browser servindo versão antiga.
+ * - Cai para a imagem estática somente se MP4 e WebM falharem.
  */
 
-const IDLE_WEBM = "/patroai-assets/orkio-idle-loop.webm";
-const IDLE_MP4 = "/patroai-assets/orkio-idle-loop.mp4";
-const SPEAKING_WEBM = "/patroai-assets/orkio-speaking-loop.webm";
-const SPEAKING_MP4 = "/patroai-assets/orkio-speaking-loop.mp4";
-const POSTER = "/patroai-assets/orkio-video-poster.webp";
+const VIDEO_VERSION = "ao04e-20260521";
+
+const ASSETS = {
+  idle: {
+    mp4: `/patroai-assets/orkio-idle-loop.mp4?v=${VIDEO_VERSION}`,
+    webm: `/patroai-assets/orkio-idle-loop.webm?v=${VIDEO_VERSION}`,
+  },
+  speaking: {
+    mp4: `/patroai-assets/orkio-speaking-loop.mp4?v=${VIDEO_VERSION}`,
+    webm: `/patroai-assets/orkio-speaking-loop.webm?v=${VIDEO_VERSION}`,
+  },
+};
+
+const POSTER = `/patroai-assets/orkio-video-poster.webp?v=${VIDEO_VERSION}`;
 const FALLBACK_IMG = "/patroai-assets/orkio-mystic-tech-v1.webp";
+
+const FORMATS = [
+  { key: "mp4", type: "video/mp4" },
+  { key: "webm", type: "video/webm" },
+];
 
 export default function OrkioVideoMedia({
   speaking = false,
@@ -27,38 +41,100 @@ export default function OrkioVideoMedia({
   borderRadius = "28px",
   onError,
 }) {
-  const idleRef = useRef(null);
-  const speakingRef = useRef(null);
+  const videoRef = useRef(null);
+  const retryTimerRef = useRef(null);
+  const [formatIndex, setFormatIndex] = useState(0);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  const mode = speaking ? "speaking" : "idle";
+  const format = FORMATS[formatIndex] || FORMATS[0];
+
+  const activeSource = useMemo(() => {
+    return ASSETS[mode][format.key];
+  }, [mode, format.key]);
 
   useEffect(() => {
-    if (videoFailed) return;
+    setReady(false);
+  }, [activeSource]);
 
-    const idleEl = idleRef.current;
-    const speakingEl = speakingRef.current;
+  useEffect(() => {
+    if (videoFailed) return undefined;
 
-    if (speaking) {
-      if (idleEl) {
-        idleEl.pause();
-        idleEl.style.opacity = "0";
+    const video = videoRef.current;
+    if (!video) return undefined;
+
+    let disposed = false;
+
+    const safePlay = async () => {
+      if (disposed || !videoRef.current) return;
+
+      const el = videoRef.current;
+
+      try {
+        el.muted = true;
+        el.defaultMuted = true;
+        el.loop = true;
+        el.playsInline = true;
+
+        if (el.paused || el.readyState >= 2) {
+          const playPromise = el.play();
+          if (playPromise && typeof playPromise.then === "function") {
+            await playPromise;
+          }
+        }
+      } catch {
+        // Alguns browsers só liberam o play após interação.
+        // Mantemos o vídeo renderizado e tentamos novamente em eventos abaixo.
       }
-      if (speakingEl) {
-        speakingEl.style.opacity = "1";
-        speakingEl.play().catch(() => {});
-      }
-    } else {
-      if (speakingEl) {
-        speakingEl.pause();
-        speakingEl.style.opacity = "0";
-      }
-      if (idleEl) {
-        idleEl.style.opacity = "1";
-        idleEl.play().catch(() => {});
-      }
-    }
-  }, [speaking, videoFailed]);
+    };
+
+    const schedulePlay = () => {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = window.setTimeout(safePlay, 60);
+    };
+
+    schedulePlay();
+
+    const handleVisibility = () => {
+      if (!document.hidden) schedulePlay();
+    };
+
+    const handleUserGesture = () => {
+      schedulePlay();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", schedulePlay);
+    window.addEventListener("pointerdown", handleUserGesture, { passive: true });
+    window.addEventListener("touchstart", handleUserGesture, { passive: true });
+
+    return () => {
+      disposed = true;
+      window.clearTimeout(retryTimerRef.current);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", schedulePlay);
+      window.removeEventListener("pointerdown", handleUserGesture);
+      window.removeEventListener("touchstart", handleUserGesture);
+    };
+  }, [activeSource, videoFailed]);
+
+  function handleLoaded() {
+    setReady(true);
+    const video = videoRef.current;
+    if (!video) return;
+
+    try {
+      video.play().catch(() => {});
+    } catch {}
+  }
 
   function handleVideoError() {
+    if (formatIndex < FORMATS.length - 1) {
+      setFormatIndex((current) => current + 1);
+      return;
+    }
+
     setVideoFailed(true);
     if (typeof onError === "function") onError();
   }
@@ -73,14 +149,14 @@ export default function OrkioVideoMedia({
     ...style,
   };
 
-  const videoStyle = {
+  const mediaStyle = {
     position: "absolute",
     inset: 0,
     width: "100%",
     height: "100%",
     objectFit: "cover",
+    objectPosition: "center center",
     borderRadius,
-    transition: "opacity 300ms ease",
   };
 
   if (videoFailed) {
@@ -89,12 +165,7 @@ export default function OrkioVideoMedia({
         <img
           src={FALLBACK_IMG}
           alt="Orkio"
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            borderRadius,
-          }}
+          style={mediaStyle}
           loading="eager"
           decoding="async"
         />
@@ -103,38 +174,51 @@ export default function OrkioVideoMedia({
   }
 
   return (
-    <div className={`orkio-video-media ${className}`} style={containerStyle}>
-      {/* Idle loop */}
+    <div
+      className={`orkio-video-media ${className} ${ready ? "is-ready" : "is-loading"}`}
+      data-orkio-video-mode={mode}
+      data-orkio-video-format={format.key}
+      style={containerStyle}
+    >
       <video
-        ref={idleRef}
-        style={{ ...videoStyle, opacity: speaking ? 0 : 1 }}
+        key={`${mode}-${format.key}`}
+        ref={videoRef}
+        src={activeSource}
+        style={{
+          ...mediaStyle,
+          opacity: ready ? 1 : 0,
+          transition: "opacity 260ms ease",
+        }}
         poster={POSTER}
-        playsInline
+        autoPlay
         muted
+        defaultMuted
         loop
-        preload="metadata"
+        playsInline
+        preload="auto"
+        disablePictureInPicture
+        controls={false}
+        controlsList="nodownload noplaybackrate noremoteplayback"
+        onLoadedData={handleLoaded}
+        onCanPlay={handleLoaded}
+        onPlaying={() => setReady(true)}
         onError={handleVideoError}
         aria-hidden="true"
-      >
-        <source src={IDLE_WEBM} type="video/webm" />
-        <source src={IDLE_MP4} type="video/mp4" />
-      </video>
+      />
 
-      {/* Speaking loop */}
-      <video
-        ref={speakingRef}
-        style={{ ...videoStyle, opacity: speaking ? 1 : 0 }}
-        poster={POSTER}
-        playsInline
-        muted
-        loop
-        preload="metadata"
-        onError={handleVideoError}
-        aria-hidden="true"
-      >
-        <source src={SPEAKING_WEBM} type="video/webm" />
-        <source src={SPEAKING_MP4} type="video/mp4" />
-      </video>
+      {!ready ? (
+        <img
+          src={POSTER}
+          alt=""
+          aria-hidden="true"
+          style={{
+            ...mediaStyle,
+            opacity: 1,
+          }}
+          loading="eager"
+          decoding="async"
+        />
+      ) : null}
     </div>
   );
 }
