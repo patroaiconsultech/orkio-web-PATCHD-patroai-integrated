@@ -2,6 +2,8 @@ import React, { useMemo, useState } from "react";
 import AvatarHero3D from "../components/AvatarHero3D.jsx";
 import AvatarPrechatModal from "../components/AvatarPrechatModal.jsx";
 import PremiumIcon from "../components/PremiumIcon.jsx";
+import OrkioMysticAvatar from "../components/OrkioMysticAvatar.jsx";
+import LegalFooter from "../components/LegalFooter.jsx";
 
 /**
  * PATROAI CONSULTECH — LANDING INSTITUCIONAL PREMIUM
@@ -146,7 +148,7 @@ export default function PatroaiLanding() {
 
   const orkioSpeech = useMemo(
     () =>
-      "Olá. Eu sou o Orkio. Posso mostrar como a PatroAI transforma processos, sistemas e inteligência artificial em evolução real para empresas, com clareza, estratégia, governança e execução.",
+      "Olá. Eu sou a Orkio. Posso mostrar como a PatroAI transforma processos, sistemas e inteligência artificial em evolução real para empresas, com clareza, estratégia, governança e execução.",
     []
   );
 
@@ -227,8 +229,8 @@ export default function PatroaiLanding() {
         }
 
         .patroai-logo img {
-          width: 58px;
-          height: 58px;
+          width: 75px;
+          height: 75px;
           border-radius: 999px;
           object-fit: cover;
           border: 1px solid rgba(255,214,119,0.28);
@@ -238,7 +240,7 @@ export default function PatroaiLanding() {
 
         .patroai-logo strong {
           display: block;
-          font-size: 29px;
+          font-size: 34px;
           line-height: 0.95;
           font-weight: 950;
           letter-spacing: -0.03em;
@@ -255,8 +257,8 @@ export default function PatroaiLanding() {
         }
 
         .patroai-logo--compact img {
-          width: 42px;
-          height: 42px;
+          width: 55px;
+          height: 55px;
         }
 
         .patroai-logo--compact strong {
@@ -724,8 +726,13 @@ export default function PatroaiLanding() {
             background: linear-gradient(90deg, transparent, rgba(247,200,98,0.28), transparent);
           }
 
-          .patroai-orkio__inner {
+          .patroai-orkio__inner,
+          .patroai-orkio__visual {
             grid-template-columns: 1fr;
+          }
+
+          .patroai-orkio__avatar {
+            min-height: 260px;
           }
         }
 
@@ -739,8 +746,8 @@ export default function PatroaiLanding() {
           }
 
           .patroai-logo img {
-            width: 46px;
-            height: 46px;
+            width: 60px;
+            height: 60px;
           }
 
           .patroai-logo strong {
@@ -903,36 +910,44 @@ export default function PatroaiLanding() {
         <section id="orkio" className="patroai-shell patroai-orkio">
           <div className="patroai-orkio__inner">
             <div>
-              <div className="patroai-section-label">Conheça o Orkio</div>
-              <h2>Conheça o Orkio, a inteligência operacional da PatroAI.</h2>
+              <div className="patroai-section-label">Conheça a Orkio</div>
+              <h2>Conheça a Orkio, a inteligência operacional da PatroAI.</h2>
               <p>
-                Orkio é nosso assistente de IA que entende o contexto do seu negócio, responde suas perguntas,
+                A Orkio é nossa assistente de IA que entende o contexto do seu negócio, responde suas perguntas,
                 orienta decisões e acelera a execução com inteligência e precisão.
               </p>
 
               <div className="patroai-hero__cta">
                 <button type="button" className="patroai-button" onClick={() => navigateTo(ROUTES.orkioOS)}>
-                  Explorar Orkio OS →
+                  Explorar a Orkio OS →
                 </button>
                 <button type="button" className="patroai-button patroai-button--ghost" onClick={handleStartAvatarJourney}>
-                  Conversar com Orkio
+                  Conversar com a Orkio
                 </button>
               </div>
             </div>
 
-            <div className="patroai-orkio__grid">
-              {ORKIO_BENEFITS.map(([icon, label]) => (
-                <article key={label}>
-                  <span className="patroai-orkio__icon">
-                    <PremiumIcon name={icon} size={24} />
-                  </span>
-                  <strong>{label}</strong>
-                </article>
-              ))}
+            <div className="patroai-orkio__visual">
+              <div className="patroai-orkio__avatar">
+                <OrkioMysticAvatar size={210} variant="portrait" label="A Orkio — presença místico-tecnológica da PatroAI" />
+              </div>
+
+              <div className="patroai-orkio__grid">
+                {ORKIO_BENEFITS.map(([icon, label]) => (
+                  <article key={label}>
+                    <span className="patroai-orkio__icon">
+                      <PremiumIcon name={icon} size={24} />
+                    </span>
+                    <strong>{label}</strong>
+                  </article>
+                ))}
+              </div>
             </div>
           </div>
         </section>
       </main>
+
+      <LegalFooter compact />
 
       <footer id="sobre" className="patroai-footer">
         <div className="patroai-shell patroai-footer__inner">
