@@ -117,6 +117,9 @@ async function consumeChatStream(
     onDone,
     onChunk,
     onAgentDone,
+    onAgentStarted,
+    onAgentChunk,
+    onOrchestratorMerge,
     onKeepalive,
     onExecution,
     signal,
@@ -165,6 +168,9 @@ async function consumeChatStream(
     eventCount += 1;
     if (ev === "status") onStatus?.(payload);
     if (ev === "execution") onExecution?.(payload);
+    if (ev === "agent_started") onAgentStarted?.(payload);
+    if (ev === "agent_chunk") onAgentChunk?.(payload);
+    if (ev === "orchestrator_merge") onOrchestratorMerge?.(payload);
     if (ev === "chunk") {
       const delta = String(payload?.delta ?? payload?.content ?? "");
       if (delta) draftText += delta;
@@ -1359,6 +1365,92 @@ const describeExecutionDone = (payload = {}) => ({
   detail: buildExecutionDoneDetail(payload),
   agentName: "",
 });
+
+// AO19A — Enterprise SSE / Execution Graph readiness.
+// These helpers let the current frontend consume richer backend SSE events
+// without breaking the existing stream contract. If the backend does not emit
+// them yet, the behavior remains unchanged.
+const summarizeEnterprisePayload = (payload = {}) => {
+  const parts = [];
+  const executionId = payload?.execution_id || payload?.graph_id || payload?.child_execution_id;
+  const parentAgent = payload?.parent_agent || payload?.parent_agent_name;
+  const status = payload?.status || payload?.state;
+  const risk = payload?.risk;
+  const duration = payload?.duration_ms ?? payload?.elapsed_ms;
+
+  if (executionId) parts.push(`exec ${executionId}`);
+  if (parentAgent) parts.push(`parent ${parentAgent}`);
+  if (status) parts.push(String(status));
+  if (risk) parts.push(`risco ${risk}`);
+  if (duration !== undefined && duration !== null && String(duration) !== "") parts.push(`${duration}ms`);
+
+  const message = String(payload?.message || payload?.detail || payload?.summary || "").trim();
+  if (message) parts.push(message.length > 180 ? `${message.slice(0, 177)}...` : message);
+
+  return parts.join(" • ");
+};
+
+const resolveEnterpriseAgentName = (payload = {}, fallback = "Agente") => (
+  resolveAssistantDisplayName(
+    {
+      agent_name: payload?.agent_name || payload?.agent || payload?.child_agent || payload?.to_agent_name || payload?.parent_agent,
+      final_speaker: payload?.final_speaker,
+      visible_agent: payload?.visible_agent,
+      content: payload?.message || payload?.status || payload?.summary || "",
+    },
+    fallback
+  )
+);
+
+const describeAgentStartedEvent = (payload = {}) => {
+  const agentName = resolveEnterpriseAgentName(payload, "Agente");
+  return {
+    kind: "agent",
+    label: `${agentName} iniciou`,
+    detail: summarizeEnterprisePayload(payload) || "Subagente acionado pelo orquestrador.",
+    agentName,
+  };
+};
+
+const describeAgentChunkEvent = (payload = {}) => {
+  const agentName = resolveEnterpriseAgentName(payload, "Agente");
+  return {
+    kind: "agent",
+    label: `${agentName} em execução`,
+    detail: summarizeEnterprisePayload(payload) || "Subagente enviou progresso.",
+    agentName,
+  };
+};
+
+const describeOrchestratorMergeEvent = (payload = {}) => ({
+  kind: "system",
+  label: "Orquestrador consolidando squads",
+  detail: summarizeEnterprisePayload(payload) || "Merge executivo em andamento.",
+  agentName: payload?.orchestrator || payload?.agent_name || "Orkio",
+});
+
+const describeExecutionGraphSummary = (payload = {}) => {
+  const childGraphs = payload?.child_execution_graphs || payload?.execution_graph?.child_execution_graphs || payload?.execution_graphs;
+  const childAgents = payload?.child_agents || payload?.execution_graph?.child_agents || payload?.runtime_hints?.routing?.child_agents;
+  const parts = [];
+
+  if (Array.isArray(childGraphs) && childGraphs.length) {
+    parts.push(`${childGraphs.length} grafo(s) filho(s)`);
+  } else if (typeof childGraphs === "string" && childGraphs.trim()) {
+    parts.push(`grafos: ${childGraphs}`);
+  }
+
+  if (Array.isArray(childAgents) && childAgents.length) {
+    parts.push(`${childAgents.length} subagente(s)`);
+  } else if (typeof childAgents === "string" && childAgents.trim()) {
+    parts.push(`subagentes: ${childAgents}`);
+  }
+
+  const dispatch = payload?.dispatch_executed ?? payload?.execution_graph?.dispatch_executed;
+  if (dispatch === true) parts.push("dispatch_executed=true");
+
+  return parts.join(" • ");
+};
 
 useEffect(() => { executionTraceRef.current = executionTrace || []; }, [executionTrace]);
 
@@ -2897,6 +2989,30 @@ async function sendMessage(presetMsg = null, opts = {}) {
               }
               appendExecutionTrace(describeExecutionEvent(payload));
             },
+            onAgentStarted: (payload) => {
+              if (isStale()) return;
+              const agentName = resolveEnterpriseAgentName(payload, "Agente");
+              setActiveRuntimeAgent(agentName);
+              appendExecutionTrace(describeAgentStartedEvent(payload));
+              setExecutionTraceExpanded(true);
+            },
+            onAgentChunk: (payload) => {
+              if (isStale()) return;
+              const agentName = resolveEnterpriseAgentName(payload, "");
+              if (agentName) setActiveRuntimeAgent(agentName);
+              // Avoid flooding the visual trace for every token. Only render
+              // semantic progress events that carry status/message/detail.
+              if (payload?.status || payload?.message || payload?.detail || payload?.summary) {
+                appendExecutionTrace(describeAgentChunkEvent(payload));
+              }
+            },
+            onOrchestratorMerge: (payload) => {
+              if (isStale()) return;
+              setRuntimeHandoffLabel("");
+              setActiveRuntimeAgent(payload?.agent_name || payload?.orchestrator || "Orkio");
+              appendExecutionTrace(describeOrchestratorMergeEvent(payload));
+              setExecutionTraceExpanded(true);
+            },
             onChunk: (payload, draftText) => {
               if (isStale()) return;
               setMessages((prev) => prev.map((m) => (
@@ -2945,6 +3061,15 @@ async function sendMessage(presetMsg = null, opts = {}) {
               if (isStale()) return;
               streamDonePayload = payload || null;
               appendExecutionTrace(describeExecutionDone(payload));
+              const graphSummary = describeExecutionGraphSummary(payload);
+              if (graphSummary) {
+                appendExecutionTrace({
+                  kind: "done",
+                  label: "Execution graph consolidado",
+                  detail: graphSummary,
+                  agentName: payload?.agent_name || payload?.final_speaker || "",
+                });
+              }
               if (payload?.thread_id) newThreadId = payload.thread_id;
               if (payload?.runtime_hints) {
                 setRuntimeHints(payload.runtime_hints);
