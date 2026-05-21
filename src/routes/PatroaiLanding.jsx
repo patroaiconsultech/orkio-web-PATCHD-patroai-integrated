@@ -5,7 +5,6 @@ import PremiumIcon from "../components/PremiumIcon.jsx";
 import OrkioMysticAvatar from "../components/OrkioMysticAvatar.jsx";
 import LegalFooter from "../components/LegalFooter.jsx";
 import LandingLanguageSwitch from "../components/LandingLanguageSwitch.jsx";
-import { useLandingLocale } from "../lib/landingLocale.js";
 
 /**
  * PATROAI CONSULTECH — LANDING INSTITUCIONAL PREMIUM
@@ -15,10 +14,11 @@ import { useLandingLocale } from "../lib/landingLocale.js";
  * /patroai → PatroaiLanding
  * /orkio   → Landing / Orkio OS
  *
- * AO-05 — Internacionalização PT/EN:
- * - Adiciona seleção visível de idioma no header.
- * - Mantém português como padrão.
- * - Sincroniza copy da landing com voz/TTS da Orkio.
+ * Patch premium:
+ * - Avatar humanóide por asset WebP com fallback CSS.
+ * - Cérebro/hero visual por asset WebP com fallback CSS.
+ * - Ícones SVG internos, sem nova dependência.
+ * - Voz pública via AvatarHero3D usando /api/public/tts com fallback seguro.
  */
 
 const ROUTES = {
@@ -32,226 +32,68 @@ const ROUTES = {
 const LOGO_PRIMARY = "/patroai-assets/logo-patroai-novo.png";
 const LOGO_FALLBACK = "/patroai-assets/logo-patroai-novo.webp";
 
-const PATROAI_PAGE_COPY = {
-  pt: {
-    navAria: "Navegação principal",
-    brandAria: "Ir para PatroAI",
-    nav: {
-      solutions: "Soluções",
-      orkio: "Plataforma Orkio",
-      resources: "Recursos",
-      about: "Sobre nós",
-    },
-    actions: {
-      admin: "Admin",
-      login: "Login",
-      demo: "Agendar demonstração →",
-    },
-    hero: {
-      kicker: "Consultoria • Tecnologia • IA • Execução",
-      titleBefore: "Criamos sistemas inteligentes para empresas que querem evoluir com",
-      titleHighlight: "clareza, estratégia e execução.",
-      subtitle:
-        "A PatroAI Consultech une consultoria estratégica, desenvolvimento de sistemas, automação e agentes de IA personalizados para transformar desafios empresariais em processos inteligentes, governáveis e escaláveis.",
-      primary: "Conhecer a PatroAI →",
-      secondary: "Falar com Orkio",
-      trust: "Segurança, privacidade e governança em cada etapa.",
-    },
-    orkioSpeech:
-      "Olá. Eu sou a Orkio. Posso mostrar como a PatroAI transforma processos, sistemas e inteligência artificial em evolução real para empresas, com clareza, estratégia, governança e execução.",
-    processAria: "Como atuamos",
-    processSteps: [
-      {
-        number: "01",
-        title: "Diagnosticar",
-        text: "Entendemos o negócio, desafios e oportunidades.",
-        icon: "search",
-      },
-      {
-        number: "02",
-        title: "Planejar",
-        text: "Definimos estratégia, prioridades e arquitetura.",
-        icon: "plan",
-      },
-      {
-        number: "03",
-        title: "Construir",
-        text: "Desenvolvemos soluções sob medida e inteligentes.",
-        icon: "code",
-      },
-      {
-        number: "04",
-        title: "Implantar",
-        text: "Colocamos em produção com segurança e qualidade.",
-        icon: "rocket",
-      },
-      {
-        number: "05",
-        title: "Evoluir",
-        text: "Acompanhamos, otimizamos e ampliamos resultados.",
-        icon: "growth",
-      },
-    ],
-    servicesIntro: {
-      label: "O que fazemos",
-      title: "Soluções que geram clareza, eficiência e evolução contínua.",
-      text:
-        "A PatroAI não entrega apenas tecnologia. Entrega continuidade operacional: entendemos o negócio, desenhamos a solução, construímos o sistema, implantamos com clareza e acompanhamos a evolução.",
-    },
-    services: [
-      {
-        title: "Consultoria Estratégica",
-        text: "Mapeamos dores, oportunidades e prioridades para estruturar caminhos claros de evolução.",
-        icon: "target",
-      },
-      {
-        title: "Desenvolvimento de Sistemas",
-        text: "Criamos soluções digitais sob medida para organizar processos, dados e operações.",
-        icon: "system",
-      },
-      {
-        title: "Agentes de IA Personalizados",
-        text: "Construímos agentes inteligentes adaptados ao contexto, linguagem e objetivos de cada negócio.",
-        icon: "brain",
-      },
-      {
-        title: "Automação e Governança",
-        text: "Conectamos tecnologia, controle e execução para reduzir fricção e aumentar eficiência.",
-        icon: "gear",
-      },
-    ],
-    orkioSection: {
-      label: "Conheça a Orkio",
-      title: "Conheça a Orkio, a inteligência operacional da PatroAI.",
-      text:
-        "A Orkio é nossa assistente de IA que entende o contexto do seu negócio, responde suas perguntas, orienta decisões e acelera a execução com inteligência e precisão.",
-      primary: "Explorar a Orkio OS →",
-      secondary: "Conversar com a Orkio",
-      avatarLabel: "A Orkio — presença místico-tecnológica da PatroAI",
-      avatarTitle: "Presença da Orkio",
-      avatarText: "Avatar místico-tecnológico preparado para voz, texto e diagnóstico guiado.",
-    },
-    orkioBenefits: [
-      ["search", "Entende seu negócio"],
-      ["voice", "Responde por voz e texto"],
-      ["brain", "Gera insights e recomendações"],
-      ["gear", "Acompanha e evolui com você"],
-    ],
-    footer: {
-      text: "PatroAI Consultech · Sistemas inteligentes, agentes de IA personalizados e execução com governança.",
-      rights: "© 2026 PatroAI. Todos os direitos reservados.",
-    },
+const PROCESS_STEPS = [
+  {
+    number: "01",
+    title: "Diagnosticar",
+    text: "Entendemos o negócio, desafios e oportunidades.",
+    icon: "search",
   },
-  en: {
-    navAria: "Main navigation",
-    brandAria: "Go to PatroAI",
-    nav: {
-      solutions: "Solutions",
-      orkio: "Orkio Platform",
-      resources: "Features",
-      about: "About us",
-    },
-    actions: {
-      admin: "Admin",
-      login: "Login",
-      demo: "Schedule a demo →",
-    },
-    hero: {
-      kicker: "Consulting • Technology • AI • Execution",
-      titleBefore: "We create intelligent systems for companies that want to evolve with",
-      titleHighlight: "clarity, strategy and execution.",
-      subtitle:
-        "PatroAI Consultech combines strategic consulting, software development, automation and personalized AI agents to turn business challenges into intelligent, governable and scalable processes.",
-      primary: "Discover PatroAI →",
-      secondary: "Talk to Orkio",
-      trust: "Security, privacy and governance at every step.",
-    },
-    orkioSpeech:
-      "Hello. I am Orkio. I can show how PatroAI turns processes, systems and artificial intelligence into real company evolution, with clarity, strategy, governance and execution.",
-    processAria: "How we work",
-    processSteps: [
-      {
-        number: "01",
-        title: "Diagnose",
-        text: "We understand the business, challenges and opportunities.",
-        icon: "search",
-      },
-      {
-        number: "02",
-        title: "Plan",
-        text: "We define strategy, priorities and architecture.",
-        icon: "plan",
-      },
-      {
-        number: "03",
-        title: "Build",
-        text: "We develop tailored and intelligent solutions.",
-        icon: "code",
-      },
-      {
-        number: "04",
-        title: "Deploy",
-        text: "We put solutions into production with safety and quality.",
-        icon: "rocket",
-      },
-      {
-        number: "05",
-        title: "Evolve",
-        text: "We monitor, optimize and expand results.",
-        icon: "growth",
-      },
-    ],
-    servicesIntro: {
-      label: "What we do",
-      title: "Solutions that create clarity, efficiency and continuous evolution.",
-      text:
-        "PatroAI does not deliver technology alone. It delivers operational continuity: we understand the business, design the solution, build the system, deploy with clarity and follow the evolution.",
-    },
-    services: [
-      {
-        title: "Strategic Consulting",
-        text: "We map pains, opportunities and priorities to structure clear paths of evolution.",
-        icon: "target",
-      },
-      {
-        title: "Software Development",
-        text: "We create tailored digital solutions to organize processes, data and operations.",
-        icon: "system",
-      },
-      {
-        title: "Personalized AI Agents",
-        text: "We build intelligent agents adapted to each business context, language and goals.",
-        icon: "brain",
-      },
-      {
-        title: "Automation and Governance",
-        text: "We connect technology, control and execution to reduce friction and increase efficiency.",
-        icon: "gear",
-      },
-    ],
-    orkioSection: {
-      label: "Meet Orkio",
-      title: "Meet Orkio, PatroAI's operational intelligence.",
-      text:
-        "Orkio is our AI assistant that understands your business context, answers your questions, guides decisions and accelerates execution with intelligence and precision.",
-      primary: "Explore Orkio OS →",
-      secondary: "Talk to Orkio",
-      avatarLabel: "Orkio — PatroAI's mystic-technological presence",
-      avatarTitle: "Orkio's presence",
-      avatarText: "Mystic-technological avatar prepared for voice, text and guided diagnosis.",
-    },
-    orkioBenefits: [
-      ["search", "Understands your business"],
-      ["voice", "Responds by voice and text"],
-      ["brain", "Generates insights and recommendations"],
-      ["gear", "Follows and evolves with you"],
-    ],
-    footer: {
-      text: "PatroAI Consultech · Intelligent systems, personalized AI agents and execution with governance.",
-      rights: "© 2026 PatroAI. All rights reserved.",
-    },
+  {
+    number: "02",
+    title: "Planejar",
+    text: "Definimos estratégia, prioridades e arquitetura.",
+    icon: "plan",
   },
-};
+  {
+    number: "03",
+    title: "Construir",
+    text: "Desenvolvemos soluções sob medida e inteligentes.",
+    icon: "code",
+  },
+  {
+    number: "04",
+    title: "Implantar",
+    text: "Colocamos em produção com segurança e qualidade.",
+    icon: "rocket",
+  },
+  {
+    number: "05",
+    title: "Evoluir",
+    text: "Acompanhamos, otimizamos e ampliamos resultados.",
+    icon: "growth",
+  },
+];
+
+const SERVICES = [
+  {
+    title: "Consultoria Estratégica",
+    text: "Mapeamos dores, oportunidades e prioridades para estruturar caminhos claros de evolução.",
+    icon: "target",
+  },
+  {
+    title: "Desenvolvimento de Sistemas",
+    text: "Criamos soluções digitais sob medida para organizar processos, dados e operações.",
+    icon: "system",
+  },
+  {
+    title: "Agentes de IA Personalizados",
+    text: "Construímos agentes inteligentes adaptados ao contexto, linguagem e objetivos de cada negócio.",
+    icon: "brain",
+  },
+  {
+    title: "Automação e Governança",
+    text: "Conectamos tecnologia, controle e execução para reduzir fricção e aumentar eficiência.",
+    icon: "gear",
+  },
+];
+
+const ORKIO_BENEFITS = [
+  ["search", "Entende seu negócio"],
+  ["voice", "Responde por voz e texto"],
+  ["brain", "Gera insights e recomendações"],
+  ["gear", "Acompanha e evolui com você"],
+];
 
 function rememberAppRedirect() {
   try {
@@ -298,18 +140,25 @@ function PatroaiLogo({ compact = false }) {
 
 export default function PatroaiLanding() {
   const [prechatOpen, setPrechatOpen] = useState(false);
-  const { locale, setLocale, ttsLocale } = useLandingLocale();
-  const copy = PATROAI_PAGE_COPY[locale] || PATROAI_PAGE_COPY.pt;
 
-  const heroSubtitle = useMemo(() => copy.hero.subtitle, [copy.hero.subtitle]);
-  const orkioSpeech = useMemo(() => copy.orkioSpeech, [copy.orkioSpeech]);
+  const heroSubtitle = useMemo(
+    () =>
+      "A PatroAI Consultech une consultoria estratégica, desenvolvimento de sistemas, automação e agentes de IA personalizados para transformar desafios empresariais em processos inteligentes, governáveis e escaláveis.",
+    []
+  );
+
+  const orkioSpeech = useMemo(
+    () =>
+      "Olá. Eu sou a Orkio. Posso mostrar como a PatroAI transforma processos, sistemas e inteligência artificial em evolução real para empresas, com clareza, estratégia, governança e execução.",
+    []
+  );
 
   function handleLogin() {
-    safeNavigateToAuth({ mode: "login", source: "patroai_landing", lang: locale });
+    safeNavigateToAuth({ mode: "login", source: "patroai_landing" });
   }
 
   function handleDemo() {
-    safeNavigateToAuth({ mode: "register", source: "patroai_demo", lang: locale });
+    safeNavigateToAuth({ mode: "register", source: "patroai_demo" });
   }
 
   function handleStartAvatarJourney() {
@@ -324,12 +173,13 @@ export default function PatroaiLanding() {
       prechat: 1,
       mode: "register",
       source: "patroai_landing",
-      lang: locale,
     });
   }
 
   return (
-    <div className="patroai-page">
+    <>
+      <LandingLanguageSwitch />
+      <div className="patroai-page">
       <style>{`
         .patroai-page {
           min-height: 100vh;
@@ -1000,36 +850,28 @@ export default function PatroaiLanding() {
         }
       `}</style>
 
-      <LandingLanguageSwitch
-        locale={locale}
-        onChange={setLocale}
-        compact
-        fixed
-      />
-
-
       <header className="patroai-topbar">
         <div className="patroai-shell patroai-topbar__inner">
-          <button type="button" className="patroai-brand-button" onClick={() => navigateTo(`${ROUTES.patroai}?lang=${locale}`)} aria-label={copy.brandAria}>
+          <button type="button" className="patroai-brand-button" onClick={() => navigateTo(ROUTES.patroai)} aria-label="Ir para PatroAI">
             <PatroaiLogo />
           </button>
 
-          <nav className="patroai-nav" aria-label={copy.navAria}>
-            <a href="#solucoes">{copy.nav.solutions}</a>
-            <a href={`${ROUTES.orkioOS}?lang=${locale}`}>{copy.nav.orkio}</a>
-            <a href="#como-atuamos">{copy.nav.resources}</a>
-            <a href="#sobre">{copy.nav.about}</a>
+          <nav className="patroai-nav" aria-label="Navegação principal">
+            <a href="#solucoes">Soluções</a>
+            <a href={ROUTES.orkioOS}>Plataforma Orkio</a>
+            <a href="#como-atuamos">Recursos</a>
+            <a href="#sobre">Sobre nós</a>
           </nav>
 
           <div className="patroai-actions">
             <button type="button" className="patroai-button patroai-button--ghost patroai-button--admin" onClick={() => navigateTo(ROUTES.admin)}>
-              {copy.actions.admin}
+              Admin
             </button>
             <button type="button" className="patroai-button patroai-button--ghost" onClick={handleLogin}>
-              {copy.actions.login}
+              Login
             </button>
             <button type="button" className="patroai-button" onClick={handleDemo}>
-              {copy.actions.demo}
+              Agendar demonstração →
             </button>
           </div>
         </div>
@@ -1038,41 +880,41 @@ export default function PatroaiLanding() {
       <main>
         <section className="patroai-shell patroai-hero">
           <div className="patroai-copy">
-            <div className="patroai-kicker">{copy.hero.kicker}</div>
+            <div className="patroai-kicker">Consultoria • Tecnologia • IA • Execução</div>
 
             <h1>
-              {copy.hero.titleBefore} <span className="patroai-gradient-text">{copy.hero.titleHighlight}</span>
+              Criamos sistemas inteligentes para empresas que querem evoluir com{" "}
+              <span className="patroai-gradient-text">clareza, estratégia e execução.</span>
             </h1>
 
             <p>{heroSubtitle}</p>
 
             <div className="patroai-hero__cta">
               <button type="button" className="patroai-button" onClick={handleDemo}>
-                {copy.hero.primary}
+                Conhecer a PatroAI →
               </button>
               <button type="button" className="patroai-button patroai-button--ghost" onClick={handleStartAvatarJourney}>
-                {copy.hero.secondary}
+                Falar com Orkio
               </button>
             </div>
 
             <div className="patroai-trust">
               <PremiumIcon name="shield" size={22} />
-              <span>{copy.hero.trust}</span>
+              <span>Segurança, privacidade e governança em cada etapa.</span>
             </div>
           </div>
 
           <div className="patroai-stage">
             <AvatarHero3D
               speech={orkioSpeech}
-              locale={ttsLocale}
               onText={handleStartAvatarJourney}
               onDiagnosis={handleStartAvatarJourney}
             />
           </div>
         </section>
 
-        <section id="como-atuamos" className="patroai-shell patroai-process" aria-label={copy.processAria}>
-          {copy.processSteps.map((step) => (
+        <section id="como-atuamos" className="patroai-shell patroai-process" aria-label="Como atuamos">
+          {PROCESS_STEPS.map((step) => (
             <article key={step.title} className="patroai-step">
               <div className="patroai-step__top">
                 <small>{step.number}</small>
@@ -1088,13 +930,16 @@ export default function PatroaiLanding() {
 
         <section id="solucoes" className="patroai-shell patroai-services">
           <div className="patroai-services__intro">
-            <div className="patroai-section-label">{copy.servicesIntro.label}</div>
-            <h2>{copy.servicesIntro.title}</h2>
-            <p>{copy.servicesIntro.text}</p>
+            <div className="patroai-section-label">O que fazemos</div>
+            <h2>Soluções que geram clareza, eficiência e evolução contínua.</h2>
+            <p>
+              A PatroAI não entrega apenas tecnologia. Entrega continuidade operacional: entendemos o negócio,
+              desenhamos a solução, construímos o sistema, implantamos com clareza e acompanhamos a evolução.
+            </p>
           </div>
 
           <div className="patroai-cards">
-            {copy.services.map((service) => (
+            {SERVICES.map((service) => (
               <article key={service.title} className="patroai-card">
                 <span className="patroai-card__icon">
                   <PremiumIcon name={service.icon} size={29} />
@@ -1109,31 +954,34 @@ export default function PatroaiLanding() {
         <section id="orkio" className="patroai-shell patroai-orkio">
           <div className="patroai-orkio__inner">
             <div className="patroai-orkio__content">
-              <div className="patroai-section-label">{copy.orkioSection.label}</div>
-              <h2>{copy.orkioSection.title}</h2>
-              <p>{copy.orkioSection.text}</p>
+              <div className="patroai-section-label">Conheça a Orkio</div>
+              <h2>Conheça a Orkio, a inteligência operacional da PatroAI.</h2>
+              <p>
+                A Orkio é nossa assistente de IA que entende o contexto do seu negócio, responde suas perguntas,
+                orienta decisões e acelera a execução com inteligência e precisão.
+              </p>
 
               <div className="patroai-hero__cta">
-                <button type="button" className="patroai-button" onClick={() => navigateTo(`${ROUTES.orkioOS}?lang=${locale}`)}>
-                  {copy.orkioSection.primary}
+                <button type="button" className="patroai-button" onClick={() => navigateTo(ROUTES.orkioOS)}>
+                  Explorar a Orkio OS →
                 </button>
                 <button type="button" className="patroai-button patroai-button--ghost" onClick={handleStartAvatarJourney}>
-                  {copy.orkioSection.secondary}
+                  Conversar com a Orkio
                 </button>
               </div>
 
               <div className="patroai-orkio__inline-avatar" aria-hidden="true">
-                <OrkioMysticAvatar size={118} variant="portrait" label={copy.orkioSection.avatarLabel} />
+                <OrkioMysticAvatar size={118} variant="portrait" label="A Orkio — presença místico-tecnológica da PatroAI" />
                 <span>
-                  <strong>{copy.orkioSection.avatarTitle}</strong>
-                  {copy.orkioSection.avatarText}
+                  <strong>Presença da Orkio</strong>
+                  Avatar místico-tecnológico preparado para voz, texto e diagnóstico guiado.
                 </span>
               </div>
             </div>
 
             <div className="patroai-orkio__visual">
               <div className="patroai-orkio__grid">
-                {copy.orkioBenefits.map(([icon, label]) => (
+                {ORKIO_BENEFITS.map(([icon, label]) => (
                   <article key={label}>
                     <span className="patroai-orkio__icon">
                       <PremiumIcon name={icon} size={24} />
@@ -1147,22 +995,22 @@ export default function PatroaiLanding() {
         </section>
       </main>
 
-      <LegalFooter compact locale={locale} />
+      <LegalFooter compact />
 
       <footer id="sobre" className="patroai-footer">
         <div className="patroai-shell patroai-footer__inner">
           <PatroaiLogo compact />
-          <span>{copy.footer.text}</span>
-          <span>{copy.footer.rights}</span>
+          <span>PatroAI Consultech · Sistemas inteligentes, agentes de IA personalizados e execução com governança.</span>
+          <span>© 2026 PatroAI. Todos os direitos reservados.</span>
         </div>
       </footer>
 
       <AvatarPrechatModal
         open={prechatOpen}
-        locale={locale}
         onClose={() => setPrechatOpen(false)}
         onContinue={handleContinueAfterPrechat}
       />
-    </div>
+      </div>
+    </>
   );
 }
