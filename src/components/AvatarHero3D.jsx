@@ -8,14 +8,14 @@ import {
 import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
 
 /**
- * AO-04G — Avatar com sincronização vídeo/voz robusta
+ * AO-04H — Avatar com áudio restaurado + sincronização vídeo/voz
  *
  * Princípio: O ÁUDIO é a fonte de verdade do estado speaking.
  *
  * Fluxo:
  * 1. Clique → speaking=true + incrementa syncKey
  * 2. Vídeo speaking inicia imediatamente (lead visual ~120ms)
- * 3. TTS blob é carregado e audio.play() é chamado
+ * 3. TTS blob é carregado e audio.play() é chamado sem roteamento Web Audio
  * 4. speaking permanece true durante TODA a duração do áudio
  * 5. SOMENTE audio.onended → speaking=false → vídeo volta para idle
  *
@@ -135,8 +135,10 @@ export default function AvatarHero3D({
         endSpeaking();
       };
 
-      // Iniciar motion controller com áudio real
-      await getMotionController().startAudioElement(audio, { strength: 1 });
+      // AO-04H: não roteamos o áudio real pelo Web Audio antes do play().
+      // Em alguns browsers isso deixa o AudioContext suspenso e silencia a voz.
+      // A voz real manda no estado; a animação visual usa motion sintético seguro.
+      getMotionController().startSynthetic({ strength: 0.66 });
 
       // 4. Aguardar lead visual antes de iniciar áudio
       await new Promise((r) => setTimeout(r, VIDEO_LEAD_MS));
