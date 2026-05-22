@@ -1,7 +1,7 @@
 CAMINHO REAL DO PROJETO:
 src/components/OrkioVoiceHero.jsx
 
-COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
+CONTEÚDO COMPLETO:
 ================================================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import OrkioMysticAvatar from "./OrkioMysticAvatar.jsx";
@@ -55,10 +55,14 @@ export default function OrkioVoiceHero({
   const [locale, setLocale] = useState(defaultLocale === "en-US" ? "en-US" : "pt-BR");
   const [playing, setPlaying] = useState(false);
   const [voiceLoading, setVoiceLoading] = useState(false);
+  const [voiceSlow, setVoiceSlow] = useState(false);
+  const [voiceFallback, setVoiceFallback] = useState(false);
+  const [voiceError, setVoiceError] = useState(false);
   const audioRef = useRef(null);
   const heroRef = useRef(null);
   const motionRef = useRef(null);
   const lockRef = useRef(false);
+  const slowTimerRef = useRef(null);
 
   const isPt = locale === "pt-BR";
 
@@ -77,14 +81,32 @@ export default function OrkioVoiceHero({
     return motionRef.current;
   }, []);
 
+  const clearVoiceSlowTimer = useCallback(() => {
+    if (slowTimerRef.current) {
+      window.clearTimeout(slowTimerRef.current);
+      slowTimerRef.current = null;
+    }
+  }, []);
+
+  const startVoiceSlowTimer = useCallback(() => {
+    clearVoiceSlowTimer();
+    slowTimerRef.current = window.setTimeout(() => {
+      if (lockRef.current) setVoiceSlow(true);
+    }, 2800);
+  }, [clearVoiceSlowTimer]);
+
   useEffect(() => {
     return () => {
+      clearVoiceSlowTimer();
       motionRef.current?.dispose?.();
       try {
         audioRef.current?.pause?.();
       } catch {}
+      try {
+        cleanupAudioUrl(audioRef.current);
+      } catch {}
     };
-  }, []);
+  }, [clearVoiceSlowTimer]);
 
   const effectiveSpeech = useMemo(() => {
     if (typeof speech === "string" && speech.trim()) return speech.trim();
@@ -114,17 +136,24 @@ export default function OrkioVoiceHero({
   // Encerrar fala — ÚNICO ponto que volta playing para false
   const endPlaying = useCallback(() => {
     lockRef.current = false;
+    clearVoiceSlowTimer();
     setVoiceLoading(false);
+    setVoiceSlow(false);
+    setVoiceFallback(false);
     getMotionController().stop();
     setPlaying(false);
-  }, [getMotionController]);
+  }, [clearVoiceSlowTimer, getMotionController]);
 
   function fallbackBrowserSpeech() {
     return speakWithOrkioBrowserVoice(effectiveSpeech, {
       locale,
       onStart: () => {
         // Browser speech disparou — AGORA sim ativamos o visual
+        clearVoiceSlowTimer();
         setVoiceLoading(false);
+        setVoiceSlow(false);
+        setVoiceFallback(true);
+        setVoiceError(false);
         lockRef.current = true;
         setPlaying(true);
         getMotionController().startSynthetic({ strength: 0.64 });
@@ -133,6 +162,7 @@ export default function OrkioVoiceHero({
         endPlaying();
       },
       onError: () => {
+        setVoiceError(true);
         endPlaying();
       },
     });
@@ -145,6 +175,10 @@ export default function OrkioVoiceHero({
     // FASE 1: Carregamento — vídeo permanece em IDLE
     lockRef.current = true;
     setVoiceLoading(true);
+    setVoiceSlow(false);
+    setVoiceFallback(false);
+    setVoiceError(false);
+    startVoiceSlowTimer();
     // playing permanece FALSE aqui — o vídeo NÃO muda
 
     try {
@@ -179,7 +213,10 @@ export default function OrkioVoiceHero({
       const activateVisual = () => {
         if (visualActivated || !lockRef.current) return;
         visualActivated = true;
+        clearVoiceSlowTimer();
         setVoiceLoading(false);
+        setVoiceSlow(false);
+        setVoiceError(false);
         setPlaying(true); // ← ÚNICO momento que playing vira true
         getMotionController().startSynthetic({ strength: 0.64 });
       };
@@ -194,6 +231,7 @@ export default function OrkioVoiceHero({
 
       audio.onerror = () => {
         cleanupAudioUrl(audio);
+        setVoiceError(true);
         endPlaying();
       };
 
@@ -207,16 +245,51 @@ export default function OrkioVoiceHero({
 
     } catch (err) {
       console.warn("ORKIO_VOICE_HERO_TTS_FAILED", err?.message || err);
+      clearVoiceSlowTimer();
       setVoiceLoading(false);
+      setVoiceSlow(false);
+      setVoiceFallback(true);
       const browserFallbackOk = fallbackBrowserSpeech();
       if (!browserFallbackOk) {
+        setVoiceFallback(false);
+        setVoiceError(true);
         endPlaying();
       }
     }
   }
 
+
+  const voiceStatusText = useMemo(() => {
+    if (voiceError) {
+      return isPt
+        ? "Voz temporariamente indisponível. Você pode seguir pelos botões abaixo."
+        : "Voice is temporarily unavailable. You can continue with the actions below.";
+    }
+
+    if (voiceSlow) {
+      return isPt
+        ? "A voz está levando um pouco mais. Mantive a Orkio pronta sem travar a página."
+        : "Voice is taking a little longer. Orkio is still ready and the page is not blocked.";
+    }
+
+    if (voiceFallback) {
+      return isPt
+        ? "Usando o canal de voz mais seguro disponível."
+        : "Using the safest available voice channel.";
+    }
+
+    if (voiceLoading) return isPt ? "Preparando voz..." : "Preparing voice...";
+    if (playing) return isPt ? "Orkio falando" : "Orkio speaking";
+    return badgeLabel;
+  }, [badgeLabel, isPt, playing, voiceError, voiceFallback, voiceLoading, voiceSlow]);
+
   return (
-    <section ref={heroRef} className={`orkio-voice-hero ${playing ? "is-playing" : ""}`} aria-label="Orkio — assistente de voz">
+    <section
+      ref={heroRef}
+      className={`orkio-voice-hero ${playing ? "is-playing" : ""} ${voiceLoading ? "is-loading" : ""} ${voiceError ? "is-voice-error" : ""}`}
+      aria-label="Orkio — assistente de voz"
+      data-orkio-voice-state={voiceError ? "voice-error" : voiceLoading ? "voice-loading" : playing ? "speaking" : "idle"}
+    >
       <style>{`
         .orkio-voice-hero {
           position: relative;
@@ -321,10 +394,15 @@ export default function OrkioVoiceHero({
           transition: transform 140ms ease, border-color 160ms ease, background 160ms ease;
         }
 
-        .orkio-voice-hero__cta:hover {
+        .orkio-voice-hero__cta:hover:not(:disabled) {
           transform: translateY(-1px);
           border-color: rgba(247,200,98,0.56);
           background: rgba(247,200,98,0.08);
+        }
+
+        .orkio-voice-hero__cta:disabled {
+          cursor: wait;
+          opacity: 0.72;
         }
 
         .orkio-voice-hero__cta--primary {
@@ -354,8 +432,21 @@ export default function OrkioVoiceHero({
           background: #f7c862;
         }
 
-        .orkio-voice-hero.is-playing .orkio-voice-hero__badge-dot {
+        .orkio-voice-hero.is-playing .orkio-voice-hero__badge-dot,
+        .orkio-voice-hero.is-loading .orkio-voice-hero__badge-dot {
           animation: orkioVoiceDotPulse 1s ease-in-out infinite;
+        }
+
+        .orkio-voice-hero.is-voice-error .orkio-voice-hero__badge-dot {
+          background: #fb923c;
+        }
+
+        .orkio-voice-hero__notice {
+          margin-top: 10px;
+          max-width: 430px;
+          color: rgba(255,226,157,0.72);
+          font-size: 12.5px;
+          line-height: 1.55;
         }
 
         .orkio-voice-hero__visual {
@@ -504,8 +595,14 @@ export default function OrkioVoiceHero({
           <p>{subtitle}</p>
 
           <div className="orkio-voice-hero__ctas">
-            <button type="button" className="orkio-voice-hero__cta orkio-voice-hero__cta--primary" onClick={speak}>
-              {voiceLoading ? "Preparando..." : playing ? "Ouvindo Orkio..." : "▶ Ouvir a Orkio"}
+            <button
+              type="button"
+              className="orkio-voice-hero__cta orkio-voice-hero__cta--primary"
+              onClick={speak}
+              disabled={voiceLoading || playing}
+              aria-busy={voiceLoading ? "true" : "false"}
+            >
+              {voiceLoading ? (isPt ? "Preparando..." : "Preparing...") : playing ? (isPt ? "Orkio falando..." : "Orkio speaking...") : (isPt ? "▶ Ouvir a Orkio" : "▶ Hear Orkio")}
             </button>
             {onPrimaryAction && (
               <button type="button" className="orkio-voice-hero__cta" onClick={onPrimaryAction}>
@@ -524,10 +621,18 @@ export default function OrkioVoiceHero({
             )}
           </div>
 
-          <div className="orkio-voice-hero__badge">
+          <div className="orkio-voice-hero__badge" aria-live="polite">
             <span className="orkio-voice-hero__badge-dot" />
-            <span>{voiceLoading ? "Carregando voz..." : playing ? "Orkio falando" : badgeLabel}</span>
+            <span>{voiceStatusText}</span>
           </div>
+
+          {(voiceSlow || voiceError) && (
+            <div className="orkio-voice-hero__notice">
+              {isPt
+                ? "A experiência continua por texto, diagnóstico ou demonstração, sem bloquear sua jornada."
+                : "You can continue by text, diagnosis, or demo without blocking your journey."}
+            </div>
+          )}
 
           {effectiveQuickPrompts.length > 0 && (
             <div className="orkio-voice-hero__quickBox">
@@ -562,5 +667,3 @@ export default function OrkioVoiceHero({
     </section>
   );
 }
-
-================================================================================
