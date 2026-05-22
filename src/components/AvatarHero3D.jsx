@@ -1,7 +1,7 @@
 CAMINHO REAL DO PROJETO:
 src/components/AvatarHero3D.jsx
 
-COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
+CONTEÚDO COMPLETO:
 ================================================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createOrkioSpeechMotion } from "../lib/orkioSpeechMotion.js";
@@ -47,10 +47,14 @@ export default function AvatarHero3D({
   const [speaking, setSpeaking] = useState(false);
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [videoAvailable, setVideoAvailable] = useState(true);
+  const [voiceSlow, setVoiceSlow] = useState(false);
+  const [voiceFallback, setVoiceFallback] = useState(false);
+  const [voiceError, setVoiceError] = useState(false);
   const audioRef = useRef(null);
   const heroRef = useRef(null);
   const motionRef = useRef(null);
   const lockRef = useRef(false); // impede duplo-clique e garante que onended é respeitado
+  const slowTimerRef = useRef(null);
 
   const effectiveLocale = String(locale || "pt-BR").toLowerCase().startsWith("en")
     ? "en-US"
@@ -71,9 +75,13 @@ export default function AvatarHero3D({
           speak: "Talk to Orkio",
           type: "Type a question",
           diagnosis: "Start business diagnosis",
-          loadingStatus: "Loading Orkio's voice.",
+          loadingStatus: "Preparing Orkio's voice.",
+          slowStatus: "Voice is taking a little longer. You can continue by text.",
+          fallbackStatus: "Using the safest available voice channel.",
+          errorStatus: "Voice is temporarily unavailable. Continue by text.",
           speakingStatus: "Answering by voice.",
           idleStatus: "I answer by voice and by text.",
+          continueText: "Continue by text",
         }
       : {
           defaultSpeech:
@@ -87,9 +95,13 @@ export default function AvatarHero3D({
           speak: "Falar com a Orkio",
           type: "Digitar pergunta",
           diagnosis: "Iniciar diagnóstico empresarial",
-          loadingStatus: "Carregando a voz da Orkio.",
+          loadingStatus: "Preparando a voz da Orkio.",
+          slowStatus: "A voz está levando um pouco mais. Você pode continuar por texto.",
+          fallbackStatus: "Usando o canal de voz mais seguro disponível.",
+          errorStatus: "A voz está temporariamente indisponível. Continue por texto.",
           speakingStatus: "Respondendo por voz.",
           idleStatus: "Respondo por voz e por texto.",
+          continueText: "Continuar por texto",
         };
 
     return { ...defaults, ...(copy && typeof copy === "object" ? copy : {}) };
@@ -116,29 +128,54 @@ export default function AvatarHero3D({
     return motionRef.current;
   }, []);
 
+  const clearVoiceSlowTimer = useCallback(() => {
+    if (slowTimerRef.current) {
+      window.clearTimeout(slowTimerRef.current);
+      slowTimerRef.current = null;
+    }
+  }, []);
+
+  const startVoiceSlowTimer = useCallback(() => {
+    clearVoiceSlowTimer();
+    slowTimerRef.current = window.setTimeout(() => {
+      if (lockRef.current) setVoiceSlow(true);
+    }, 2800);
+  }, [clearVoiceSlowTimer]);
+
   useEffect(() => {
     return () => {
+      clearVoiceSlowTimer();
       motionRef.current?.dispose?.();
       try {
         audioRef.current?.pause?.();
       } catch {}
+      try {
+        cleanupAudioUrl(audioRef.current);
+      } catch {}
     };
-  }, []);
+  }, [clearVoiceSlowTimer]);
 
   // Encerrar fala de forma segura — ÚNICO ponto que volta speaking para false
   const endSpeaking = useCallback(() => {
     lockRef.current = false;
+    clearVoiceSlowTimer();
     setVoiceLoading(false);
+    setVoiceSlow(false);
+    setVoiceFallback(false);
     getMotionController().stop();
     setSpeaking(false);
-  }, [getMotionController]);
+  }, [clearVoiceSlowTimer, getMotionController]);
 
   function fallbackBrowserSpeech() {
     return speakWithOrkioBrowserVoice(effectiveSpeech, {
       locale: effectiveLocale,
       onStart: () => {
         // Browser speech disparou — AGORA sim ativamos o visual
+        clearVoiceSlowTimer();
         setVoiceLoading(false);
+        setVoiceSlow(false);
+        setVoiceFallback(true);
+        setVoiceError(false);
         setSpeaking(true);
         getMotionController().startSynthetic({ strength: 0.66 });
       },
@@ -146,6 +183,7 @@ export default function AvatarHero3D({
         endSpeaking();
       },
       onError: () => {
+        setVoiceError(true);
         endSpeaking();
       },
     });
@@ -158,6 +196,10 @@ export default function AvatarHero3D({
     // FASE 1: Carregamento — vídeo permanece em IDLE
     lockRef.current = true;
     setVoiceLoading(true);
+    setVoiceSlow(false);
+    setVoiceFallback(false);
+    setVoiceError(false);
+    startVoiceSlowTimer();
     // speaking permanece FALSE aqui — o vídeo NÃO muda
 
     try {
@@ -194,7 +236,10 @@ export default function AvatarHero3D({
       const activateVisual = () => {
         if (visualActivated || !lockRef.current) return;
         visualActivated = true;
+        clearVoiceSlowTimer();
         setVoiceLoading(false);
+        setVoiceSlow(false);
+        setVoiceError(false);
         setSpeaking(true); // ← ÚNICO momento que speaking vira true
         getMotionController().startSynthetic({ strength: 0.66 });
       };
@@ -209,6 +254,7 @@ export default function AvatarHero3D({
 
       audio.onerror = () => {
         cleanupAudioUrl(audio);
+        setVoiceError(true);
         endSpeaking();
       };
 
@@ -224,17 +270,27 @@ export default function AvatarHero3D({
 
     } catch (err) {
       console.warn("ORKIO_AVATAR_TTS_FAILED", err?.message || err);
+      clearVoiceSlowTimer();
       setVoiceLoading(false);
+      setVoiceSlow(false);
+      setVoiceFallback(true);
       const browserFallbackOk = fallbackBrowserSpeech();
       if (!browserFallbackOk) {
+        setVoiceFallback(false);
+        setVoiceError(true);
         endSpeaking();
         safeCallback(onText);
       }
     }
-  }, [effectiveSpeech, endSpeaking, getMotionController, onText, safeCallback, speaking, tenant, token, voiceLoading]);
+  }, [effectiveSpeech, endSpeaking, getMotionController, onText, safeCallback, clearVoiceSlowTimer, speaking, startVoiceSlowTimer, tenant, token, voiceLoading]);
 
   return (
-    <section ref={heroRef} className={`orkio-avatar-hero ${speaking ? "is-speaking" : ""}`} aria-label="Assistente Orkio">
+    <section
+      ref={heroRef}
+      className={`orkio-avatar-hero ${speaking ? "is-speaking" : ""} ${voiceLoading ? "is-loading" : ""} ${voiceError ? "is-voice-error" : ""}`}
+      aria-label="Assistente Orkio"
+      data-orkio-voice-state={voiceError ? "voice-error" : voiceLoading ? "voice-loading" : speaking ? "speaking" : "idle"}
+    >
       <style>{`
         .orkio-avatar-hero {
           position: relative;
@@ -350,10 +406,15 @@ export default function AvatarHero3D({
           transition: transform 160ms ease, border-color 180ms ease, background 180ms ease;
         }
 
-        .orkio-avatar-hero__action:hover {
+        .orkio-avatar-hero__action:hover:not(:disabled) {
           transform: translateY(-1px);
           border-color: rgba(247,200,98,0.58);
           background: rgba(247,200,98,0.10);
+        }
+
+        .orkio-avatar-hero__action:disabled {
+          cursor: wait;
+          opacity: 0.72;
         }
 
         .orkio-avatar-hero__action b {
@@ -380,8 +441,32 @@ export default function AvatarHero3D({
           box-shadow: 0 0 0 rgba(247,200,98,0);
         }
 
-        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__pulse {
+        .orkio-avatar-hero.is-speaking .orkio-avatar-hero__pulse,
+        .orkio-avatar-hero.is-loading .orkio-avatar-hero__pulse {
           animation: orkioAvatarPulse 1.1s ease-in-out infinite;
+        }
+
+        .orkio-avatar-hero.is-voice-error .orkio-avatar-hero__pulse {
+          border-color: rgba(251,146,60,0.58);
+          background: radial-gradient(circle, #fb923c 0 20%, transparent 25%);
+        }
+
+        .orkio-avatar-hero__fallbackAction {
+          appearance: none;
+          border: 1px solid rgba(247,200,98,0.22);
+          border-radius: 999px;
+          background: rgba(247,200,98,0.08);
+          color: rgba(255,226,157,0.92);
+          font-size: 12px;
+          font-weight: 850;
+          padding: 7px 11px;
+          cursor: pointer;
+          transition: background 140ms ease, border-color 140ms ease;
+        }
+
+        .orkio-avatar-hero__fallbackAction:hover {
+          background: rgba(247,200,98,0.15);
+          border-color: rgba(247,200,98,0.42);
         }
 
         .orkio-avatar-hero__visual {
@@ -518,7 +603,13 @@ export default function AvatarHero3D({
           <p>{avatarCopy.body}</p>
 
           <div className="orkio-avatar-hero__actions">
-            <button type="button" className="orkio-avatar-hero__action" onClick={handleSpeak}>
+            <button
+              type="button"
+              className="orkio-avatar-hero__action"
+              onClick={handleSpeak}
+              disabled={voiceLoading || speaking}
+              aria-busy={voiceLoading ? "true" : "false"}
+            >
               <span>{voiceLoading ? avatarCopy.preparing : speaking ? avatarCopy.speaking : avatarCopy.speak}</span>
               <b>≋</b>
             </button>
@@ -534,7 +625,28 @@ export default function AvatarHero3D({
 
           <div className="orkio-avatar-hero__status" aria-live="polite">
             <span className="orkio-avatar-hero__pulse" aria-hidden="true" />
-            <span>{voiceLoading ? avatarCopy.loadingStatus : speaking ? avatarCopy.speakingStatus : avatarCopy.idleStatus}</span>
+            <span>
+              {voiceError
+                ? avatarCopy.errorStatus
+                : voiceSlow
+                  ? avatarCopy.slowStatus
+                  : voiceFallback
+                    ? avatarCopy.fallbackStatus
+                    : voiceLoading
+                      ? avatarCopy.loadingStatus
+                      : speaking
+                        ? avatarCopy.speakingStatus
+                        : avatarCopy.idleStatus}
+            </span>
+            {(voiceSlow || voiceError) && (
+              <button
+                type="button"
+                className="orkio-avatar-hero__fallbackAction"
+                onClick={() => safeCallback(onText)}
+              >
+                {avatarCopy.continueText}
+              </button>
+            )}
           </div>
         </div>
 
@@ -582,5 +694,3 @@ export default function AvatarHero3D({
     </section>
   );
 }
-
-================================================================================
