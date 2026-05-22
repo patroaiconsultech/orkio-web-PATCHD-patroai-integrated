@@ -1,8 +1,3 @@
-CAMINHO REAL DO PROJETO:
-src/components/LandingLanguageSwitch.jsx
-
-COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
-================================================================================
 import React, { useMemo } from "react";
 import {
   LANDING_LOCALES,
