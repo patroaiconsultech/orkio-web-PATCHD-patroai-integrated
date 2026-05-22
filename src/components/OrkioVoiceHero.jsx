@@ -1,8 +1,3 @@
-CAMINHO REAL DO PROJETO:
-src/components/OrkioVoiceHero.jsx
-
-CONTEÚDO COMPLETO:
-================================================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import OrkioMysticAvatar from "./OrkioMysticAvatar.jsx";
 import { createOrkioSpeechMotion } from "../lib/orkioSpeechMotion.js";
