@@ -1591,7 +1591,24 @@ const closeCapacityModal = () => {
 
   const [v2vPhase, setV2vPhase] = useState(null); // null | 'recording' | 'stt' | 'chat' | 'tts' | 'playing' | 'error'
   const [v2vError, setV2vError] = useState(null);
+  // AO20E — Voice Mode State Machine
+  // Stable, user-visible state for realtime voice: idle → listening → transcribing → thinking → speaking → idle/listening.
+  const [realtimeVoiceState, setRealtimeVoiceState] = useState("idle");
+  const realtimeVoiceStateRef = useRef("idle");
+  const realtimeVoiceOutputSpokenKeysRef = useRef(new Set());
   const [walletBlockedDetail, setWalletBlockedDetail] = useState(null);
+
+  function setRealtimeVoiceModeState(next, meta = {}) {
+    const state = String(next || "idle").trim().toLowerCase() || "idle";
+    realtimeVoiceStateRef.current = state;
+    setRealtimeVoiceState(state);
+    try {
+      queueRealtimeTelemetry(`VOICE_STATE_${state.toUpperCase()}`, meta && typeof meta === "object" ? meta : { meta });
+    } catch {}
+    try {
+      console.info("[AO20E] realtime voice state", state, meta || {});
+    } catch {}
+  }
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   // BUG-02 FIX: flag para distinguir stop intencional (stopMicMediaRecorder)
@@ -4097,6 +4114,7 @@ function scheduleRealtimeIdleFollowup() {
       logRealtimeStep('start:begin', { threadId, destSingle, summitRuntimeMode: summitRuntimeModeRef.current, summitLanguageProfile: summitLanguageProfileRef.current });
       setV2vError(null);
       setV2vPhase('connecting');
+      setRealtimeVoiceModeState('connecting', { source: 'startRealtime' });
       setUploadStatus('⚡ Conectando Realtime (WebRTC)...');
 
       if (rtcSessionIdRef.current) {
@@ -4283,6 +4301,7 @@ function scheduleRealtimeIdleFollowup() {
         rtcResponseInFlightRef.current = false;
         if (realtimeModeRef.current) {
           setV2vPhase("error");
+          setRealtimeVoiceModeState('error', { source: 'data_channel_close' });
           setV2vError("Realtime channel closed");
           void activateSilentRealtimeFallback("dc_closed");
         }
@@ -4296,6 +4315,7 @@ function scheduleRealtimeIdleFollowup() {
 
             dc.addEventListener('open', () => {
         setV2vPhase('listening');
+        setRealtimeVoiceModeState('listening', { source: 'data_channel_open' });
         queueRealtimeTelemetry('DATA_CHANNEL_OPEN');
         setUploadStatus('⚡ Realtime ativo — fale normalmente.');
         setTimeout(() => setUploadStatus(''), 1500);
@@ -4340,6 +4360,7 @@ function scheduleRealtimeIdleFollowup() {
           // The frontend calls /api/realtime/guard first and only then sends response.create.
           // This prevents stale context drift on short presence/ack commands.
           if (ev?.type === 'conversation.item.input_audio_transcription.completed') {
+            setRealtimeVoiceModeState('transcribing', { source: 'input_audio_transcription_completed' });
             const raw = (ev?.transcript || ev?.text || ev?.result?.transcript || '').toString();
             queueRealtimeEvent({ event_type: 'transcript.final', role: 'user', content: raw, is_final: true });
             queueRealtimeTelemetry('TRANSCRIPT_FINAL', { length: raw.length, preview: raw.slice(0, 120) });
@@ -4360,6 +4381,7 @@ function scheduleRealtimeIdleFollowup() {
                 logRealtimeStep('runtime:backend_orchestration_authority', { transcript: raw });
                 queueRealtimeTelemetry('BACKEND_REALTIME_ORCHESTRATION_SELECTED', { transcript_length: raw.length });
                 setV2vPhase('responding');
+                setRealtimeVoiceModeState('thinking', { source: 'backend_orchestration_authority' });
                 setUploadStatus('🧠 Orkio roteando pelo backend multiagente...');
                 setTimeout(() => setUploadStatus(''), 1800);
                 try { void flushRealtimeEvents(); } catch {}
@@ -4399,6 +4421,7 @@ function scheduleRealtimeIdleFollowup() {
             clearRealtimeResponseTimeout();
             rtcResponseInFlightRef.current = true;
             setV2vPhase('responding');
+            setRealtimeVoiceModeState('thinking', { source: 'response.created' });
             rtcTextBufRef.current = '';
             rtcAudioTranscriptBufRef.current = '';
             rtcLastAssistantFinalRef.current = '';
@@ -4484,6 +4507,7 @@ function scheduleRealtimeIdleFollowup() {
             queueRealtimeTelemetry('REALTIME_ERROR', { message: ev?.error?.message || null, code: ev?.error?.code || null, type: ev?.error?.type || null });
             setV2vError(ev?.error?.message || 'Erro Realtime');
             setV2vPhase('error');
+            setRealtimeVoiceModeState('error', { source: 'realtime_error_event', code: ev?.error?.code || null });
             void activateSilentRealtimeFallback('realtime_error', { disarm: false });
           }
         } catch (err) {
@@ -4536,6 +4560,7 @@ function scheduleRealtimeIdleFollowup() {
         threadId: rtcThreadIdRef.current || threadId || null,
       });
       setV2vPhase('error');
+      setRealtimeVoiceModeState('error', { source: 'startRealtime_error', message: e?.message || null });
       setV2vError(e?.message || 'Falha ao iniciar Realtime');
       setUploadStatus('❌ Realtime: ' + (e?.message || 'falha'));
       setTimeout(() => setUploadStatus(''), 4000);
@@ -4705,7 +4730,7 @@ function scheduleRealtimeIdleFollowup() {
       const speakerType = String(ev?.speaker_type || ev?.role || "").trim().toLowerCase();
       return (
         (eventType === "response.final" || eventType === "transcript.final")
-        && speakerType === "agent"
+        && ["agent", "assistant", "model"].includes(speakerType)
       );
     });
 
@@ -4751,9 +4776,11 @@ function scheduleRealtimeIdleFollowup() {
       setTimeout(() => setUploadStatus(''), 2200);
 
       try {
-        await playTts(content, agentId, {
-          forceAuto: true,
-          messageId: null,
+        await speakRealtimeAssistantFinal(content, {
+          source: "backend_realtime_session",
+          agentName,
+          agentId,
+          messageId: evId,
           traceId: v2vTraceRef.current || null,
           voiceOverride: resolvedVoice,
         });
@@ -4831,6 +4858,66 @@ function scheduleRealtimeIdleFollowup() {
     }
   }
 
+  async function speakRealtimeAssistantFinal(rawText, opts = {}) {
+    const finalText = String(rawText || "").trim();
+    if (!finalText) return;
+    if (!realtimeModeRef.current && !voiceModeRef.current) return;
+
+    const dedupeKey = [
+      String(opts?.messageId || ""),
+      String(opts?.source || ""),
+      normalizeAo20bcRealtimeText(finalText).slice(0, 220),
+    ].join(":");
+
+    if (realtimeVoiceOutputSpokenKeysRef.current.has(dedupeKey)) return;
+    realtimeVoiceOutputSpokenKeysRef.current.add(dedupeKey);
+    if (realtimeVoiceOutputSpokenKeysRef.current.size > 80) {
+      try {
+        const keep = Array.from(realtimeVoiceOutputSpokenKeysRef.current).slice(-40);
+        realtimeVoiceOutputSpokenKeysRef.current = new Set(keep);
+      } catch {}
+    }
+
+    try {
+      setRealtimeVoiceModeState("speaking", {
+        source: opts?.source || "assistant_final",
+        agent_name: opts?.agentName || null,
+        message_id: opts?.messageId || null,
+      });
+      queueRealtimeTelemetry("REALTIME_TTS_REQUEST", {
+        source: opts?.source || "assistant_final",
+        agent_name: opts?.agentName || null,
+        message_id: opts?.messageId || null,
+        text_length: finalText.length,
+      });
+      await playTts(finalText, opts?.agentId || null, {
+        forceAuto: true,
+        messageId: opts?.messageId || null,
+        traceId: opts?.traceId || v2vTraceRef.current || null,
+        voiceOverride: opts?.voiceOverride || null,
+      });
+      queueRealtimeTelemetry("REALTIME_TTS_PLAY_OK", {
+        source: opts?.source || "assistant_final",
+        message_id: opts?.messageId || null,
+      });
+      if (realtimeModeRef.current) {
+        setRealtimeVoiceModeState("listening", { source: "tts_complete" });
+      } else {
+        setRealtimeVoiceModeState("idle", { source: "tts_complete" });
+      }
+    } catch (err) {
+      console.warn("[AO20E] realtime TTS bridge failed", err);
+      queueRealtimeTelemetry("REALTIME_TTS_PLAY_FAILED", {
+        source: opts?.source || "assistant_final",
+        message: err?.message || null,
+      });
+      setRealtimeVoiceModeState("error", {
+        source: "tts_failed",
+        message: err?.message || null,
+      });
+    }
+  }
+
   function commitRealtimeAssistantFinal(rawText, { source = 'unknown' } = {}) {
     const finalText = (rawText || '').toString().trim();
     if (!finalText) return;
@@ -4854,12 +4941,14 @@ function scheduleRealtimeIdleFollowup() {
     rtcAssistantFinalCommittedRef.current = true;
 
     queueRealtimeEvent({ event_type: 'response.final', role: 'assistant', content: finalText, is_final: true, meta: { source } });
+    let agentName2 = "Orkio";
+    let agentId2 = destSingle || null;
+    const mid = `rtc_ass_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     try {
       const selectedAgentObj2 = (agents || []).find(a => String(a.id) === String(destSingle || ""));
       const metaAgentName = source && String(source).includes(":") ? String(source).split(":")[1].trim() : "";
-      const agentName2 = metaAgentName || selectedAgentObj2?.name || "Orkio";
-      const agentId2 = selectedAgentObj2?.id || (destSingle || null);
-      const mid = `rtc_ass_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      agentName2 = metaAgentName || selectedAgentObj2?.name || "Orkio";
+      agentId2 = selectedAgentObj2?.id || (destSingle || null);
       setMessages((prev) => prev.concat([{
         id: mid,
         role: "assistant",
@@ -4868,6 +4957,16 @@ function scheduleRealtimeIdleFollowup() {
         agent_name: agentName2,
         created_at: Math.floor(Date.now()/1000),
       }]));
+    } catch {}
+
+    try {
+      void speakRealtimeAssistantFinal(finalText, {
+        source,
+        agentName: agentName2,
+        agentId: agentId2,
+        messageId: mid,
+        traceId: v2vTraceRef.current || null,
+      });
     } catch {}
 
     setUploadStatus('📝 ' + finalText.slice(0, 80) + (finalText.length > 80 ? '…' : ''));
@@ -4905,6 +5004,7 @@ function scheduleRealtimeIdleFollowup() {
 
 async function stopRealtime(reason = 'client_stop') {
     const sid = rtcSessionIdRef.current;
+    setRealtimeVoiceModeState('ended', { source: 'stopRealtime', reason });
     try {
       console.log("REALTIME_STOP_REASON", reason, { sessionId: sid });
       queueRealtimeTelemetry('SESSION_END_REQUESTED', { reason, session_id: sid || null });
@@ -4972,6 +5072,7 @@ async function stopRealtime(reason = 'client_stop') {
         try { processing.ctx?.close?.(); } catch {}
       }
     } catch {}
+    setRealtimeVoiceModeState('idle', { source: 'stopRealtime_done', reason });
   }
 
 
@@ -5062,8 +5163,10 @@ async function stopRealtime(reason = 'client_stop') {
     stopTts();
     setTtsPlaying(true);
     setV2vPhase('playing');
+    setRealtimeVoiceModeState('speaking', { source: 'playTts', message_id: messageId || null, agent_id: agentId || null });
 
     const effectiveTrace = traceId || v2vTraceRef.current || null;
+    queueRealtimeTelemetry('REALTIME_TTS_PLAY_START', { trace_id: effectiveTrace || null, message_id: messageId || null, agent_id: agentId || null });
     console.info('[V2V] v2v_play_start trace_id=%s message_id=%s agent_id=%s', effectiveTrace, messageId, agentId);
 
     try {
@@ -5129,6 +5232,7 @@ async function stopRealtime(reason = 'client_stop') {
           console.info('[V2V] v2v_play_end trace_id=%s', effectiveTrace);
           setTtsPlaying(false);
           setV2vPhase(null);
+          setRealtimeVoiceModeState(realtimeModeRef.current ? 'listening' : 'idle', { source: 'tts_end' });
           URL.revokeObjectURL(url);
           ttsAudioRef.current = null;
           // Reiniciar microfone após fala (ciclo V2V)
@@ -5141,6 +5245,7 @@ async function stopRealtime(reason = 'client_stop') {
           console.error('[V2V] audio.onerror trace_id=%s', effectiveTrace, err);
           setTtsPlaying(false);
           setV2vPhase('error');
+          setRealtimeVoiceModeState('error', { source: 'audio_playback_error' });
           setV2vError('Erro ao reproduzir áudio');
           URL.revokeObjectURL(url);
           ttsAudioRef.current = null;
@@ -5151,6 +5256,7 @@ async function stopRealtime(reason = 'client_stop') {
           console.warn('[V2V] autoplay blocked trace_id=%s:', effectiveTrace, err?.message);
           setTtsPlaying(false);
           setV2vPhase(null);
+          setRealtimeVoiceModeState(realtimeModeRef.current ? 'listening' : 'idle', { source: 'tts_autoplay_blocked' });
           URL.revokeObjectURL(url);
           ttsAudioRef.current = null;
           // BUG-01 FIX: reiniciar mic mesmo sem áudio — ciclo V2V não pode morrer aqui
@@ -5164,6 +5270,7 @@ async function stopRealtime(reason = 'client_stop') {
       console.error('[V2V] v2v_tts_fail trace_id=%s error:', effectiveTrace, e);
       setTtsPlaying(false);
       setV2vPhase('error');
+      setRealtimeVoiceModeState('error', { source: 'tts_exception', message: e?.message || null });
       setV2vError(e?.message || 'Erro desconhecido no TTS');
     }
   }
