@@ -1,8 +1,3 @@
-CAMINHO REAL DO PROJETO:
-src/components/AvatarHero3D.jsx
-
-CONTEÚDO COMPLETO:
-================================================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createOrkioSpeechMotion } from "../lib/orkioSpeechMotion.js";
 import {
