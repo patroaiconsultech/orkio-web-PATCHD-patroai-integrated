@@ -1,8 +1,3 @@
-CAMINHO REAL DO PROJETO:
-src/components/OrkioMysticAvatar.jsx
-
-COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
-================================================================================
 import React, { useState } from "react";
 import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
 
