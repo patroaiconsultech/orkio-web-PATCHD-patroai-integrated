@@ -1,8 +1,3 @@
-CAMINHO REAL DO PROJETO:
-src/lib/orkioTts.js
-
-COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
-================================================================================
 /**
  * orkioTts — runtime único de voz da Orkio
  *
