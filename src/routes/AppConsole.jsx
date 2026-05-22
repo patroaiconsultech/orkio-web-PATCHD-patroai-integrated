@@ -70,6 +70,62 @@ const ORKIO_CHAT_DIRECT_FALLBACK_ENABLED = (
 
 const WALLET_UI_ENABLED = false;
 
+// AO20A_REALTIME_ORCHESTRATION_STABILIZER
+// Normaliza falas de realtime para dedupe/roteamento sem depender de estado visual.
+function normalizeRealtimeDedupeKey(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// AO20A_REALTIME_ORCHESTRATION_STABILIZER
+// Intenções de orquestração devem ser respondidas pelo backend multiagente,
+// não pelo response.create direto do browser realtime. Isso evita dupla resposta
+// e drift: fala curta/ambígua herdando valuation, Chris, Orion ou auditoria anterior.
+function shouldUseBackendRealtimeOrchestration(raw) {
+  const n = normalizeRealtimeDedupeKey(raw);
+  if (!n) return false;
+
+  const markers = [
+    "orkio",
+    "orion",
+    "chris",
+    "cris",
+    "team",
+    "time",
+    "squad",
+    "agente",
+    "agentes",
+    "orquestracao",
+    "orquestrar",
+    "auditoria",
+    "auditar",
+    "war room",
+    "warroom",
+    "valuation",
+    "avaliacao",
+    "business plan",
+    "go to market",
+    "governanca",
+    "governance",
+    "proposal",
+    "patch",
+    "runtime",
+    "realtime",
+    "sse",
+    "backend",
+    "frontend",
+    "stream",
+    "thread",
+    "threads",
+  ];
+
+  return markers.some((marker) => n.includes(marker));
+}
+
 const EMPTY_STATE_PREVIEW_STEPS = [
   { title: "Readiness", description: "Shell preservado, acessos visíveis e console pronto para a primeira ação com percepção premium." },
   { title: "Focus", description: "O centro da experiência destaca a próxima melhor ação sem esconder threads, wallet e navegação." },
@@ -175,10 +231,24 @@ async function consumeChatStream(
     eventCount += 1;
     if (ev === "status") onStatus?.(payload);
     if (ev === "execution") onExecution?.(payload);
-    if (ev === "chunk") {
-      const delta = String(payload?.delta ?? payload?.content ?? "");
+    if (ev === "agent_started" || ev === "orchestrator_merge") {
+      onExecution?.({
+        ...(payload || {}),
+        event: ev,
+        step: payload?.step || ev,
+      });
+    }
+    if (ev === "chunk" || ev === "agent_chunk") {
+      const delta = String(payload?.delta ?? payload?.content ?? payload?.text ?? "");
       if (delta) draftText += delta;
       onChunk?.(payload, draftText);
+      if (ev === "agent_chunk") {
+        onExecution?.({
+          ...(payload || {}),
+          event: ev,
+          step: payload?.step || ev,
+        });
+      }
     }
     if (ev === "agent_done") onAgentDone?.(payload, draftText);
     if (ev === "keepalive") onKeepalive?.(payload);
@@ -4013,7 +4083,10 @@ function scheduleRealtimeIdleFollowup() {
     const message = (raw || "").toString().trim();
     if (!message) return false;
     try {
-      const res = await guardRealtimeTranscript({ thread_id: rtcThreadIdRef.current || threadId || null, message });
+      const activeRealtimeThreadId = String(
+        rtcThreadIdRef.current || activeThreadIdRef.current || threadId || ""
+      ).trim() || null;
+      const res = await guardRealtimeTranscript({ thread_id: activeRealtimeThreadId, message });
       const payload = res?.data || {};
       if (!payload?.blocked) return false;
       setRtcReadyToRespond(false);
@@ -4316,8 +4389,20 @@ function scheduleRealtimeIdleFollowup() {
                   console.warn('[Realtime] magic trigger failed', err);
                 }
               } else if (raw.trim()) {
-                // AO19E: server_vad only detects the turn. The frontend triggers the
-                // response after the backend guard approves the transcript.
+                if (shouldUseBackendRealtimeOrchestration(raw)) {
+                  setRtcReadyToRespond(false);
+                  flushRealtimeEvents();
+                  logRealtimeStep('runtime:backend_orchestration_selected', { transcript: raw });
+                  queueRealtimeTelemetry('VOICE_BACKEND_ORCHESTRATION_SELECTED', { transcript_length: raw.length });
+                  setV2vPhase("responding");
+                  setUploadStatus("🧠 Orkio roteando pelo backend multiagente...");
+                  setTimeout(() => setUploadStatus(""), 1800);
+                  return;
+                }
+
+                // AO19E/AO20A: server_vad only detects the turn. The frontend triggers
+                // response.create only for realtime-native answers. Multiagent/orchestration
+                // intents are flushed to the backend and must not produce a second browser reply.
                 setRtcReadyToRespond(true);
                 logRealtimeStep('runtime:guard_passed_trigger_response', { transcript: raw });
                 queueRealtimeTelemetry('VOICE_INTENT_GUARD_PASSED', { transcript_length: raw.length });
@@ -4711,7 +4796,7 @@ function scheduleRealtimeIdleFollowup() {
             session_id: sid,
             current_session_id: rtcSessionIdRef.current || null,
           });
-          if (sid !== rtcSessionIdRef.current || !realtimeModeRef.current || err?.status === 404) {
+          if (sid !== rtcSessionIdRef.current || !realtimeModeRef.current || err?.status === 401 || err?.status === 403 || err?.status === 404) {
             clearRealtimeLivePoll();
             return;
           }
