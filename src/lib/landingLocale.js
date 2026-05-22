@@ -146,5 +146,3 @@ export function useLandingLocale() {
     isPortuguese: locale !== "en",
   };
 }
-
-================================================================================
