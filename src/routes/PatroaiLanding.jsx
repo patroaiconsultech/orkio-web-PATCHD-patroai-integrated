@@ -1,8 +1,3 @@
-CAMINHO REAL DO PROJETO:
-src/routes/PatroaiLanding.jsx
-
-COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
-================================================================================
 import React, { useMemo, useState } from "react";
 import AvatarHero3D from "../components/AvatarHero3D.jsx";
 import AvatarPrechatModal from "../components/AvatarPrechatModal.jsx";
