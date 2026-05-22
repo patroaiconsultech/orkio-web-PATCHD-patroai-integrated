@@ -1,8 +1,3 @@
-CAMINHO REAL DO PROJETO:
-src/lib/landingLocale.js
-
-COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
-================================================================================
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export const LANDING_LOCALE_KEY = "orkio_landing_locale";
