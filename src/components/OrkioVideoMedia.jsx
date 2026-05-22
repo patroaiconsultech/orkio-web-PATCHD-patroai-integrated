@@ -1,8 +1,3 @@
-CAMINHO REAL DO PROJETO:
-src/components/OrkioVideoMedia.jsx
-
-CONTEÚDO COMPLETO:
-================================================================================
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /**
