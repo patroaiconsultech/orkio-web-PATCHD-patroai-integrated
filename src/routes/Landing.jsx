@@ -1,8 +1,3 @@
-CAMINHO REAL DO PROJETO:
-src/routes/Landing.jsx
-
-COPIE O CONTEÚDO ABAIXO PARA ESSE ARQUIVO:
-================================================================================
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import OrkioVoiceHero from "../components/OrkioVoiceHero.jsx";
