@@ -863,11 +863,35 @@ function summarizeExecutionStatus(payload = {}) {
   return raw.length > 140 ? `${raw.slice(0, 137)}...` : raw;
 }
 
+// AO20K-HF4M_PREMIUM_EXECUTION_TRACE_UX
+function formatExecutionRoutingSource(raw = "") {
+  const source = String(raw || "").trim();
+  if (!source) return "";
+  const labels = {
+    "stream_ao20k_hf4k_simple_status": "Status seguro",
+    "stream_ao20k_hf4k_immediate_memory_recall": "Memória imediata",
+    "stream_ao20k_hf4k_simulation_only_branch_pr_plan": "Plano simulado",
+  };
+  return labels[source] || source.replace(/^stream_/, "").replaceAll("_", " ");
+}
+
+function buildExecutionBadgesFromRouting(routing = {}) {
+  const badges = [];
+  if (routing?.fast_path_hit || routing?.runtime_bypassed) badges.push("Fast-path");
+  if (routing?.simulation_only) badges.push("Somente simulação");
+  if (routing?.write_executed === false || routing?.write_allowed === false) badges.push("Sem escrita");
+  if (routing?.branch_created === false && routing?.pr_created === false) badges.push("Sem branch/PR");
+  if (routing?.route_family) badges.push(String(routing.route_family).replaceAll("_", " "));
+  return Array.from(new Set(badges.filter(Boolean))).slice(0, 4);
+}
+
 function buildExecutionDoneDetail(payload = {}) {
   const routing = payload?.runtime_hints?.routing || {};
   const parts = [];
-  if (routing?.mode) parts.push(`modo ${routing.mode}`);
-  if (routing?.routing_source) parts.push(`origem ${routing.routing_source}`);
+  const sourceLabel = formatExecutionRoutingSource(routing?.routing_source);
+  if (sourceLabel) parts.push(sourceLabel);
+  if (routing?.simulation_only) parts.push("simulação readonly");
+  if (routing?.write_executed === false) parts.push("sem escrita");
   if (routing?.execution_cursor?.current_node) parts.push(`nó ${routing.execution_cursor.current_node}`);
   return parts.join(" • ");
 }
@@ -1232,6 +1256,8 @@ const resetExecutionTrace = (steps = []) => {
     label: step?.label || "Executando etapa",
     detail: step?.detail || "",
     agentName: step?.agentName || "",
+    badges: Array.isArray(step?.badges) ? step.badges : [],
+    source: step?.source || "",
   })) : [];
   executionTraceRef.current = normalized;
   setExecutionTrace(normalized);
@@ -1247,6 +1273,8 @@ const appendExecutionTrace = (step) => {
       label: step?.label || "Executando etapa",
       detail: step?.detail || "",
       agentName: step?.agentName || "",
+      badges: Array.isArray(step?.badges) ? step.badges : [],
+      source: step?.source || "",
     };
     const last = prev[prev.length - 1];
     if (last && last.kind === normalized.kind && last.label === normalized.label && last.detail === normalized.detail && last.agentName === normalized.agentName) {
@@ -1314,12 +1342,17 @@ const describeExecutionError = (payload = {}) => {
   };
 };
 
-const describeExecutionDone = (payload = {}) => ({
-  kind: "done",
-  label: "Execução concluída",
-  detail: buildExecutionDoneDetail(payload),
-  agentName: "",
-});
+const describeExecutionDone = (payload = {}) => {
+  const routing = payload?.runtime_hints?.routing || {};
+  return {
+    kind: "done",
+    label: routing?.simulation_only ? "Execução simulada concluída" : "Execução concluída",
+    detail: buildExecutionDoneDetail(payload),
+    agentName: "",
+    badges: buildExecutionBadgesFromRouting(routing),
+    source: routing?.routing_source || "",
+  };
+};
 
 useEffect(() => { executionTraceRef.current = executionTrace || []; }, [executionTrace]);
 
@@ -6172,8 +6205,29 @@ async function stopRealtime(reason = 'client_stop') {
     </button>
 
     {!executionTraceExpanded ? (
-      <div style={{ padding: "0 14px 14px", color: "rgba(255,255,255,0.58)", fontSize: 12 }}>
-        {executionTrace.length} etapa(s) registradas nesta execução.
+      <div style={{ padding: "0 14px 14px", display: "grid", gap: 8 }}>
+        <div style={{ color: "rgba(255,255,255,0.66)", fontSize: 12, lineHeight: 1.45 }}>
+          {executionTrace.length} etapa(s) registradas. {executionTrace.some((step) => step.kind === "done") ? "Fluxo encerrado com segurança." : "Execução em andamento."}
+        </div>
+        {executionTrace[executionTrace.length - 1]?.badges?.length ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {executionTrace[executionTrace.length - 1].badges.map((badge) => (
+              <span
+                key={badge}
+                style={{
+                  fontSize: 11,
+                  padding: "4px 8px",
+                  borderRadius: 999,
+                  background: "rgba(34,197,94,0.12)",
+                  border: "1px solid rgba(34,197,94,0.22)",
+                  color: "rgba(187,247,208,0.92)",
+                }}
+              >
+                {badge}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     ) : null}
 
@@ -6214,6 +6268,25 @@ async function stopRealtime(reason = 'client_stop') {
                   </span>
                 ) : null}
               </div>
+              {step.badges?.length ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {step.badges.map((badge) => (
+                    <span
+                      key={`${step.id}-${badge}`}
+                      style={{
+                        fontSize: 11,
+                        padding: "3px 8px",
+                        borderRadius: 999,
+                        background: "rgba(34,197,94,0.10)",
+                        border: "1px solid rgba(34,197,94,0.20)",
+                        color: "rgba(187,247,208,0.92)",
+                      }}
+                    >
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               {(step.detail || step.ts) ? (
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)", lineHeight: 1.4 }}>
                   {step.detail || ""}
