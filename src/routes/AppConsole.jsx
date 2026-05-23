@@ -16,16 +16,6 @@ const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.
   : "realtime";
 const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || import.meta.env.VITE_SPEECH_RECOGNITION_LANG || "pt-BR").trim() || "pt-BR");
 
-// AO19D_REALTIME_TELEMETRY_LAYER
-// Feature-flagged client telemetry for WebRTC/Reatime voice diagnosis.
-// This does not change the chat/SSE text runtime; it only records key realtime lifecycle events.
-const REALTIME_TELEMETRY_ENABLED = (
-  String(ORKIO_ENV.VITE_REALTIME_TELEMETRY_ENABLED || import.meta.env.VITE_REALTIME_TELEMETRY_ENABLED || "true")
-    .trim()
-    .toLowerCase() !== "false"
-);
-const REALTIME_TELEMETRY_PREFIX = "AO19D_REALTIME";
-
 
 // METATRON_CHAT_FORCE_STREAM_AND_TIMEOUT
 // Auditoria 16/05: o stream estava sendo abortado cedo demais pelo connect timeout
@@ -42,6 +32,22 @@ const CHAT_STREAM_TIMEOUT_MS = Math.max(
   30000,
   Number(ORKIO_ENV.VITE_CHAT_STREAM_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_TIMEOUT_MS || 120000) || 120000
 );
+const CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT_MS = Math.max(
+  10000,
+  Math.min(
+    60000,
+    Number(
+      ORKIO_ENV.VITE_CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT_MS ||
+        import.meta.env.VITE_CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT_MS ||
+        25000
+    ) || 25000
+  )
+);
+// AO20K-HF4G_FRONTEND_STREAM_TERMINAL_GUARD
+// Se o backend mantiver o SSE vivo apenas com keepalive/status, a UI não deve
+// permanecer em "runtime" indefinidamente. O consumidor encerra com fallback
+// seguro quando não vê chunk útil dentro da janela acima.
+
 const CHAT_STREAM_CONNECT_TIMEOUT_MS = Math.max(
   30000,
   Number(ORKIO_ENV.VITE_CHAT_STREAM_CONNECT_TIMEOUT_MS || import.meta.env.VITE_CHAT_STREAM_CONNECT_TIMEOUT_MS || 90000) || 90000
@@ -118,38 +124,6 @@ function isAbortLikeError(err) {
 }
 
 
-// AO20BC-LITE — frontend mirror of router/realtime intent lock.
-// This is intentionally conservative: technical/multiagent intents must be
-// handled by the backend, not by browser realtime response.create.
-function normalizeAo20bcRealtimeText(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9@\s:/_.-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function shouldUseBackendRealtimeOrchestration(raw) {
-  const n = normalizeAo20bcRealtimeText(raw);
-  if (!n) return false;
-  const markers = [
-    "@orkio", "@orion", "@chris", "@cris",
-    "orkio", "orion", "chris", "cris",
-    "team", "time", "squad", "agente", "agentes",
-    "orquestracao", "orquestrar", "multiagente", "multi agente",
-    "auditoria", "auditar", "readonly", "war room",
-    "realtime", "voice", "voz", "sse", "stream", "runtime",
-    "proposal builder", "proposal only", "proposal_only",
-    "backend", "frontend", "guard", "events batch", "execution graph",
-    "child execution graphs", "child_execution_graphs",
-    "patch", "diff preview", "rollback", "ao20", "ao 20",
-    "valuation", "business plan", "go to market"
-  ];
-  return markers.some((marker) => n.includes(marker));
-}
-
 
 async function consumeChatStream(
   response,
@@ -184,6 +158,28 @@ async function consumeChatStream(
   let donePayload = null;
   let draftText = "";
   let doneSeen = false;
+  const streamStartedAt = Date.now();
+  let firstUsefulChunkAt = null;
+
+  const buildStreamTerminalError = (code, message) => {
+    const err = new Error(message || code);
+    err.code = code;
+    err.thread_id = lastThreadId;
+    err.trace_id = lastTraceId;
+    err.draftText = draftText;
+    return err;
+  };
+
+  const assertUsefulChunkProgress = () => {
+    if (doneSeen || firstUsefulChunkAt) return;
+    const elapsed = Date.now() - streamStartedAt;
+    if (elapsed > CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT_MS) {
+      throw buildStreamTerminalError(
+        "CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT",
+        "CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT"
+      );
+    }
+  };
 
   const flushBlock = (block) => {
     const lines = String(block || "").split(/\r?\n/).filter(Boolean);
@@ -205,32 +201,36 @@ async function consumeChatStream(
     if (payload?.thread_id) lastThreadId = payload.thread_id;
     if (payload?.trace_id) lastTraceId = payload.trace_id;
     eventCount += 1;
-    if (ev === "status") onStatus?.(payload);
+    if (ev === "status") {
+      onStatus?.(payload);
+      assertUsefulChunkProgress();
+    }
     if (ev === "execution") onExecution?.(payload);
     if (ev === "agent_started" || ev === "orchestrator_merge") {
-      onExecution?.({
-        ...(payload || {}),
-        event: ev,
-        step: ev,
-      });
+      onExecution?.({ ...(payload || {}), event: ev, step: ev });
     }
     if (ev === "agent_chunk") {
       const delta = String(payload?.delta ?? payload?.content ?? payload?.text ?? "");
-      if (delta) draftText += delta;
+      if (delta) {
+        draftText += delta;
+        firstUsefulChunkAt = firstUsefulChunkAt || Date.now();
+      }
       onChunk?.(payload, draftText);
-      onExecution?.({
-        ...(payload || {}),
-        event: ev,
-        step: ev,
-      });
+      onExecution?.({ ...(payload || {}), event: ev, step: ev });
     }
     if (ev === "chunk") {
       const delta = String(payload?.delta ?? payload?.content ?? "");
-      if (delta) draftText += delta;
+      if (delta) {
+        draftText += delta;
+        firstUsefulChunkAt = firstUsefulChunkAt || Date.now();
+      }
       onChunk?.(payload, draftText);
     }
     if (ev === "agent_done") onAgentDone?.(payload, draftText);
-    if (ev === "keepalive") onKeepalive?.(payload);
+    if (ev === "keepalive") {
+      onKeepalive?.(payload);
+      assertUsefulChunkProgress();
+    }
     if (ev === "error") {
       onError?.(payload);
 
@@ -280,6 +280,12 @@ async function consumeChatStream(
     if (doneSeen) break;
   }
   if (!doneSeen && buf.trim()) flushBlock(buf);
+  if (!doneSeen) {
+    throw buildStreamTerminalError(
+      "CHAT_STREAM_ENDED_WITHOUT_DONE",
+      "CHAT_STREAM_ENDED_WITHOUT_DONE"
+    );
+  }
   return {
     thread_id: donePayload?.thread_id || lastThreadId,
     trace_id: donePayload?.trace_id || lastTraceId,
@@ -327,89 +333,44 @@ function normalizeAgentVoiceId(raw, fallback = ORKIO_DEFAULT_VOICE_ID) {
 }
 
 
-function extractGovernanceField(text, name, { allowDash = false } = {}) {
-  const prefix = allowDash ? "\\s*-?\\s*" : "\\s*";
-  const m = String(text || "").match(new RegExp(`^${prefix}${name}\\s*:\\s*([^\\n]+)`, "im"));
-  return m ? String(m[1] || "").trim() : "";
-}
-
-function hasKnownGovernanceRuntimeCrash(content) {
-  const text = String(content || "");
-  return /name '_extract_known_roster_agents_from_text' is not defined|ModuleNotFoundError|No module named 'app\.warroom_artifact_templates'|NameError:\s*name '_is_governed_frontend_audit_readonly_request' is not defined|NameError:\s*name '_is_institutional_identity_request' is not defined|CHAT_STREAM_INTERNAL_WARROOM_GOVERNED_ARTIFACT_FAILED/i.test(text);
-}
-
-function resolveGovernanceArtifactReady(content) {
-  const text = String(content || "");
-  if (/Artifact executável:\s*[\s\S]{0,240}?ready:\s*true/i.test(text)) return true;
-  if (/Artifact executável:\s*[\s\S]{0,240}?ready:\s*false/i.test(text)) return false;
-  if (/^EXECUTABLE_ARTIFACT:\s*true/im.test(text) || /^ARTIFACT_READY:\s*true/im.test(text)) return true;
-  if (/^EXECUTABLE_ARTIFACT:\s*false/im.test(text) || /^ARTIFACT_READY:\s*false/im.test(text)) return false;
-  return null;
-}
-
-function hasGovernanceExecutableScope(content) {
-  const text = String(content || "");
-  if (/scope não explicitado|Arquivos alvo:\s*-\s*não explicitado|Funções alvo:\s*-\s*não explicitado|nenhum JSON executável seguro foi emitido pelo agente/i.test(text)) {
-    return false;
-  }
-  return true;
-}
-
-function isActionablePatchGovernanceProposal(content) {
-  const text = String(content || "");
-  if (!/PATCH GOVERNANCE RESPONSE/i.test(text)) return false;
-  if (hasKnownGovernanceRuntimeCrash(text)) return false;
-  const artifactReady = resolveGovernanceArtifactReady(text);
-  if (artifactReady === false) return false;
-  if (!hasGovernanceExecutableScope(text)) return false;
-  return artifactReady === true;
-}
-
-function looksLikeGovernedExecutionIntent(content) {
-  const text = String(content || "");
-  return /executar patch aprovado|execute approved patch|aplicar patch aprovado|seguir com o patch aprovado|abrir o fluxo governado aprovado|use o botão executar patch aprovado/i.test(text);
-}
-
 function extractPatchGovernanceMeta(content) {
   const text = String(content || "");
   if (!/PATCH GOVERNANCE RESPONSE/i.test(text)) return null;
-
-  const auditReceiptId = extractGovernanceField(text, "audit_receipt_id");
-  const patchMode = extractGovernanceField(text, "patch_mode");
-  const writeAllowed = extractGovernanceField(text, "write_allowed");
-  const artifactReady = resolveGovernanceArtifactReady(text);
-  const actionable = Boolean(
-    auditReceiptId &&
-    /proposal_only/i.test(patchMode) &&
-    /false/i.test(writeAllowed) &&
-    isActionablePatchGovernanceProposal(text)
-  );
-
+  const get = (name) => {
+    const m = text.match(new RegExp(`^\\s*${name}\\s*:\\s*([^\\n]+)`, "im"));
+    return m ? String(m[1] || "").trim() : "";
+  };
+  const auditReceiptId = get("audit_receipt_id");
+  const patchMode = get("patch_mode");
+  const writeAllowed = get("write_allowed");
   return {
     audit_receipt_id: auditReceiptId,
     patch_mode: patchMode,
     write_allowed: writeAllowed,
-    artifact_ready: artifactReady,
-    has_known_runtime_error: hasKnownGovernanceRuntimeCrash(text),
-    can_approve: actionable,
+    can_approve: Boolean(auditReceiptId && /proposal_only/i.test(patchMode) && /false/i.test(writeAllowed)),
   };
 }
+
 
 function extractPatchApprovalMeta(content) {
   const text = String(content || "");
   const isApprovalResponse = /PATCH APPROVAL RESPONSE/i.test(text);
   const isGovernedExecutionResponse = /GOVERNED PATCH EXECUTION RESPONSE|PATCH EXECUTION RESPONSE/i.test(text);
   if (!isApprovalResponse && !isGovernedExecutionResponse) return null;
-  if (hasKnownGovernanceRuntimeCrash(text)) return null;
 
-  const status = extractGovernanceField(text, "status", { allowDash: true });
-  const auditReceiptId = extractGovernanceField(text, "audit_receipt_id", { allowDash: true });
-  const patchMode = extractGovernanceField(text, "patch_mode", { allowDash: true });
-  const writeAllowed = extractGovernanceField(text, "write_allowed", { allowDash: true });
-  const humanApproved = extractGovernanceField(text, "human_approved", { allowDash: true });
-  const approvalId = extractGovernanceField(text, "approval_id", { allowDash: true });
-  const patchId = extractGovernanceField(text, "patch_id", { allowDash: true });
-  const executionChannel = extractGovernanceField(text, "execution_channel", { allowDash: true });
+  const get = (name) => {
+    const m = text.match(new RegExp(`^\\s*-?\\s*${name}\\s*:\\s*([^\\n]+)`, "im"));
+    return m ? String(m[1] || "").trim() : "";
+  };
+
+  const status = get("status");
+  const auditReceiptId = get("audit_receipt_id");
+  const patchMode = get("patch_mode");
+  const writeAllowed = get("write_allowed");
+  const humanApproved = get("human_approved");
+  const approvalId = get("approval_id");
+  const patchId = get("patch_id");
+  const executionChannel = get("execution_channel");
 
   const terminalExecution = /execution_completed|execution_failed|execution_cancelled|execution_blocked_no_executable_artifact|execution_blocked_executor_not_wired|execution_request_failed|execution_blocked_missing_approval|execution_blocked_invalid_context/i.test(status);
   const approvedPending =
@@ -443,15 +404,18 @@ function findPendingApprovedPatchExecution(items) {
     const id = String(m?.id || "");
     const key = `${ts}:${id}`;
 
+    // PATCH23: any newer proposal supersedes previous approval/execution state.
+    // Without this, an old approved_apply message can keep rendering an execution
+    // button for a stale patch_id/audit_receipt_id after a new proposal appears.
     const isProposal =
       /PATCH GOVERNANCE RESPONSE/i.test(content) &&
       /patch_mode\s*:\s*proposal_only/i.test(content);
     if (isProposal) {
+      const auditMatch = content.match(/^\s*audit_receipt_id\s*:\s*([^\n]+)/im);
       latestProposal = {
         message: m,
         key,
-        audit_receipt_id: extractGovernanceField(content, "audit_receipt_id"),
-        actionable: isActionablePatchGovernanceProposal(content),
+        audit_receipt_id: auditMatch ? String(auditMatch[1] || "").trim() : "",
       };
     }
 
@@ -460,6 +424,9 @@ function findPendingApprovedPatchExecution(items) {
       latestApproval = { message: m, meta: approval, key };
     }
 
+    // A conversational-channel block is NOT a terminal execution result.
+    // It only tells the user to use the governed side-channel button.
+    // Keep the approved execution pending so the "Executar patch aprovado" button remains visible.
     const isExecutionResponse = /GOVERNED PATCH EXECUTION RESPONSE|PATCH EXECUTION RESPONSE/i.test(content);
     const isConversationalBlock = /execution_blocked_conversational_channel/i.test(content);
     const isRealTerminalExecution =
@@ -471,7 +438,12 @@ function findPendingApprovedPatchExecution(items) {
   }
 
   if (!latestApproval) return null;
-  if (latestProposal && String(latestProposal.key) > String(latestApproval.key)) return null;
+
+  // A newer proposal invalidates old approved-apply UI state.
+  if (latestProposal && String(latestProposal.key) > String(latestApproval.key)) {
+    return null;
+  }
+
   if (latestTerminal && String(latestTerminal.key) > String(latestApproval.key)) return null;
   return latestApproval;
 }
@@ -1105,7 +1077,6 @@ export default function AppConsole() {
   const [token, setToken] = useState(getToken());
   const [user, setUser] = useState(getUser());
   const canAccessAdmin = hasAdminAccess(user);
-  const onboardingRequired = Boolean(user && !user?.onboarding_completed);
 
   // Summit presence heartbeat (single source of truth).
   // EFATA777 v12: the app must not keep an inline heartbeat loop in parallel with
@@ -1139,14 +1110,11 @@ const [onboardingOpen, setOnboardingOpen] = useState(false);
 const [onboardingBusy, setOnboardingBusy] = useState(false);
 const [onboardingStatus, setOnboardingStatus] = useState("");
 const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingForm(user));
-const [onboardingEntrySource, setOnboardingEntrySource] = useState("standard");
-const [onboardingAutoSpeak, setOnboardingAutoSpeak] = useState(false);
   const [health, setHealth] = useState("checking");
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth <= 820 : false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const [threads, setThreads] = useState([]);
-  const [threadSearch, setThreadSearch] = useState("");
   const [threadId, setThreadId] = useState("");
   const [messages, setMessages] = useState([]);
   const [agents, setAgents] = useState([]);
@@ -1162,33 +1130,6 @@ const [onboardingAutoSpeak, setOnboardingAutoSpeak] = useState(false);
   const storageBootstrapConsumedRef = useRef(false);
   const storageBootstrapInitializedRef = useRef(false);
   const THREAD_STORAGE_KEY = "orkio_active_thread_id";
-  const AVATAR_ONBOARDING_BOOT_KEY = "orkio_avatar_onboarding_boot";
-
-  function readAvatarOnboardingBoot() {
-    if (typeof window === "undefined") return null;
-    const candidates = [];
-    try { candidates.push(window.localStorage?.getItem(AVATAR_ONBOARDING_BOOT_KEY) || ""); } catch {}
-    try { candidates.push(window.sessionStorage?.getItem(AVATAR_ONBOARDING_BOOT_KEY) || ""); } catch {}
-
-    for (const raw of candidates) {
-      if (!raw) continue;
-      try {
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== "object") continue;
-        const createdAt = Number(parsed.createdAt || 0) || 0;
-        const ttlMs = Number(parsed.ttlMs || 0) || 0;
-        if (createdAt && ttlMs && Date.now() - createdAt > ttlMs) continue;
-        return parsed;
-      } catch {}
-    }
-    return null;
-  }
-
-  function clearAvatarOnboardingBoot() {
-    if (typeof window === "undefined") return;
-    try { window.localStorage?.removeItem(AVATAR_ONBOARDING_BOOT_KEY); } catch {}
-    try { window.sessionStorage?.removeItem(AVATAR_ONBOARDING_BOOT_KEY); } catch {}
-  }
 
   function readStoredThreadId() {
     if (typeof window === "undefined") return "";
@@ -1216,45 +1157,6 @@ const [onboardingAutoSpeak, setOnboardingAutoSpeak] = useState(false);
   function consumeStoredThreadBootstrap(nextId = "") {
     storageBootstrapConsumedRef.current = true;
     initialStoredThreadIdRef.current = String(nextId || "").trim();
-  }
-
-  function parseThreadTimestamp(value) {
-    if (value == null || value === "") return 0;
-    if (typeof value === "number") {
-      return value > 100000000000 ? value : value * 1000;
-    }
-    const raw = String(value || "").trim();
-    if (!raw) return 0;
-    const asNumber = Number(raw);
-    if (Number.isFinite(asNumber)) {
-      return asNumber > 100000000000 ? asNumber : asNumber * 1000;
-    }
-    const parsed = Date.parse(raw);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-
-  function scoreThreadForResume(thread) {
-    const t = thread || {};
-    const updated =
-      parseThreadTimestamp(t.updated_at) ||
-      parseThreadTimestamp(t.last_message_at) ||
-      parseThreadTimestamp(t.last_activity_at) ||
-      parseThreadTimestamp(t.created_at);
-    const hasUsefulTitle = String(t.title || "").trim() && String(t.title || "").trim().toLowerCase() !== "nova conversa";
-    const hasMessages = Number(t.message_count || t.messages_count || t.total_messages || 0) > 0;
-    return updated + (hasMessages ? 1000 : 0) + (hasUsefulTitle ? 250 : 0);
-  }
-
-  function sortThreadsForResume(list) {
-    return [...(Array.isArray(list) ? list : [])].sort((a, b) => scoreThreadForResume(b) - scoreThreadForResume(a));
-  }
-
-  function pickThreadToResume(list, preferredId = "") {
-    const safePreferred = String(preferredId || "").trim();
-    const items = Array.isArray(list) ? list : [];
-    if (safePreferred && items.some((t) => String(t?.id || "") === safePreferred)) return safePreferred;
-    const sorted = sortThreadsForResume(items);
-    return String(sorted?.[0]?.id || "").trim();
   }
 
   function lockThreadSelection(nextId = "", ttlMs = 15000) {
@@ -1517,7 +1419,6 @@ const messagesEndRef = useRef(null);
   const rtcLastAssistantFinalRef = useRef("");
   const rtcAssistantFinalCommittedRef = useRef(false);
   const rtcResponseTimeoutRef = useRef(null);
-  const rtcAutoResponseTimerRef = useRef(null);
   const rtcFallbackActiveRef = useRef(false);
   const rtcResponseInFlightRef = useRef(false);
 
@@ -1591,24 +1492,7 @@ const closeCapacityModal = () => {
 
   const [v2vPhase, setV2vPhase] = useState(null); // null | 'recording' | 'stt' | 'chat' | 'tts' | 'playing' | 'error'
   const [v2vError, setV2vError] = useState(null);
-  // AO20E — Voice Mode State Machine
-  // Stable, user-visible state for realtime voice: idle → listening → transcribing → thinking → speaking → idle/listening.
-  const [realtimeVoiceState, setRealtimeVoiceState] = useState("idle");
-  const realtimeVoiceStateRef = useRef("idle");
-  const realtimeVoiceOutputSpokenKeysRef = useRef(new Set());
   const [walletBlockedDetail, setWalletBlockedDetail] = useState(null);
-
-  function setRealtimeVoiceModeState(next, meta = {}) {
-    const state = String(next || "idle").trim().toLowerCase() || "idle";
-    realtimeVoiceStateRef.current = state;
-    setRealtimeVoiceState(state);
-    try {
-      queueRealtimeTelemetry(`VOICE_STATE_${state.toUpperCase()}`, meta && typeof meta === "object" ? meta : { meta });
-    } catch {}
-    try {
-      console.info("[AO20E] realtime voice state", state, meta || {});
-    } catch {}
-  }
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   // BUG-02 FIX: flag para distinguir stop intencional (stopMicMediaRecorder)
@@ -1698,33 +1582,8 @@ useEffect(() => {
 
         if (!mergedUser?.onboarding_completed) {
           setOnboardingForm(sanitizeOnboardingForm(mergedUser));
-          const avatarBoot = readAvatarOnboardingBoot();
-          const searchEntry =
-            typeof window !== "undefined"
-              ? new URLSearchParams(window.location.search || "").get("entry")
-              : "";
-          const avatarTriggered =
-            String(searchEntry || "").trim().toLowerCase() === "avatar"
-            || String(avatarBoot?.source || "").trim().toLowerCase() === "avatar";
-
-          if (avatarTriggered) {
-            setOnboardingEntrySource("avatar");
-            setOnboardingAutoSpeak(avatarBoot?.autoSpeak !== false);
-            setOnboardingOpen(true);
-            clearAvatarOnboardingBoot();
-          } else {
-            setOnboardingEntrySource("standard");
-            setOnboardingAutoSpeak(false);
-            // AO08_ONBOARDING_GATE:
-            // O contexto inicial não deve ficar escondido no botão ✨.
-            // Para usuário sem onboarding concluído, abrimos o modal automaticamente
-            // e bloqueamos a primeira conversa até salvar o contexto mínimo.
-            setOnboardingOpen(true);
-          }
-        } else {
-          clearAvatarOnboardingBoot();
-          setOnboardingEntrySource("standard");
-          setOnboardingAutoSpeak(false);
+          // PATCH27_2_CLEAN: onboarding is fluid/non-blocking. Keep data available but do not force modal open.
+          setOnboardingOpen(false);
         }
 
         if (!mergedUser?.terms_accepted_at) {
@@ -1964,8 +1823,7 @@ useEffect(() => {
       const preserveThreadId = String(explicitPreserveThreadId || bootstrapThreadId || "").trim();
 
       const { data } = await apiFetch("/api/threads", { token, org: tenant });
-      const listRaw = Array.isArray(data) ? data : [];
-      const list = sortThreadsForResume(listRaw);
+      const list = Array.isArray(data) ? data : [];
       setThreads(list);
 
       const hasPreserved = preserveThreadId && list.some((t) => String(t?.id || "") === preserveThreadId);
@@ -1981,9 +1839,7 @@ useEffect(() => {
         return list;
       }
 
-      if (bootstrapThreadId && !hasPreserved) {
-        // Stored thread no longer exists in the backend response. Consume it,
-        // but do not create a new conversation while valid history exists.
+      if (bootstrapThreadId) {
         consumeStoredThreadBootstrap("");
       }
 
@@ -1991,16 +1847,13 @@ useEffect(() => {
         return list;
       }
 
-      if (!currentActive) {
-        const resumeId = pickThreadToResume(list, "");
-        if (resumeId) {
-          activateThread(resumeId, { clearMessages: true, persist: true, lockMs: 5000 });
-        }
+      if (!currentActive && list?.[0]?.id) {
+        activateThread(list[0].id, { clearMessages: true, persist: true, lockMs: 5000 });
         return list;
       }
 
       if (currentActive && !list.some((t) => String(t?.id || "") === currentActive)) {
-        const fallbackId = pickThreadToResume(list, "");
+        const fallbackId = String(list?.[0]?.id || "");
         if (fallbackId) {
           activateThread(fallbackId, { clearMessages: true, persist: true, lockMs: 5000 });
         } else {
@@ -2484,37 +2337,6 @@ function formatAgentOptionLabel(agent) {
       ? Array.from(new Set(destMulti.map((id) => String(id || "").trim()).filter(Boolean)))
       : [];
     const mentionedNames = extractMentionNamesFromText(rawMessage);
-
-    // AO20H-HF2 — typed @mention must win over stale selected/visible agent.
-    // If the user types @Orkio while Chris is selected in the UI, the backend
-    // must receive Orkio as the explicit requested/visible agent.
-    const normalizeMention = (value) =>
-      String(value || "")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .trim()
-        .toLowerCase();
-
-    const firstMention = mentionedNames.find((name) => {
-      const n = normalizeMention(name);
-      return n === "orkio" || n === "orion" || n === "chris" || n === "cris";
-    });
-
-    if (firstMention) {
-      const n = normalizeMention(firstMention);
-      const canonicalMention = n === "cris" ? "Chris" : n.charAt(0).toUpperCase() + n.slice(1);
-      const mentionedAgent = agents.find((a) => normalizeMention(a?.name) === normalizeMention(canonicalMention)) || null;
-      return {
-        dest_mode: "single",
-        agent_id: mentionedAgent?.id || hostAgentId || null,
-        agent_ids: [],
-        target_agent_slug: mentionedAgent?.id ? String(mentionedAgent.id) : null,
-        visible_agent: canonicalMention,
-        requested_agent_names: mentionedNames,
-        mention_lock: true,
-      };
-    }
-
     return {
       dest_mode: mode,
       agent_id: hostAgentId || null,
@@ -2522,7 +2344,6 @@ function formatAgentOptionLabel(agent) {
       target_agent_slug: mode === "single" ? String(destSingle || "") : null,
       visible_agent: mode === "single" ? String(singleAgent?.name || "") : "",
       requested_agent_names: mentionedNames,
-      mention_lock: false,
     };
   }
 
@@ -2754,8 +2575,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
     if (!msg || sendingRef.current) return;
 
     const pendingApprovedExecution = findPendingApprovedPatchExecution(messagesRef.current || messages);
-    const wantsGovernedExecution = looksLikeGovernedExecutionIntent(msg);
-    if (pendingApprovedExecution && wantsGovernedExecution) {
+    if (pendingApprovedExecution) {
       const guidance = buildPendingExecutionGuidance();
       setText("");
       setUploadStatus("⚠️ Execução aprovada pendente — use o botão governado.");
@@ -2795,6 +2615,15 @@ async function sendMessage(presetMsg = null, opts = {}) {
 
     // UX: show progress while waiting
     try { setUploadStatus('⌛ Gerando resposta...'); } catch {}
+
+    // AO20K-HF4G_FRONTEND_STREAM_TERMINAL_GUARD
+    // Estes ids precisam existir também nos catches/finally. Antes ficavam
+    // declarados dentro do try, mas alguns caminhos de erro usam draftAssistantId
+    // fora daquele bloco.
+    let optimisticUserId = "";
+    let draftAssistantId = "";
+    let traceId = "";
+    let clientMessageId = "";
 
     try {
       const agentIdToSend = resolveHostAgentId(); // host agent depends on current routing mode
@@ -2871,8 +2700,8 @@ async function sendMessage(presetMsg = null, opts = {}) {
       };
 
 
-      const optimisticUserId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const draftAssistantId = `tmp-ass-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      optimisticUserId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      draftAssistantId = `tmp-ass-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const optimisticBaseTime = Date.now();
 
       const initialDraftAgentName = resolveAssistantDisplayName(
@@ -2910,8 +2739,8 @@ async function sendMessage(presetMsg = null, opts = {}) {
       }
 
       // V2V-PATCH: gerar trace_id por tentativa de V2V (correlaciona logs backend)
-      const traceId = `v2v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const clientMessageId = (globalThis.crypto && crypto.randomUUID) ? crypto.randomUUID() : (`cm-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
+      traceId = `v2v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      clientMessageId = (globalThis.crypto && crypto.randomUUID) ? crypto.randomUUID() : (`cm-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
       v2vTraceRef.current = traceId;
       setV2vPhase('chat');
       setV2vError(null);
@@ -3109,6 +2938,52 @@ async function sendMessage(presetMsg = null, opts = {}) {
           };
           if (streamMeta?.thread_id) newThreadId = streamMeta.thread_id;
         } catch (streamErr) {
+          if (
+            streamErr?.code === "CHAT_STREAM_ENDED_WITHOUT_DONE" ||
+            streamErr?.code === "CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT"
+          ) {
+            appendExecutionTrace({
+              kind: "warning",
+              label: "Stream encerrado com segurança",
+              detail: streamErr?.code || "frontend_stream_terminal_guard",
+            });
+            setMessages((prev) =>
+              (Array.isArray(prev) ? prev : []).map((m) =>
+                m.id === draftAssistantId
+                  ? {
+                      ...m,
+                      content:
+                        streamErr?.draftText ||
+                        "Não consegui concluir a resposta pelo stream nesta tentativa. A tentativa foi encerrada com segurança; tente novamente.",
+                      agent_name: m.agent_name || "Orkio",
+                    }
+                  : m
+              )
+            );
+            streamDonePayload = {
+              thread_id: streamErr?.thread_id || newThreadId || threadId,
+              trace_id: streamErr?.trace_id || traceId,
+              stream_failed: true,
+              frontend_stream_guard: true,
+              reason: streamErr?.code || "frontend_stream_terminal_guard",
+            };
+            streamMeta = {
+              thread_id: streamDonePayload.thread_id,
+              trace_id: streamDonePayload.trace_id,
+              used_stream: true,
+              done_payload: streamDonePayload,
+              draft_text: streamErr?.draftText || "",
+            };
+            try { setUploadStatus(""); } catch {}
+            setSending(false);
+            sendingRef.current = false;
+            setV2vPhase(null);
+            setV2vError(null);
+            setRuntimeHandoffLabel("");
+            collapseExecutionTrace();
+            return;
+          }
+
           if (streamErr instanceof StreamSemanticError) {
             appendExecutionTrace({
               kind: "warning",
@@ -3478,6 +3353,32 @@ async function sendMessage(presetMsg = null, opts = {}) {
     } catch (e) {
       if (isStale()) return;
       console.error("[V2V] sendMessage error:", e);
+      if (
+        e?.code === "CHAT_STREAM_ENDED_WITHOUT_DONE" ||
+        e?.code === "CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT"
+      ) {
+        appendExecutionTrace({
+          kind: "warning",
+          label: "Stream finalizado sem confirmação",
+          detail: e?.code || "frontend_stream_terminal_guard",
+        });
+        setMessages((prev) =>
+          (Array.isArray(prev) ? prev : []).map((m) =>
+            m.id === draftAssistantId
+              ? {
+                  ...m,
+                  content:
+                    e?.draftText ||
+                    "Não consegui concluir a resposta pelo stream nesta tentativa. A tentativa foi encerrada com segurança; tente novamente.",
+                  agent_name: m.agent_name || "Orkio",
+                }
+              : m
+          )
+        );
+        setV2vPhase(null);
+        setV2vError(null);
+        return;
+      }
       if (e?.status === 401) {
         const expired = await logoutIfSessionReallyExpired("sendMessage");
         if (expired) {
@@ -3577,7 +3478,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
       if (stillCurrentTurn || sendingRef.current) {
         sendingRef.current = false;
         setSending(false);
-        try { if (!ttsPlaying) setUploadStatus(''); } catch {}
+        try { setUploadStatus(''); } catch {}
       }
       if (streamCtlRef.current === ctl) {
         streamCtlRef.current = null;
@@ -3990,39 +3891,6 @@ async function confirmFounderHandoff() {
       try { clearTimeout(rtcResponseTimeoutRef.current); } catch {}
       rtcResponseTimeoutRef.current = null;
     }
-    clearRealtimeAutoResponseTimer();
-  }
-
-  function clearRealtimeAutoResponseTimer() {
-    if (rtcAutoResponseTimerRef.current) {
-      try { clearTimeout(rtcAutoResponseTimerRef.current); } catch {}
-      rtcAutoResponseTimerRef.current = null;
-    }
-  }
-
-  function scheduleRealtimeAutoResponseFallback(transcript, reason = "transcript_final") {
-    clearRealtimeAutoResponseTimer();
-    if (!REALTIME_AUTO_RESPONSE_ENABLED) return;
-    const captured = String(transcript || "").trim();
-    if (!captured) return;
-
-    rtcAutoResponseTimerRef.current = setTimeout(() => {
-      try {
-        if (!realtimeModeRef.current) return;
-        if (rtcResponseInFlightRef.current) return;
-        const latest = String(rtcLastFinalTranscriptRef.current || "").trim();
-        if (!latest || latest !== captured) return;
-        const dc = rtcDcRef.current;
-        if (!dc || dc.readyState !== "open") {
-          logRealtimeStep("response:auto_fallback_skip_channel", { reason });
-          return;
-        }
-        logRealtimeStep("response:auto_fallback_trigger", { reason, transcript: captured });
-        triggerRealtimeResponse("auto_transcript_fallback");
-      } catch (err) {
-        logRealtimeStep("response:auto_fallback_error", { reason, message: err?.message || null });
-      }
-    }, 2600);
   }
 
 
@@ -4111,8 +3979,7 @@ function scheduleRealtimeIdleFollowup() {
     const message = (raw || "").toString().trim();
     if (!message) return false;
     try {
-      const activeTid = rtcThreadIdRef.current || activeThreadIdRef.current || threadId || null;
-      const res = await guardRealtimeTranscript({ thread_id: activeTid, message });
+      const res = await guardRealtimeTranscript({ thread_id: rtcThreadIdRef.current || threadId || null, message });
       const payload = res?.data || {};
       if (!payload?.blocked) return false;
       setRtcReadyToRespond(false);
@@ -4146,7 +4013,6 @@ function scheduleRealtimeIdleFollowup() {
       logRealtimeStep('start:begin', { threadId, destSingle, summitRuntimeMode: summitRuntimeModeRef.current, summitLanguageProfile: summitLanguageProfileRef.current });
       setV2vError(null);
       setV2vPhase('connecting');
-      setRealtimeVoiceModeState('connecting', { source: 'startRealtime' });
       setUploadStatus('⚡ Conectando Realtime (WebRTC)...');
 
       if (rtcSessionIdRef.current) {
@@ -4201,14 +4067,12 @@ function scheduleRealtimeIdleFollowup() {
           })
         : await startRealtimeSession({ agent_id: agentIdToSend, thread_id: threadId || null, voice: rtVoice, model: rtModel, ttl_seconds: 600 });
       logRealtimeStep('start:session_ok', start);
-      queueRealtimeTelemetry('TOKEN_RECEIVED', { has_client_secret: !!(start?.client_secret?.value || start?.client_secret_value || start?.value), model: rtModel, voice: rtVoice, runtime_mode: runtimeMode });
       const EPHEMERAL_KEY = start?.client_secret?.value || start?.client_secret_value || start?.value || null;
       if (!EPHEMERAL_KEY) {
         logRealtimeStep('start:ephemeral_missing', start);
         throw new Error('Realtime token vazio');
       }
       logRealtimeStep('start:ephemeral_ok', { session_id: start?.session_id || null, thread_id: start?.thread_id || null });
-      queueRealtimeTelemetry('EPHEMERAL_TOKEN_READY', { session_id: start?.session_id || null, thread_id: start?.thread_id || null });
 
       rtcSessionIdRef.current = start?.session_id || null;
       try { console.log("REALTIME_SESSION_STARTED", { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null }); } catch {}
@@ -4226,13 +4090,6 @@ function scheduleRealtimeIdleFollowup() {
 
       const pc = new RTCPeerConnection();
       rtcPcRef.current = pc;
-      queueRealtimeTelemetry('PEER_CREATED', { session_id: rtcSessionIdRef.current || null });
-      pc.oniceconnectionstatechange = () => {
-        queueRealtimeTelemetry('ICE_CONNECTION_STATE', { state: pc.iceConnectionState || 'unknown' });
-      };
-      pc.onicegatheringstatechange = () => {
-        queueRealtimeTelemetry('ICE_GATHERING_STATE', { state: pc.iceGatheringState || 'unknown' });
-      };
 
       // Remote audio output
       const audioEl = document.createElement('audio');
@@ -4241,7 +4098,6 @@ function scheduleRealtimeIdleFollowup() {
       rtcAudioElRef.current = audioEl;
       pc.ontrack = (e) => {
         try {
-          queueRealtimeTelemetry('AUDIO_TRACK_RECEIVED', { streams: e?.streams?.length || 0 });
           audioEl.srcObject = e.streams[0];
           // Ensure element is connected for better autoplay compatibility
           if (!audioEl.isConnected) {
@@ -4249,17 +4105,12 @@ function scheduleRealtimeIdleFollowup() {
             document.body.appendChild(audioEl);
           }
           const p = audioEl.play?.();
-          if (p && typeof p.then === "function") {
-            p.then(() => queueRealtimeTelemetry('AUDIO_PLAY_START')).catch((err) => {
-              queueRealtimeTelemetry('AUDIO_PLAY_BLOCKED', { message: err?.message || null });
-            });
-          }
+          if (p && typeof p.catch === "function") p.catch(() => {});
         } catch {}
       };
 
       // Mic input
       logRealtimeStep('start:request_mic');
-      queueRealtimeTelemetry('MIC_PERMISSION_REQUESTED');
       const micConstraints = {
         audio: {
           channelCount: 1,
@@ -4301,11 +4152,9 @@ function scheduleRealtimeIdleFollowup() {
       }
 
       logRealtimeStep('start:mic_ok', { label: outboundTrack?.label || null, readyState: outboundTrack?.readyState || null });
-      queueRealtimeTelemetry('MIC_READY', { label: outboundTrack?.label || null, readyState: outboundTrack?.readyState || null, sample_rate: 16000 });
       outboundTrack.onended = () => {
         try {
           logRealtimeStep("mic:ended");
-          queueRealtimeTelemetry('MIC_ENDED');
           if (realtimeModeRef.current) {
             void activateSilentRealtimeFallback("mic_ended");
           }
@@ -4320,7 +4169,6 @@ function scheduleRealtimeIdleFollowup() {
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState || "unknown";
         logRealtimeStep("pc:connection_state", { state });
-        queueRealtimeTelemetry('PEER_CONNECTION_STATE', { state });
         if (state === "failed" || state === "disconnected" || state === "closed") {
           setV2vError(`Realtime connection ${state}`);
           if (realtimeModeRef.current) void activateSilentRealtimeFallback(`pc_${state}`);
@@ -4329,11 +4177,9 @@ function scheduleRealtimeIdleFollowup() {
 
       dc.addEventListener("close", () => {
         logRealtimeStep("dc:close");
-        queueRealtimeTelemetry('DATA_CHANNEL_CLOSE');
         rtcResponseInFlightRef.current = false;
         if (realtimeModeRef.current) {
           setV2vPhase("error");
-          setRealtimeVoiceModeState('error', { source: 'data_channel_close' });
           setV2vError("Realtime channel closed");
           void activateSilentRealtimeFallback("dc_closed");
         }
@@ -4342,13 +4188,10 @@ function scheduleRealtimeIdleFollowup() {
       dc.addEventListener("error", (err) => {
         console.warn("[Realtime] datachannel error", err);
         logRealtimeStep("dc:error", { message: err?.message || null });
-        queueRealtimeTelemetry('DATA_CHANNEL_ERROR', { message: err?.message || null });
       });
 
             dc.addEventListener('open', () => {
         setV2vPhase('listening');
-        setRealtimeVoiceModeState('listening', { source: 'data_channel_open' });
-        queueRealtimeTelemetry('DATA_CHANNEL_OPEN');
         setUploadStatus('⚡ Realtime ativo — fale normalmente.');
         setTimeout(() => setUploadStatus(''), 1500);
 
@@ -4359,7 +4202,6 @@ function scheduleRealtimeIdleFollowup() {
           const langHint = resolveRealtimeTranscriptionLanguage(preferredLang);
           const transcription = { model: "gpt-4o-mini-transcribe" };
           if (langHint) transcription.language = langHint;
-          queueRealtimeTelemetry('SESSION_UPDATE_SENDING', { transcription_model: transcription.model, language: langHint || null, vad_silence_ms: REALTIME_SERVER_VAD_SILENCE_MS });
           dc.send(JSON.stringify({
             type: "session.update",
             session: {
@@ -4371,55 +4213,33 @@ function scheduleRealtimeIdleFollowup() {
                     type: "server_vad",
                     silence_duration_ms: REALTIME_SERVER_VAD_SILENCE_MS,
                     prefix_padding_ms: REALTIME_SERVER_VAD_PREFIX_MS,
-                    // AO19E: guard transcript before creating model response.
-                    create_response: false
+                    create_response: true
                   }
                 }
               }
             }
           }));
-          queueRealtimeTelemetry('SESSION_UPDATED', { transcription_model: transcription.model, language: langHint || null, create_response: false, guarded_response: true });
-        } catch (err) { queueRealtimeTelemetry('SESSION_UPDATE_ERROR', { message: err?.message || null }); }
+        } catch {}
       });
 
       dc.addEventListener('message', (e) => {
         try {
           const ev = JSON.parse(e.data);
-          if (ev?.type) queueRealtimeTelemetry('EVENT_RECEIVED', { type: ev.type });
 
                     // Turn arming + optional Magic Words (B3)
-          // AO19E: server_vad detects the turn only.
-          // The frontend calls /api/realtime/guard first and only then sends response.create.
-          // This prevents stale context drift on short presence/ack commands.
+          // server_vad + create_response=true is the source of truth.
+          // We do not auto-fire response.create on final transcript here; we wait for the server
+          // to emit the response events, while still allowing optional manual / magic-word triggers
+          // when explicitly requested by the user.
           if (ev?.type === 'conversation.item.input_audio_transcription.completed') {
-            setRealtimeVoiceModeState('transcribing', { source: 'input_audio_transcription_completed' });
             const raw = (ev?.transcript || ev?.text || ev?.result?.transcript || '').toString();
             queueRealtimeEvent({ event_type: 'transcript.final', role: 'user', content: raw, is_final: true });
-            queueRealtimeTelemetry('TRANSCRIPT_FINAL', { length: raw.length, preview: raw.slice(0, 120) });
             try {} catch {}
             rtcLastFinalTranscriptRef.current = raw;
             markRealtimeUserActivity();
 
             Promise.resolve(guardAndMaybeBlockRealtimeTranscript(raw)).then((blocked) => {
-              if (blocked) {
-                queueRealtimeTelemetry('VOICE_INTENT_GUARD_BLOCKED', { transcript_length: raw.length });
-                return;
-              }
-
-              if (shouldUseBackendRealtimeOrchestration(raw)) {
-                setRtcReadyToRespond(false);
-                clearRealtimeAutoResponseTimer();
-                clearRealtimeResponseTimeout();
-                logRealtimeStep('runtime:backend_orchestration_authority', { transcript: raw });
-                queueRealtimeTelemetry('BACKEND_REALTIME_ORCHESTRATION_SELECTED', { transcript_length: raw.length });
-                setV2vPhase('responding');
-                setRealtimeVoiceModeState('thinking', { source: 'backend_orchestration_authority' });
-                setUploadStatus('🧠 Orkio roteando pelo backend multiagente...');
-                setTimeout(() => setUploadStatus(''), 1800);
-                try { void flushRealtimeEvents(); } catch {}
-                return;
-              }
-
+              if (blocked) return;
               setRtcReadyToRespond(!!raw.trim());
               const norm = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
               const endsWithCmd = (s, cmd) => s === cmd || s.endsWith(' ' + cmd);
@@ -4434,12 +4254,10 @@ function scheduleRealtimeIdleFollowup() {
                   console.warn('[Realtime] magic trigger failed', err);
                 }
               } else if (raw.trim()) {
-                // AO19E: server_vad only detects the turn. The frontend triggers the
-                // response after the backend guard approves the transcript.
-                setRtcReadyToRespond(true);
-                logRealtimeStep('runtime:guard_passed_trigger_response', { transcript: raw });
-                queueRealtimeTelemetry('VOICE_INTENT_GUARD_PASSED', { transcript_length: raw.length });
-                triggerRealtimeResponse("guarded_transcript");
+                setRtcReadyToRespond(false);
+                logRealtimeStep('runtime:awaiting_server_auto_response', {
+                  transcript: raw,
+                });
               }
             });
           }
@@ -4449,11 +4267,9 @@ function scheduleRealtimeIdleFollowup() {
             rtcTextBufRef.current += ev.delta;
           }
           if (ev?.type === 'response.created') {
-            queueRealtimeTelemetry('RESPONSE_CREATED', { response_id: ev?.response?.id || ev?.response_id || null });
             clearRealtimeResponseTimeout();
             rtcResponseInFlightRef.current = true;
             setV2vPhase('responding');
-            setRealtimeVoiceModeState('thinking', { source: 'response.created' });
             rtcTextBufRef.current = '';
             rtcAudioTranscriptBufRef.current = '';
             rtcLastAssistantFinalRef.current = '';
@@ -4478,7 +4294,6 @@ function scheduleRealtimeIdleFollowup() {
           }
           // Audio transcript (when model outputs audio without text)
           if (ev?.type === 'response.audio.delta') {
-            queueRealtimeTelemetry('AUDIO_DELTA_RECEIVED', { response_id: ev?.response_id || null });
             clearRealtimeResponseTimeout();
           }
           if (ev?.type === 'response.audio_transcript.delta' && ev?.delta) {
@@ -4504,7 +4319,6 @@ function scheduleRealtimeIdleFollowup() {
           }
 
           if (ev?.type === 'response.done') {
-            queueRealtimeTelemetry('RESPONSE_DONE', { response_id: ev?.response?.id || ev?.response_id || null, status: ev?.response?.status || null });
             clearRealtimeResponseTimeout();
             rtcResponseInFlightRef.current = false;
 
@@ -4522,7 +4336,6 @@ function scheduleRealtimeIdleFollowup() {
               });
               commitRealtimeAssistantFinal(finalText, { source: 'response.done' });
             } else {
-              queueRealtimeTelemetry('RESPONSE_DONE_WITHOUT_TEXT', { source: 'response.done' });
               logRealtimeStep('runtime:response_done_without_text', {
                 source: 'response.done',
                 textBuf: textFinal.length,
@@ -4536,10 +4349,8 @@ function scheduleRealtimeIdleFollowup() {
             rtcResponseInFlightRef.current = false;
             console.warn('[Realtime] error', ev);
             logRealtimeStep('runtime:error_event', ev);
-            queueRealtimeTelemetry('REALTIME_ERROR', { message: ev?.error?.message || null, code: ev?.error?.code || null, type: ev?.error?.type || null });
             setV2vError(ev?.error?.message || 'Erro Realtime');
             setV2vPhase('error');
-            setRealtimeVoiceModeState('error', { source: 'realtime_error_event', code: ev?.error?.code || null });
             void activateSilentRealtimeFallback('realtime_error', { disarm: false });
           }
         } catch (err) {
@@ -4553,11 +4364,9 @@ function scheduleRealtimeIdleFollowup() {
 
       // SDP handshake
       logRealtimeStep('start:create_offer');
-      queueRealtimeTelemetry('SDP_OFFER_CREATE_START');
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       logRealtimeStep('start:local_description_set', { sdpLength: offer?.sdp?.length || 0 });
-      queueRealtimeTelemetry('SDP_LOCAL_DESCRIPTION_SET', { sdp_length: offer?.sdp?.length || 0 });
 
       const sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
         method: 'POST',
@@ -4571,20 +4380,16 @@ function scheduleRealtimeIdleFollowup() {
       const sdpText = await sdpResponse.text().catch(() => '');
       if (!sdpResponse.ok) {
         logRealtimeStep('start:sdp_error', { status: sdpResponse.status, body: sdpText || sdpResponse.statusText });
-        queueRealtimeTelemetry('SDP_HANDSHAKE_ERROR', { status: sdpResponse.status, body_preview: (sdpText || sdpResponse.statusText || '').slice(0, 500) });
         throw new Error(`SDP handshake falhou (${sdpResponse.status}): ${sdpText || sdpResponse.statusText}`);
       }
 
       logRealtimeStep('start:sdp_ok', { answerLength: sdpText.length });
-      queueRealtimeTelemetry('SDP_HANDSHAKE_OK', { answer_length: sdpText.length });
       const answer = { type: 'answer', sdp: sdpText };
       await pc.setRemoteDescription(answer);
       logRealtimeStep('start:ready', { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null });
-      queueRealtimeTelemetry('PEER_CONNECTED', { session_id: start?.session_id || null, thread_id: start?.thread_id || threadId || null });
 
     } catch (e) {
       console.error('[Realtime] startRealtime error', e);
-      queueRealtimeTelemetry('REALTIME_BOOT_ERROR', { message: e?.message || 'Falha ao iniciar Realtime' });
       logRealtimeStep('start:catch', {
         message: e?.message || 'Falha ao iniciar Realtime',
         stack: e?.stack || null,
@@ -4592,7 +4397,6 @@ function scheduleRealtimeIdleFollowup() {
         threadId: rtcThreadIdRef.current || threadId || null,
       });
       setV2vPhase('error');
-      setRealtimeVoiceModeState('error', { source: 'startRealtime_error', message: e?.message || null });
       setV2vError(e?.message || 'Falha ao iniciar Realtime');
       setUploadStatus('❌ Realtime: ' + (e?.message || 'falha'));
       setTimeout(() => setUploadStatus(''), 4000);
@@ -4618,15 +4422,7 @@ function scheduleRealtimeIdleFollowup() {
         logRealtimeStep("response:skip_empty", { reason });
         return;
       }
-      if (shouldUseBackendRealtimeOrchestration(lastTranscript)) {
-        logRealtimeStep("response:skip_backend_authority", { reason, transcript: lastTranscript });
-        queueRealtimeTelemetry('RESPONSE_CREATE_SKIPPED_BACKEND_AUTHORITY', { reason, transcript_length: lastTranscript.length });
-        setRtcReadyToRespond(false);
-        try { void flushRealtimeEvents(); } catch {}
-        return;
-      }
       rtcResponseInFlightRef.current = true;
-      clearRealtimeAutoResponseTimer();
       clearRealtimeResponseTimeout();
       clearRealtimeIdleFollowup();
       rtcResponseTimeoutRef.current = setTimeout(() => {
@@ -4634,7 +4430,6 @@ function scheduleRealtimeIdleFollowup() {
         setTimeout(() => setUploadStatus(""), 1200);
       }, 7000);
       dc.send(JSON.stringify({ type: "response.create", response: { output_modalities: ["audio", "text"], audio: { output: { voice: rtcVoiceRef.current } } } }));
-      queueRealtimeTelemetry('RESPONSE_CREATE_SENT', { reason, voice: rtcVoiceRef.current });
       setRtcReadyToRespond(false);
       setV2vPhase("responding");
       setUploadStatus(reason === "magic" ? "✨ Command received — responding..." : reason === "auto_vad" ? "🎙️ Speech detected — responding..." : "▶️ Responding...");
@@ -4642,7 +4437,6 @@ function scheduleRealtimeIdleFollowup() {
     } catch (e) {
       rtcResponseInFlightRef.current = false;
       console.warn("[Realtime] triggerRealtimeResponse failed", e);
-      queueRealtimeTelemetry('RESPONSE_CREATE_FAILED', { reason, message: e?.message || null });
       setUploadStatus("❌ Failed to trigger realtime response.");
       setTimeout(() => setUploadStatus(""), 2000);
       void activateSilentRealtimeFallback("trigger_failed");
@@ -4677,44 +4471,6 @@ function scheduleRealtimeIdleFollowup() {
         setRtcAuditEvents(prev => prev.concat([item]));
       }
     } catch {}
-  }
-
-  function queueRealtimeTelemetry(eventName, meta = {}) {
-    try {
-      const normalizedName = String(eventName || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
-      const payload = {
-        ao19d: true,
-        event_name: normalizedName,
-        session_id: rtcSessionIdRef.current || null,
-        thread_id: rtcThreadIdRef.current || threadId || null,
-        phase: v2vPhase || null,
-        realtime_mode: !!realtimeModeRef.current,
-        dc_state: rtcDcRef.current?.readyState || null,
-        pc_state: rtcPcRef.current?.connectionState || null,
-        ice_state: rtcPcRef.current?.iceConnectionState || null,
-        ts: new Date().toISOString(),
-        ...(meta && typeof meta === "object" ? meta : { meta }),
-      };
-
-      if (REALTIME_TELEMETRY_ENABLED) {
-        logRealtimeStep(`telemetry:${normalizedName}`, payload);
-        queueRealtimeEvent({
-          event_type: `telemetry.${normalizedName}`,
-          role: "system",
-          content: null,
-          is_final: false,
-          meta: payload,
-        });
-      } else {
-        logRealtimeStep(`telemetry_disabled:${normalizedName}`, payload);
-      }
-
-      try {
-        console.debug(REALTIME_TELEMETRY_PREFIX, normalizedName, payload);
-      } catch {}
-    } catch (err) {
-      try { console.warn("[Realtime] telemetry enqueue failed", err); } catch {}
-    }
   }
 
   async function flushRealtimeEvents() {
@@ -4762,7 +4518,7 @@ function scheduleRealtimeIdleFollowup() {
       const speakerType = String(ev?.speaker_type || ev?.role || "").trim().toLowerCase();
       return (
         (eventType === "response.final" || eventType === "transcript.final")
-        && ["agent", "assistant", "model"].includes(speakerType)
+        && speakerType === "agent"
       );
     });
 
@@ -4808,11 +4564,9 @@ function scheduleRealtimeIdleFollowup() {
       setTimeout(() => setUploadStatus(''), 2200);
 
       try {
-        await speakRealtimeAssistantFinal(content, {
-          source: "backend_realtime_session",
-          agentName,
-          agentId,
-          messageId: evId,
+        await playTts(content, agentId, {
+          forceAuto: true,
+          messageId: null,
           traceId: v2vTraceRef.current || null,
           voiceOverride: resolvedVoice,
         });
@@ -4833,17 +4587,6 @@ function scheduleRealtimeIdleFollowup() {
         const data = await getRealtimeSession({ session_id: sid, finals_only: true });
         await handleBackendRealtimeAssistantResponses(data || {});
       } catch (err) {
-        // AO19E: a stale realtime poll may receive 401/404 after session rotation/end.
-        // This must not poison the active conversation or trigger auth/logout behavior.
-        if (err?.status === 401 || err?.status === 403 || err?.status === 404) {
-          queueRealtimeTelemetry('LIVE_POLL_STOPPED_STALE_SESSION', {
-            status: err?.status || null,
-            session_id: sid,
-            current_session_id: rtcSessionIdRef.current || null,
-          });
-          clearRealtimeLivePoll();
-          return;
-        }
         console.warn("[Realtime] live poll failed", err);
       }
     }, 1400);
@@ -4890,66 +4633,6 @@ function scheduleRealtimeIdleFollowup() {
     }
   }
 
-  async function speakRealtimeAssistantFinal(rawText, opts = {}) {
-    const finalText = String(rawText || "").trim();
-    if (!finalText) return;
-    if (!realtimeModeRef.current && !voiceModeRef.current) return;
-
-    const dedupeKey = [
-      String(opts?.messageId || ""),
-      String(opts?.source || ""),
-      normalizeAo20bcRealtimeText(finalText).slice(0, 220),
-    ].join(":");
-
-    if (realtimeVoiceOutputSpokenKeysRef.current.has(dedupeKey)) return;
-    realtimeVoiceOutputSpokenKeysRef.current.add(dedupeKey);
-    if (realtimeVoiceOutputSpokenKeysRef.current.size > 80) {
-      try {
-        const keep = Array.from(realtimeVoiceOutputSpokenKeysRef.current).slice(-40);
-        realtimeVoiceOutputSpokenKeysRef.current = new Set(keep);
-      } catch {}
-    }
-
-    try {
-      setRealtimeVoiceModeState("speaking", {
-        source: opts?.source || "assistant_final",
-        agent_name: opts?.agentName || null,
-        message_id: opts?.messageId || null,
-      });
-      queueRealtimeTelemetry("REALTIME_TTS_REQUEST", {
-        source: opts?.source || "assistant_final",
-        agent_name: opts?.agentName || null,
-        message_id: opts?.messageId || null,
-        text_length: finalText.length,
-      });
-      await playTts(finalText, opts?.agentId || null, {
-        forceAuto: true,
-        messageId: opts?.messageId || null,
-        traceId: opts?.traceId || v2vTraceRef.current || null,
-        voiceOverride: opts?.voiceOverride || null,
-      });
-      queueRealtimeTelemetry("REALTIME_TTS_PLAY_OK", {
-        source: opts?.source || "assistant_final",
-        message_id: opts?.messageId || null,
-      });
-      if (realtimeModeRef.current) {
-        setRealtimeVoiceModeState("listening", { source: "tts_complete" });
-      } else {
-        setRealtimeVoiceModeState("idle", { source: "tts_complete" });
-      }
-    } catch (err) {
-      console.warn("[AO20E] realtime TTS bridge failed", err);
-      queueRealtimeTelemetry("REALTIME_TTS_PLAY_FAILED", {
-        source: opts?.source || "assistant_final",
-        message: err?.message || null,
-      });
-      setRealtimeVoiceModeState("error", {
-        source: "tts_failed",
-        message: err?.message || null,
-      });
-    }
-  }
-
   function commitRealtimeAssistantFinal(rawText, { source = 'unknown' } = {}) {
     const finalText = (rawText || '').toString().trim();
     if (!finalText) return;
@@ -4973,14 +4656,12 @@ function scheduleRealtimeIdleFollowup() {
     rtcAssistantFinalCommittedRef.current = true;
 
     queueRealtimeEvent({ event_type: 'response.final', role: 'assistant', content: finalText, is_final: true, meta: { source } });
-    let agentName2 = "Orkio";
-    let agentId2 = destSingle || null;
-    const mid = `rtc_ass_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     try {
       const selectedAgentObj2 = (agents || []).find(a => String(a.id) === String(destSingle || ""));
       const metaAgentName = source && String(source).includes(":") ? String(source).split(":")[1].trim() : "";
-      agentName2 = metaAgentName || selectedAgentObj2?.name || "Orkio";
-      agentId2 = selectedAgentObj2?.id || (destSingle || null);
+      const agentName2 = metaAgentName || selectedAgentObj2?.name || "Orkio";
+      const agentId2 = selectedAgentObj2?.id || (destSingle || null);
+      const mid = `rtc_ass_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       setMessages((prev) => prev.concat([{
         id: mid,
         role: "assistant",
@@ -4989,16 +4670,6 @@ function scheduleRealtimeIdleFollowup() {
         agent_name: agentName2,
         created_at: Math.floor(Date.now()/1000),
       }]));
-    } catch {}
-
-    try {
-      void speakRealtimeAssistantFinal(finalText, {
-        source,
-        agentName: agentName2,
-        agentId: agentId2,
-        messageId: mid,
-        traceId: v2vTraceRef.current || null,
-      });
     } catch {}
 
     setUploadStatus('📝 ' + finalText.slice(0, 80) + (finalText.length > 80 ? '…' : ''));
@@ -5036,10 +4707,8 @@ function scheduleRealtimeIdleFollowup() {
 
 async function stopRealtime(reason = 'client_stop') {
     const sid = rtcSessionIdRef.current;
-    setRealtimeVoiceModeState('ended', { source: 'stopRealtime', reason });
     try {
       console.log("REALTIME_STOP_REASON", reason, { sessionId: sid });
-      queueRealtimeTelemetry('SESSION_END_REQUESTED', { reason, session_id: sid || null });
     } catch {}
     rtcConnectingRef.current = false;
     try {
@@ -5104,7 +4773,6 @@ async function stopRealtime(reason = 'client_stop') {
         try { processing.ctx?.close?.(); } catch {}
       }
     } catch {}
-    setRealtimeVoiceModeState('idle', { source: 'stopRealtime_done', reason });
   }
 
 
@@ -5195,10 +4863,8 @@ async function stopRealtime(reason = 'client_stop') {
     stopTts();
     setTtsPlaying(true);
     setV2vPhase('playing');
-    setRealtimeVoiceModeState('speaking', { source: 'playTts', message_id: messageId || null, agent_id: agentId || null });
 
     const effectiveTrace = traceId || v2vTraceRef.current || null;
-    queueRealtimeTelemetry('REALTIME_TTS_PLAY_START', { trace_id: effectiveTrace || null, message_id: messageId || null, agent_id: agentId || null });
     console.info('[V2V] v2v_play_start trace_id=%s message_id=%s agent_id=%s', effectiveTrace, messageId, agentId);
 
     try {
@@ -5264,7 +4930,6 @@ async function stopRealtime(reason = 'client_stop') {
           console.info('[V2V] v2v_play_end trace_id=%s', effectiveTrace);
           setTtsPlaying(false);
           setV2vPhase(null);
-          setRealtimeVoiceModeState(realtimeModeRef.current ? 'listening' : 'idle', { source: 'tts_end' });
           URL.revokeObjectURL(url);
           ttsAudioRef.current = null;
           // Reiniciar microfone após fala (ciclo V2V)
@@ -5277,7 +4942,6 @@ async function stopRealtime(reason = 'client_stop') {
           console.error('[V2V] audio.onerror trace_id=%s', effectiveTrace, err);
           setTtsPlaying(false);
           setV2vPhase('error');
-          setRealtimeVoiceModeState('error', { source: 'audio_playback_error' });
           setV2vError('Erro ao reproduzir áudio');
           URL.revokeObjectURL(url);
           ttsAudioRef.current = null;
@@ -5288,7 +4952,6 @@ async function stopRealtime(reason = 'client_stop') {
           console.warn('[V2V] autoplay blocked trace_id=%s:', effectiveTrace, err?.message);
           setTtsPlaying(false);
           setV2vPhase(null);
-          setRealtimeVoiceModeState(realtimeModeRef.current ? 'listening' : 'idle', { source: 'tts_autoplay_blocked' });
           URL.revokeObjectURL(url);
           ttsAudioRef.current = null;
           // BUG-01 FIX: reiniciar mic mesmo sem áudio — ciclo V2V não pode morrer aqui
@@ -5302,7 +4965,6 @@ async function stopRealtime(reason = 'client_stop') {
       console.error('[V2V] v2v_tts_fail trace_id=%s error:', effectiveTrace, e);
       setTtsPlaying(false);
       setV2vPhase('error');
-      setRealtimeVoiceModeState('error', { source: 'tts_exception', message: e?.message || null });
       setV2vError(e?.message || 'Erro desconhecido no TTS');
     }
   }
@@ -5742,11 +5404,6 @@ async function stopRealtime(reason = 'client_stop') {
 
   const meName = user?.name || user?.email || "Você";
 
-  const normalizedThreadSearch = String(threadSearch || "").trim().toLowerCase();
-  const visibleThreads = normalizedThreadSearch
-    ? threads.filter((t) => String(t?.title || "").toLowerCase().includes(normalizedThreadSearch))
-    : threads;
-
   const pendingApprovedPatchExecution = findPendingApprovedPatchExecution(messages);
 
   if (!onboardingChecked && !bootstrapFailOpen) {
@@ -5781,22 +5438,6 @@ async function stopRealtime(reason = 'client_stop') {
 {onboardingOpen && (
       <OnboardingModal
         user={user}
-        entrySource={onboardingEntrySource}
-        autoSpeak={onboardingAutoSpeak}
-        allowSkip={!onboardingRequired}
-        onClose={() => {
-          if (onboardingRequired) {
-            setUploadStatus("Complete o contexto inicial para iniciar a conversa.");
-            setTimeout(() => setUploadStatus(""), 1800);
-            setOnboardingOpen(true);
-            return;
-          }
-          setOnboardingOpen(false);
-          setOnboardingAutoSpeak(false);
-          setOnboardingEntrySource("standard");
-          setOnboardingStatus("");
-          clearAvatarOnboardingBoot();
-        }}
         onComplete={(nextUser) => {
           const refreshedToken = nextUser?.access_token || token;
           const mergedUser = {
@@ -5823,11 +5464,8 @@ async function stopRealtime(reason = 'client_stop') {
             setToken(refreshedToken);
           } catch {}
           setOnboardingOpen(false);
-          setOnboardingAutoSpeak(false);
-          setOnboardingEntrySource("standard");
           setOnboardingStatus("");
-          clearAvatarOnboardingBoot();
-          setUploadStatus("✅ Contexto salvo. O Orkio usará isso no chat.");
+          setUploadStatus("✅ Onboarding concluído.");
           setTimeout(() => setUploadStatus(""), 1800);
         }}
       />
@@ -5861,32 +5499,11 @@ async function stopRealtime(reason = 'client_stop') {
           </button>
         </div>
 
-        <input
-          value={threadSearch}
-          onChange={(e) => setThreadSearch(e.target.value)}
-          placeholder="Buscar conversas..."
-          aria-label="Buscar conversas"
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 14,
-            background: "rgba(255,255,255,0.04)",
-            color: "#fff",
-            padding: "11px 12px",
-            outline: "none",
-            margin: "12px 0 8px",
-            fontWeight: 700,
-          }}
-        />
-
         <div style={styles.threads}>
           {threads.length === 0 ? (
             <div style={styles.emptyThreads}>Nenhuma conversa ainda.</div>
-          ) : visibleThreads.length === 0 ? (
-            <div style={styles.emptyThreads}>Nenhuma conversa encontrada.</div>
           ) : (
-            visibleThreads.map((t) => (
+            threads.map((t) => (
               <button
                 key={t.id}
                 onClick={() => {
@@ -5944,18 +5561,11 @@ async function stopRealtime(reason = 'client_stop') {
             )}
             {!user?.onboarding_completed ? (
               <button
-                style={{
-                  ...styles.iconBtn,
-                  width: "auto",
-                  minWidth: 98,
-                  padding: "0 12px",
-                  gap: 6,
-                }}
+                style={styles.iconBtn}
                 onClick={() => setOnboardingOpen(true)}
-                title="Completar contexto inicial"
+                title="Completar cadastro"
               >
-                <span style={{ fontSize: 13 }}>✨</span>
-                <span style={{ fontSize: 12, fontWeight: 900 }}>Contexto</span>
+                ✨
               </button>
             ) : null}
             <button style={styles.iconBtn} onClick={doLogout} title="Sair">
@@ -6182,46 +5792,6 @@ async function stopRealtime(reason = 'client_stop') {
 
         {/* Messages */}
         <div style={{ ...styles.chatArea, padding: isMobile ? "12px 12px 18px" : styles.chatArea.padding }}>
-          {onboardingRequired ? (
-            <div
-              style={{
-                marginBottom: 14,
-                borderRadius: 18,
-                border: "1px solid rgba(96,165,250,0.35)",
-                background: "linear-gradient(135deg, rgba(30,64,175,0.18), rgba(124,58,237,0.14))",
-                color: "#dbeafe",
-                padding: "14px 16px",
-                boxShadow: "0 16px 42px rgba(0,0,0,0.18)",
-              }}
-            >
-              <div style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 900, color: "#93c5fd" }}>
-                Contexto inicial pendente
-              </div>
-              <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>
-                Antes de conversar, salve seu contexto para o Orkio usar no chat.
-              </div>
-              <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.5, color: "rgba(219,234,254,0.84)" }}>
-                Essa etapa evita conversa genérica: empresa/projeto, papel, perfil, objetivo, país, idioma e telefone ficam disponíveis para a primeira resposta útil.
-              </div>
-              <button
-                type="button"
-                onClick={() => setOnboardingOpen(true)}
-                style={{
-                  marginTop: 12,
-                  border: 0,
-                  borderRadius: 14,
-                  padding: "10px 14px",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  color: "#0f172a",
-                  background: "linear-gradient(135deg, #bfdbfe, #ffffff)",
-                }}
-              >
-                Completar contexto agora
-              </button>
-            </div>
-          ) : null}
-
           {messages.length === 0 ? (
             <div style={styles.premiumEmptyShell}>
               <EmptyStatePremium
@@ -6234,11 +5804,12 @@ async function stopRealtime(reason = 'client_stop') {
 
               <div style={styles.premiumAside}>
                 <div style={styles.premiumAsideCard}>
-                  <div style={styles.premiumAsideEyebrow}>Contexto preservado</div>
-                  <div style={styles.premiumAsideTitle}>Comece com uma pergunta de valor</div>
+                  <div style={styles.premiumAsideEyebrow}>Continuity preserved</div>
+                  <div style={styles.premiumAsideTitle}>A mudança agora precisa ser impossível de ignorar</div>
                   <div style={styles.premiumAsideText}>
-                    O console está pronto para transformar contexto em plano, análise ou roteiro.
-                    Use os cards centrais para entender os agentes e iniciar o primeiro teste com clareza.
+                    O shell principal continua preservado, mas o centro do console passa a comunicar
+                    direção, valor e próxima ação com mais intensidade. A ideia não é trocar a rota:
+                    é transformar a primeira percepção do produto.
                   </div>
 
                   <div style={styles.premiumStatusRow}>
@@ -6251,22 +5822,22 @@ async function stopRealtime(reason = 'client_stop') {
                       <div style={styles.premiumStatusValue}>{canAccessAdmin ? "Admin + usuário" : "Usuário ativo"}</div>
                     </div>
                     <div style={styles.premiumStatusCard}>
-                      <div style={styles.premiumStatusLabel}>Beta</div>
-                      <div style={styles.premiumStatusValue}>Controlado</div>
+                      <div style={styles.premiumStatusLabel}>Jornada</div>
+                      <div style={styles.premiumStatusValue}>Premium in-shell</div>
                     </div>
                   </div>
                 </div>
 
                 <div style={styles.premiumAsideCard}>
-                  <div style={styles.premiumAsideEyebrow}>Roteiro sugerido</div>
+                  <div style={styles.premiumAsideEyebrow}>Execution preview</div>
                   <ExecutionTimeline steps={EMPTY_STATE_PREVIEW_STEPS} />
                 </div>
 
                 <div style={styles.premiumAsideCard}>
-                  <div style={styles.premiumAsideEyebrow}>Feedback beta</div>
+                  <div style={styles.premiumAsideEyebrow}>Telemetria executiva</div>
                   <div style={styles.premiumAsideText}>
-                    Durante o beta, registre rapidamente se a resposta foi útil, fraca, visualmente confusa,
-                    travou ou gerou uma sugestão de melhoria.
+                    Antes mesmo da primeira mensagem, o usuário já vê sinais concretos de prontidão,
+                    continuidade funcional e leitura executiva mais madura.
                   </div>
                   <div style={styles.premiumLogList}>
                     {EMPTY_STATE_PREVIEW_LOGS.map((entry) => (
@@ -6748,10 +6319,10 @@ async function stopRealtime(reason = 'client_stop') {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={onboardingRequired ? "Complete o contexto inicial para iniciar a conversa." : pendingApprovedPatchExecution ? "Execução aprovada pendente — use o botão governado acima." : "Escreva sua mensagem..."}
+              placeholder={pendingApprovedPatchExecution ? "Execução aprovada pendente — use o botão governado acima." : "Escreva sua mensagem..."}
               style={styles.textarea}
               rows={1}
-              disabled={onboardingRequired || sending || !!pendingApprovedPatchExecution}
+              disabled={sending || !!pendingApprovedPatchExecution}
             />
 
             {SUMMIT_VOICE_MODE === "stt_tts" ? (
@@ -6808,7 +6379,7 @@ async function stopRealtime(reason = 'client_stop') {
               🤝
             </button>
 
-            <button type="button" style={styles.sendBtn} onMouseDown={(e) => e.preventDefault()} onClick={() => onboardingRequired ? setOnboardingOpen(true) : sendMessage()} disabled={sending || !!pendingApprovedPatchExecution} title={onboardingRequired ? "Complete o contexto inicial antes de enviar" : "Enviar"}>
+            <button type="button" style={styles.sendBtn} onMouseDown={(e) => e.preventDefault()} onClick={() => sendMessage()} disabled={sending || !!pendingApprovedPatchExecution} title="Enviar">
               <IconSend />
             </button>
           </div>
