@@ -875,14 +875,56 @@ function formatExecutionRoutingSource(raw = "") {
   return labels[source] || source.replace(/^stream_/, "").replaceAll("_", " ");
 }
 
+// HF6R2A_PREFER_HF6R1_ROUTE_METADATA
+function formatRouteBadgeLabel(raw = "") {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  const labels = {
+    multi_intent_readonly_splitter: "multi intent readonly",
+    multi_intent_readonly: "multi intent readonly",
+    checkpoint_ack_readonly: "checkpoint readonly",
+    checkpoint_readonly: "checkpoint readonly",
+    safe_agent_ping: "agent ping",
+    agent_ping: "agent ping",
+    safe_agent_greeting: "agent greeting",
+    agent_greeting: "agent greeting",
+    readonly_audit_light: "readonly audit light",
+    internal_diagnostic_token_readonly: "internal diagnostic token readonly",
+    simple_greeting: "simple greeting",
+    system_status_readonly: "system status readonly",
+    controlled_evolution_readonly: "controlled evolution readonly",
+    governed_pipeline_inventory_readonly: "governed pipeline inventory readonly",
+    issue_map_patch_plan_readonly: "issue map patch plan readonly",
+    branch_pr_plan_simulated_readonly: "branch/pr simulated readonly",
+    safe_fastpath_coverage: "safe fast-path",
+    technical_audit: "technical audit",
+    orchestration_audit: "orchestration audit",
+    general: "general",
+  };
+  return labels[value] || value.replaceAll("_", " ");
+}
+
 function buildExecutionBadgesFromRouting(routing = {}) {
   const badges = [];
   if (routing?.fast_path_hit || routing?.runtime_bypassed) badges.push("Fast-path");
   if (routing?.simulation_only) badges.push("Somente simulação");
   if (routing?.write_executed === false || routing?.write_allowed === false) badges.push("Sem escrita");
   if (routing?.branch_created === false && routing?.pr_created === false) badges.push("Sem branch/PR");
-  if (routing?.route_family) badges.push(String(routing.route_family).replaceAll("_", " "));
-  return Array.from(new Set(badges.filter(Boolean))).slice(0, 4);
+
+  const preferredRoute =
+    routing?.route_kind ||
+    routing?.route_family ||
+    routing?.routing_source ||
+    "";
+
+  const routeBadge = formatRouteBadgeLabel(preferredRoute);
+  if (routeBadge) badges.push(routeBadge);
+
+  if (routing?.route_matrix_version === "HF6R1" || routing?.metadata_normalized) {
+    badges.push("HF6R1");
+  }
+
+  return Array.from(new Set(badges.filter(Boolean))).slice(0, 5);
 }
 
 function buildExecutionDoneDetail(payload = {}) {
