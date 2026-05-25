@@ -345,11 +345,35 @@ export default function AdminEvolutionCenter() {
     setNotice("");
     setBranchCreateResult(null);
     try {
+      // AO-17B_UI_ALLOW_SAFE_AO02B_BRANCH_CREATION
+      // Para propostas frontend-only, criar branch apenas no repo web.
+      // Mantém backend untouched no teste AO-02B.
+      const activeProposal = String(selected?.proposal_id || "") === String(id || "")
+        ? selected
+        : items.find((x) => String(x?.proposal_id || "") === String(id || ""));
+      const activeTargetFiles = Array.isArray(activeProposal?.target_files)
+        ? activeProposal.target_files
+        : Array.isArray(activeProposal?.targetFiles)
+        ? activeProposal.targetFiles
+        : [];
+      const frontendOnly = activeTargetFiles.length > 0 && activeTargetFiles.every((item) => {
+        const value = String(item || "").trim().toLowerCase();
+        return (
+          value.startsWith("src/") ||
+          value.startsWith("public/") ||
+          value.endsWith(".jsx") ||
+          value.endsWith(".tsx") ||
+          value.endsWith(".css") ||
+          value.endsWith(".html")
+        );
+      });
+      const repoTarget = frontendOnly ? "frontend" : "both";
+
       const data = await apiFetch(`/api/admin/evolution/proposals/${encodeURIComponent(id)}/create-branch`, {
         method: "POST",
         token,
         org: tenant,
-        body: { repo_target: "both" },
+        body: { repo_target: repoTarget },
       });
       const payload = unwrapPayload(data);
       setBranchCreateResult(payload);
@@ -504,13 +528,22 @@ export default function AdminEvolutionCenter() {
     (selectedIsDryRunCompleted && selectedBlocksRealExecution)
   );
   const selectedTitle = String(selected?.title || "").toLowerCase();
+  const selectedTargetFiles = Array.isArray(selected?.target_files)
+    ? selected.target_files
+    : Array.isArray(selected?.targetFiles)
+    ? selected.targetFiles
+    : [];
   const selectedIsAo17bBranchProposal = selectedTitle.includes("ao-17b") && (
     selectedTitle.includes("branch") ||
     String(selected?.summary || "").toLowerCase().includes("branch tempor")
   );
+  const selectedIsAo02bSafeTermsProposal = Boolean(
+    selectedTitle.includes("ao-02b") &&
+    selectedTargetFiles.some((item) => String(item || "").trim() === "src/routes/legal/Terms.jsx")
+  );
   const canCreateTemporaryBranch = Boolean(
     selected?.proposal_id &&
-    selectedIsAo17bBranchProposal &&
+    (selectedIsAo17bBranchProposal || selectedIsAo02bSafeTermsProposal) &&
     selectedIsDryRunCompleted &&
     canPrepareBranchPr &&
     selectedBlocksRealExecution
