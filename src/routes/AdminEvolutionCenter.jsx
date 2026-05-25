@@ -523,11 +523,47 @@ export default function AdminEvolutionCenter() {
   const selectedIsRejected = selectedStatus === "rejected";
   const selectedIsDryRunCompleted = selectedExecutionStatus === "dry_run_completed";
   const effectiveBranchPrPlan = branchPrPlan || plan?.branch_pr_plan || null;
-  const canPrepareBranchPr = Boolean(
-    effectiveBranchPrPlan?.can_prepare_branch_pr ||
-    (selectedIsDryRunCompleted && selectedBlocksRealExecution)
-  );
+  const effectiveBranchPrPlanStage = String(effectiveBranchPrPlan?.stage || "").trim().toUpperCase();
+  const effectiveBranchPrPlanMode = String(effectiveBranchPrPlan?.mode || "").trim();
   const selectedTitle = String(selected?.title || "").toLowerCase();
+
+  // AO-22_DYNAMIC_NEXT_STAGE_UI
+  // Render the post-dry-run plan card according to the actual backend plan.
+  const selectedIsAo22MergeProposal = Boolean(
+    selectedTitle.includes("ao-22") ||
+    effectiveBranchPrPlanStage === "AO-22" ||
+    effectiveBranchPrPlanMode === "governed_merge_plan_readonly"
+  );
+  const canPrepareMergePlan = Boolean(
+    effectiveBranchPrPlan?.can_prepare_merge ||
+    (selectedIsAo22MergeProposal && selectedIsDryRunCompleted && selectedBlocksRealExecution)
+  );
+  const canPrepareBranchPr = Boolean(
+    !selectedIsAo22MergeProposal &&
+    (
+      effectiveBranchPrPlan?.can_prepare_branch_pr ||
+      (selectedIsDryRunCompleted && selectedBlocksRealExecution)
+    )
+  );
+  const branchPrPlanCapabilityReady = selectedIsAo22MergeProposal ? canPrepareMergePlan : canPrepareBranchPr;
+  const branchPrPlanCapabilityLabel = selectedIsAo22MergeProposal
+    ? `can_prepare_merge=${String(Boolean(canPrepareMergePlan))}`
+    : `can_prepare_branch_pr=${String(Boolean(canPrepareBranchPr))}`;
+  const branchPrPlanCardTitle = selectedIsAo22MergeProposal
+    ? "AO-22 — Plano Read-only de Merge Governado"
+    : "AO-17A — Branch/PR Runner Governado";
+  const branchPrPlanCardDescription = selectedIsAo22MergeProposal
+    ? "Prepara a revisão do merge futuro do PR #6. Esta etapa ainda é read-only: não faz merge, não faz deploy, não executa migration e não escreve diretamente em main."
+    : "Transforma o dry-run aprovado em contrato de execução futura em branch/PR. Esta etapa ainda é read-only: não cria branch, não escreve no repositório, não cria commit, não abre PR, não faz merge, deploy ou migration.";
+  const branchPrPlanReadyLabel = selectedIsAo22MergeProposal
+    ? "Dry-run concluído. AO-22 pode ser revisado."
+    : "Dry-run concluído. AO-17A pode ser revisado.";
+  const branchPrPlanNextSafeText = selectedIsAo22MergeProposal
+    ? "O próximo GO seguro é preparar merge governado do PR #6, com preflight obrigatório e aprovação Admin antes de qualquer merge real."
+    : "O próximo GO seguro é preparar branch/PR, com rollback_plan obrigatório e aprovação Admin antes de qualquer escrita real.";
+  const branchPrPlanButtonLabel = selectedIsAo22MergeProposal
+    ? "Carregar plano AO-22"
+    : "Carregar plano AO-17A";
   const selectedTargetFiles = Array.isArray(selected?.target_files)
     ? selected.target_files
     : Array.isArray(selected?.targetFiles)
@@ -852,13 +888,13 @@ export default function AdminEvolutionCenter() {
             </div>
 
             <div className={`${CARD} border-indigo-300/20 bg-indigo-300/5`}>
-              <SectionTitle eyebrow="Próxima etapa" title="AO-17A — Branch/PR Runner Governado">
-                Transforma o dry-run aprovado em contrato de execução futura em branch/PR. Esta etapa ainda é read-only: não cria branch, não escreve no repositório, não cria commit, não abre PR, não faz merge, deploy ou migration.
+              <SectionTitle eyebrow="Próxima etapa" title={branchPrPlanCardTitle}>
+                {branchPrPlanCardDescription}
               </SectionTitle>
 
               <div className="mb-4 flex flex-wrap gap-2">
-                <Pill className={canPrepareBranchPr ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-100" : "border-white/10 bg-white/5 text-white/65"}>
-                  can_prepare_branch_pr={String(Boolean(canPrepareBranchPr))}
+                <Pill className={branchPrPlanCapabilityReady ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-100" : "border-white/10 bg-white/5 text-white/65"}>
+                  {branchPrPlanCapabilityLabel}
                 </Pill>
                 <Pill className="border-emerald-400/25 bg-emerald-400/10 text-emerald-100">
                   main_write=false
@@ -873,16 +909,16 @@ export default function AdminEvolutionCenter() {
 
               {selectedIsDryRunCompleted ? (
                 <div className="rounded-2xl border border-indigo-300/20 bg-black/15 p-4 text-sm text-indigo-50/85">
-                  <div className="font-semibold text-indigo-50">Dry-run concluído. AO-17A pode ser revisado.</div>
+                  <div className="font-semibold text-indigo-50">{branchPrPlanReadyLabel}</div>
                   <p className="mt-2 text-indigo-50/70">
-                    O próximo GO seguro é preparar branch/PR, com rollback_plan obrigatório e aprovação Admin antes de qualquer escrita real.
+                    {branchPrPlanNextSafeText}
                   </p>
                   <button
                     onClick={() => loadBranchPrPlan(selected?.proposal_id)}
                     disabled={Boolean(actionBusy) || !selected?.proposal_id}
                     className={`${BTN} mt-3 border border-indigo-200/20 bg-indigo-300/15 text-indigo-50 hover:bg-indigo-300/20`}
                   >
-                    Carregar plano AO-17A
+                    {branchPrPlanButtonLabel}
                   </button>
 
                   {canCreateTemporaryBranch ? (
