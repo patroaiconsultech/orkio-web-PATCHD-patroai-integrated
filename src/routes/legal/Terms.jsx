@@ -105,7 +105,7 @@ export default function Terms() {
         </section>
 
         <footer className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-5 text-sm leading-7 text-white/55">
-          <strong className="text-white/85">Orkio</strong> — Plataforma em evolução controlada.
+          <strong className="text-white/85">Orkio</strong> — Plataforma em evolução controlada e auditável.
           Uso permitido apenas mediante responsabilidade, segurança e respeito à governança.
         </footer>
       </main>
