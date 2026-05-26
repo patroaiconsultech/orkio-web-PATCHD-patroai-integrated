@@ -3346,7 +3346,65 @@ async function sendMessage(presetMsg = null, opts = {}) {
             turnStartedAt,
           });
 
-      const freshHasAssistant = hasPersistedAssistantForTurn(freshMessages, turnStartedAt);
+      const doneAssistantMessageId = String(
+        streamDonePayload?.assistant_message_id ||
+        streamMeta?.done_payload?.assistant_message_id ||
+        ""
+      ).trim();
+
+      const freshHasDoneAssistantId = !!doneAssistantMessageId && (Array.isArray(freshMessages) ? freshMessages : []).some((m) => (
+        String(m?.id || "") === doneAssistantMessageId ||
+        String(m?.assistant_message_id || "") === doneAssistantMessageId
+      ));
+
+      const freshHasAssistant = freshHasDoneAssistantId || hasPersistedAssistantForTurn(freshMessages, turnStartedAt);
+
+      // AO-28_STREAM_DRAFT_RECONCILE_GUARD
+      // When the stream already produced a final visible answer but /api/messages
+      // is still behind, keep the streamed draft visible until the next reconcile.
+      if (!freshHasAssistant && finalTextCandidate) {
+        setMessages((prev) => {
+          const list = Array.isArray(prev) ? [...prev] : [];
+
+          const alreadyHasPersisted = !!doneAssistantMessageId && list.some((m) => (
+            String(m?.id || "") === doneAssistantMessageId ||
+            String(m?.assistant_message_id || "") === doneAssistantMessageId
+          ));
+
+          if (alreadyHasPersisted) return list;
+
+          const draftIdx = list.findIndex((m) => (
+            String(m?.id || "") === String(draftAssistantId || "") ||
+            (!!doneAssistantMessageId && String(m?.assistant_message_id || "") === doneAssistantMessageId)
+          ));
+
+          const preservedDraft = {
+            id: draftAssistantId || `tmp-ass-${Date.now()}`,
+            role: "assistant",
+            content: finalTextCandidate,
+            agent_name: finalAgentName || "Orkio",
+            agent_id: finalAgentId || null,
+            voice_id: finalVoiceId || null,
+            avatar_url: finalAvatarUrl || null,
+            thread_id: effectiveTidForLoad || threadId || activeThreadIdRef.current || "",
+            assistant_message_id: doneAssistantMessageId || null,
+            created_at: Math.floor(Date.now() / 1000),
+            stream_reconcile_pending: true,
+          };
+
+          if (draftIdx >= 0) {
+            list[draftIdx] = {
+              ...list[draftIdx],
+              ...preservedDraft,
+              content: finalTextCandidate || list[draftIdx]?.content || "",
+            };
+            return list;
+          }
+
+          return [...list, preservedDraft];
+        });
+      }
+
       if (!freshHasAssistant && effectiveTidForLoad) {
         scheduleFinalTurnReconcile({
           threadId: effectiveTidForLoad,
