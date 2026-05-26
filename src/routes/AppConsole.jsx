@@ -159,7 +159,12 @@ async function consumeChatStream(
   let draftText = "";
   let doneSeen = false;
   const streamStartedAt = Date.now();
+  let lastStreamActivityAt = streamStartedAt;
   let firstUsefulChunkAt = null;
+
+  const markStreamActivity = () => {
+    lastStreamActivityAt = Date.now();
+  };
 
   const buildStreamTerminalError = (code, message) => {
     const err = new Error(message || code);
@@ -170,13 +175,20 @@ async function consumeChatStream(
     return err;
   };
 
-  const assertUsefulChunkProgress = () => {
+  // AO-24_STREAM_KEEPALIVE_PROGRESS_GUARD
+  // status/keepalive SSE events mean the backend is alive and still processing.
+  // Do not kill a live stream just because the first useful chunk is slower.
+  // Keep the terminal guard only for true stream silence/inactivity.
+  const assertStreamActivityProgress = () => {
     if (doneSeen || firstUsefulChunkAt) return;
-    const elapsed = Date.now() - streamStartedAt;
-    if (elapsed > CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT_MS) {
+
+    const silentFor = Date.now() - lastStreamActivityAt;
+    const maxSilentMs = Math.max(CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT_MS, 45000);
+
+    if (silentFor > maxSilentMs) {
       throw buildStreamTerminalError(
-        "CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT",
-        "CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT"
+        "CHAT_STREAM_NO_ACTIVITY_TIMEOUT",
+        "CHAT_STREAM_NO_ACTIVITY_TIMEOUT"
       );
     }
   };
@@ -198,12 +210,13 @@ async function consumeChatStream(
       console.log("SSE_EVENT", ev, payload);
     } catch {}
     if (signal?.aborted || isStale?.()) abortStream();
+    markStreamActivity();
     if (payload?.thread_id) lastThreadId = payload.thread_id;
     if (payload?.trace_id) lastTraceId = payload.trace_id;
     eventCount += 1;
     if (ev === "status") {
       onStatus?.(payload);
-      assertUsefulChunkProgress();
+      assertStreamActivityProgress();
     }
     if (ev === "execution") onExecution?.(payload);
     if (ev === "agent_started" || ev === "orchestrator_merge") {
@@ -229,7 +242,7 @@ async function consumeChatStream(
     if (ev === "agent_done") onAgentDone?.(payload, draftText);
     if (ev === "keepalive") {
       onKeepalive?.(payload);
-      assertUsefulChunkProgress();
+      assertStreamActivityProgress();
     }
     if (ev === "error") {
       onError?.(payload);
@@ -3015,7 +3028,8 @@ async function sendMessage(presetMsg = null, opts = {}) {
         } catch (streamErr) {
           if (
             streamErr?.code === "CHAT_STREAM_ENDED_WITHOUT_DONE" ||
-            streamErr?.code === "CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT"
+            streamErr?.code === "CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT" ||
+            streamErr?.code === "CHAT_STREAM_NO_ACTIVITY_TIMEOUT"
           ) {
             appendExecutionTrace({
               kind: "warning",
@@ -3430,7 +3444,8 @@ async function sendMessage(presetMsg = null, opts = {}) {
       console.error("[V2V] sendMessage error:", e);
       if (
         e?.code === "CHAT_STREAM_ENDED_WITHOUT_DONE" ||
-        e?.code === "CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT"
+        e?.code === "CHAT_STREAM_NO_USEFUL_CHUNK_TIMEOUT" ||
+        e?.code === "CHAT_STREAM_NO_ACTIVITY_TIMEOUT"
       ) {
         appendExecutionTrace({
           kind: "warning",
