@@ -527,43 +527,83 @@ export default function AdminEvolutionCenter() {
   const effectiveBranchPrPlanMode = String(effectiveBranchPrPlan?.mode || "").trim();
   const selectedTitle = String(selected?.title || "").toLowerCase();
 
-  // AO-22_DYNAMIC_NEXT_STAGE_UI
+  // AO-23_DYNAMIC_NEXT_STAGE_UI
   // Render the post-dry-run plan card according to the actual backend plan.
+  const selectedIsAo23PublicationProposal = Boolean(
+    selectedTitle.includes("ao-23") ||
+    effectiveBranchPrPlanStage === "AO-23" ||
+    effectiveBranchPrPlanMode === "governed_frontend_publication_plan_readonly"
+  );
   const selectedIsAo22MergeProposal = Boolean(
-    selectedTitle.includes("ao-22") ||
-    effectiveBranchPrPlanStage === "AO-22" ||
-    effectiveBranchPrPlanMode === "governed_merge_plan_readonly"
+    !selectedIsAo23PublicationProposal &&
+    (
+      selectedTitle.includes("ao-22") ||
+      effectiveBranchPrPlanStage === "AO-22" ||
+      effectiveBranchPrPlanMode === "governed_merge_plan_readonly"
+    )
+  );
+  const canPreparePushPlan = Boolean(
+    effectiveBranchPrPlan?.can_prepare_push ||
+    (selectedIsAo23PublicationProposal && selectedIsDryRunCompleted && selectedBlocksRealExecution)
   );
   const canPrepareMergePlan = Boolean(
-    effectiveBranchPrPlan?.can_prepare_merge ||
-    (selectedIsAo22MergeProposal && selectedIsDryRunCompleted && selectedBlocksRealExecution)
+    !selectedIsAo23PublicationProposal &&
+    (
+      effectiveBranchPrPlan?.can_prepare_merge ||
+      (selectedIsAo22MergeProposal && selectedIsDryRunCompleted && selectedBlocksRealExecution)
+    )
   );
   const canPrepareBranchPr = Boolean(
+    !selectedIsAo23PublicationProposal &&
     !selectedIsAo22MergeProposal &&
     (
       effectiveBranchPrPlan?.can_prepare_branch_pr ||
       (selectedIsDryRunCompleted && selectedBlocksRealExecution)
     )
   );
-  const branchPrPlanCapabilityReady = selectedIsAo22MergeProposal ? canPrepareMergePlan : canPrepareBranchPr;
-  const branchPrPlanCapabilityLabel = selectedIsAo22MergeProposal
+  const branchPrPlanCapabilityReady = selectedIsAo23PublicationProposal
+    ? canPreparePushPlan
+    : selectedIsAo22MergeProposal
+    ? canPrepareMergePlan
+    : canPrepareBranchPr;
+  const branchPrPlanCapabilityLabel = selectedIsAo23PublicationProposal
+    ? `can_prepare_push=${String(Boolean(canPreparePushPlan))}`
+    : selectedIsAo22MergeProposal
     ? `can_prepare_merge=${String(Boolean(canPrepareMergePlan))}`
     : `can_prepare_branch_pr=${String(Boolean(canPrepareBranchPr))}`;
-  const branchPrPlanCardTitle = selectedIsAo22MergeProposal
+  const branchPrPlanCardTitle = selectedIsAo23PublicationProposal
+    ? "AO-23 — Plano Read-only de Publicação do Frontend"
+    : selectedIsAo22MergeProposal
     ? "AO-22 — Plano Read-only de Merge Governado"
     : "AO-17A — Branch/PR Runner Governado";
-  const branchPrPlanCardDescription = selectedIsAo22MergeProposal
+  const branchPrPlanCardDescription = selectedIsAo23PublicationProposal
+    ? "Prepara a revisão do push governado do commit 6ea230c. Esta etapa ainda é read-only: não faz push, não faz deploy, não executa migration e não altera API."
+    : selectedIsAo22MergeProposal
     ? "Prepara a revisão do merge futuro do PR #6. Esta etapa ainda é read-only: não faz merge, não faz deploy, não executa migration e não escreve diretamente em main."
     : "Transforma o dry-run aprovado em contrato de execução futura em branch/PR. Esta etapa ainda é read-only: não cria branch, não escreve no repositório, não cria commit, não abre PR, não faz merge, deploy ou migration.";
-  const branchPrPlanReadyLabel = selectedIsAo22MergeProposal
+  const branchPrPlanReadyLabel = selectedIsAo23PublicationProposal
+    ? "Dry-run concluído. AO-23 pode ser revisado."
+    : selectedIsAo22MergeProposal
     ? "Dry-run concluído. AO-22 pode ser revisado."
     : "Dry-run concluído. AO-17A pode ser revisado.";
-  const branchPrPlanNextSafeText = selectedIsAo22MergeProposal
+  const branchPrPlanNextSafeText = selectedIsAo23PublicationProposal
+    ? "O próximo GO seguro é preparar AO-23B: push governado do commit 6ea230c, com validação de build e observação de deploy automático se disparar."
+    : selectedIsAo22MergeProposal
     ? "O próximo GO seguro é preparar merge governado do PR #6, com preflight obrigatório e aprovação Admin antes de qualquer merge real."
     : "O próximo GO seguro é preparar branch/PR, com rollback_plan obrigatório e aprovação Admin antes de qualquer escrita real.";
-  const branchPrPlanButtonLabel = selectedIsAo22MergeProposal
+  const branchPrPlanButtonLabel = selectedIsAo23PublicationProposal
+    ? "Carregar plano AO-23"
+    : selectedIsAo22MergeProposal
     ? "Carregar plano AO-22"
     : "Carregar plano AO-17A";
+  const dryRunPlanTitle = selectedIsAo23PublicationProposal
+    ? "Dry-run governado AO-23"
+    : selectedIsAo22MergeProposal
+    ? "Dry-run governado AO-22"
+    : "Dry-run governado AO-16D";
+  const dryRunPlanDescription = selectedIsAo23PublicationProposal
+    ? "Após aprovação Admin, o console simula a publicação governada do frontend e registra diff, smoke e rollback sem executar push, deploy ou migration."
+    : "Após aprovação Admin, o console pode simular a execução e registrar diff, smoke e rollback sem aplicar mudanças reais.";
   const selectedTargetFiles = Array.isArray(selected?.target_files)
     ? selected.target_files
     : Array.isArray(selected?.targetFiles)
@@ -665,7 +705,7 @@ export default function AdminEvolutionCenter() {
             <div>
               <p className="text-sm font-bold text-amber-100">Guarda operacional ativa</p>
               <p className="mt-1 text-sm leading-relaxed text-amber-50/70">
-                AO-16D conecta o Admin ao dry-run governado. O fluxo permite simulação auditável após aprovação, mantendo execução real, commit, deploy e migrations bloqueados.
+                O console conecta o Admin ao dry-run governado. O fluxo permite simulação auditável após aprovação, mantendo execução real, push, commit, deploy e migrations bloqueados.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -833,8 +873,9 @@ export default function AdminEvolutionCenter() {
             </div>
 
             <div className={CARD}>
-              <SectionTitle eyebrow="Plano de execução" title="Dry-run governado AO-16D">
-                Após aprovação Admin, o console pode simular a execução e registrar diff, smoke e rollback sem aplicar mudanças reais.
+              {/* AO-23_DRYRUN_SECTION_TITLE_DYNAMIC */}
+              <SectionTitle eyebrow="Plano de execução" title={dryRunPlanTitle}>
+                {dryRunPlanDescription}
               </SectionTitle>
 
               <div className="mb-4 flex flex-wrap gap-2">
