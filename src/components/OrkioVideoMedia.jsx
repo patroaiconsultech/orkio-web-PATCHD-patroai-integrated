@@ -11,10 +11,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
  * - se vídeo falhar, poster/imagem preserva a experiência.
  */
 
-const IDLE_MP4 = "/patroai-assets/orkio-mindpulse-male.mp4";
+const IDLE_MP4 = "/patroai-assets/orkio-mindpulse-male.mp4?v=ao-ux08f";
 const IDLE_WEBM = "";
-const POSTER = "/patroai-assets/orkio-video-poster.webp";
-const FALLBACK_IMG = "/patroai-assets/orkio-avatar-hero.webp";
+const POSTER = "";
+const FALLBACK_IMG = "";
 
 function canPlayWebM() {
   if (typeof document === "undefined") return false;
@@ -209,7 +209,7 @@ export default function OrkioVideoMedia({
       <video
         ref={videoRef}
         src={videoSrc}
-        poster={POSTER}
+        poster={POSTER || undefined}
         autoPlay
         muted
         loop

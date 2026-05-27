@@ -15,7 +15,7 @@ import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
  * syncKey ainda é aceito como prop mas ignorado internamente.
  */
 
-const AVATAR_SRC = "/patroai-assets/orkio-video-poster.webp";
+const AVATAR_SRC = "/patroai-assets/orkio-mindpulse-male.mp4?v=ao-ux08f";
 
 export default function OrkioMysticAvatar({
   size = 92,
