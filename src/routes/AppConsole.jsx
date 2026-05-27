@@ -5036,6 +5036,17 @@ async function stopRealtime(reason = 'client_stop') {
     // F-01 FIX: desestruturar opts no início da função
     const { forceAuto = false, messageId = null, traceId = null, voiceOverride = null } = opts || {};
     if (!textToSpeak || textToSpeak.length < 2) return;
+    // AO47B2_FRONTEND_SUPPRESS_CLASSIC_TTS_DURING_REALTIME
+    // Realtime já possui áudio nativo. Durante sessão Realtime, nunca chamar /api/tts clássico.
+    if (realtimeModeRef.current || rtcSessionIdRef.current) {
+      console.info(
+        "[AO47B2] classic TTS suppressed during active realtime session session_id=%s thread_id=%s",
+        rtcSessionIdRef.current || null,
+        threadId || null
+      );
+      return;
+    }
+
     // Evitar reler a mesma mensagem (idempotência)
     if (messageId && messageId === lastSpokenMessageIdRef.current) return;
     if (!messageId && textToSpeak === lastSpokenMsgRef.current) return;
@@ -5092,6 +5103,8 @@ async function stopRealtime(reason = 'client_stop') {
           speed: ttsSpeed,
           agent_id: messageId ? null : (agentId || null),
           message_id: messageId || null,
+          // AO47B2: defesa adicional para o backend AO47B1 conseguir bloquear se este caminho for chamado.
+          thread_id: threadId || null,
         }),
       });
 
