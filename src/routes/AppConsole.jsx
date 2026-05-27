@@ -924,7 +924,10 @@ function buildExecutionBadgesFromRouting(routing = {}) {
   if (routing?.write_executed === false || routing?.write_allowed === false) badges.push("Sem escrita");
   if (routing?.branch_created === false && routing?.pr_created === false) badges.push("Sem branch/PR");
 
+  // AO44_TRACE_LABEL_COHERENCE
   const preferredRoute =
+    routing?.display_label ||
+    routing?.execution_lifecycle ||
     routing?.route_kind ||
     routing?.route_family ||
     routing?.routing_source ||
