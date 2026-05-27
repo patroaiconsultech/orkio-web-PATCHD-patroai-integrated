@@ -34,8 +34,8 @@ export default function OrkioVoiceHero({
   defaultLocale = "pt-BR",
   kicker = "PatroAI apresenta Orkio",
   title = "Da concepção à execução cirúrgica.",
-  subtitle = "A Orkio é a Business Execution Engine da PatroAI: organiza tese, estrutura business plans sofisticados, coordena agentes e acompanha a execução com governança.",
-  speech = "Olá. Eu sou a Orkio. Através de mim, a PatroAI pode conceber novos negócios, estruturar business plans sofisticados e conduzir a execução com clareza, inteligência e governança.",
+  subtitle = "Orkio é a Business Execution Engine da PatroAI: organiza tese, estrutura business plans sofisticados, coordena agentes e acompanha a execução com governança.",
+  speech = "Olá. Eu sou Orkio. Através de mim, a PatroAI pode conceber novos negócios, estruturar business plans sofisticados e conduzir a execução com clareza, inteligência e governança.",
   primaryLabel = "Conhecer a Orkio",
   secondaryLabel = "Entrar agora",
   tertiaryLabel = "Falar com a PatroAI",
@@ -106,7 +106,7 @@ export default function OrkioVoiceHero({
   const effectiveSpeech = useMemo(() => {
     if (typeof speech === "string" && speech.trim()) return speech.trim();
     return isPt
-      ? "Olá. Eu sou a Orkio. Posso ajudar você a entender, organizar e executar com clareza."
+      ? "Olá. Eu sou Orkio. Posso ajudar você a entender, organizar e executar com clareza."
       : "Hello. I am Orkio. I can help you understand, organize, and execute with clarity.";
   }, [isPt, speech]);
 

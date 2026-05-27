@@ -26,7 +26,7 @@ const PRECHAT_COPY = {
       },
     ],
     introSpeech:
-      "Olá. Eu sou a Orkio. Antes do seu cadastro, quero entender rapidamente o seu momento para iniciar uma jornada mais inteligente com você.",
+      "Olá. Eu sou Orkio. Antes do seu cadastro, quero entender rapidamente o seu momento para iniciar uma jornada mais inteligente com você.",
     doneSpeech:
       "Perfeito. Já tenho um diagnóstico inicial. Agora vamos continuar sua jornada com o cadastro para que eu personalize a sua experiência.",
     diagnosisFallback: "Há sinal de busca por clareza estratégica, organização e execução assistida.",

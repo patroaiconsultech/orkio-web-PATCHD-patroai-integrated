@@ -80,17 +80,17 @@ export default function AvatarHero3D({
         }
       : {
           defaultSpeech:
-            "Olá. Eu sou a Orkio. Posso ajudar você a transformar perguntas soltas em diagnóstico, clareza operacional e próximos passos.",
-          eyebrow: "Conheça a Orkio",
-          titlePrefix: "Olá, eu sou a",
+            "Olá. Eu sou Orkio. Posso ajudar você a transformar perguntas soltas em diagnóstico, clareza operacional e próximos passos.",
+          eyebrow: "Conheça Orkio",
+          titlePrefix: "Olá, eu sou",
           body:
             "Posso te ajudar a transformar perguntas soltas em diagnóstico, clareza operacional e próximos passos para evolução da sua empresa.",
           preparing: "Preparando voz...",
-          speaking: "A Orkio falando...",
-          speak: "Falar com a Orkio",
+          speaking: "Orkio falando...",
+          speak: "Falar com Orkio",
           type: "Digitar pergunta",
           diagnosis: "Iniciar diagnóstico empresarial",
-          loadingStatus: "Preparando a voz da Orkio.",
+          loadingStatus: "Preparando a voz de Orkio.",
           slowStatus: "A voz está levando um pouco mais. Você pode continuar por texto.",
           fallbackStatus: "Usando o canal de voz mais seguro disponível.",
           errorStatus: "A voz está temporariamente indisponível. Continue por texto.",

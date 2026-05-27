@@ -22,7 +22,7 @@ export default function OrkioMysticAvatar({
   variant = "orb",
   speaking = false,
   syncKey = 0, // aceito para compatibilidade, não usado
-  label = "A Orkio — presença místico-tecnológica",
+  label = "Orkio — presença místico-tecnológica",
   onClick,
   useVideo = true,
 }) {
