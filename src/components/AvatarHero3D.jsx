@@ -27,7 +27,7 @@ import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
  * - speakingSyncKey removido (desnecessário com opacidade contínua)
  */
 
-const AVATAR_SRC = "/patroai-assets/orkio-mystic-tech-v1.webp";
+const AVATAR_SRC = "/patroai-assets/orkio-mindpulse-male.mp4?v=ao-ux08f";
 
 export default function AvatarHero3D({
   speech = "",
