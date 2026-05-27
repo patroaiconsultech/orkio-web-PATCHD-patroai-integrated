@@ -11,8 +11,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
  * - se vídeo falhar, poster/imagem preserva a experiência.
  */
 
-const IDLE_MP4 = "/patroai-assets/orkio-idle-loop.mp4";
-const IDLE_WEBM = "/patroai-assets/orkio-idle-loop.webm";
+const IDLE_MP4 = "/patroai-assets/orkio-mindpulse-male.mp4";
+const IDLE_WEBM = "";
 const POSTER = "/patroai-assets/orkio-video-poster.webp";
 const FALLBACK_IMG = "/patroai-assets/orkio-mystic-tech-v1.webp";
 
@@ -70,7 +70,7 @@ export default function OrkioVideoMedia({
     };
   }, []);
 
-  const videoSrc = useMemo(() => (preferWebM ? IDLE_WEBM : IDLE_MP4), [preferWebM]);
+  const videoSrc = useMemo(() => (preferWebM && IDLE_WEBM ? IDLE_WEBM : IDLE_MP4), [preferWebM]);
 
   useEffect(() => {
     if (failed || motionReduced) return undefined;
