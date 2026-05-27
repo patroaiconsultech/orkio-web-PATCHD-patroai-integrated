@@ -172,14 +172,36 @@ export default function OrkioVideoMedia({
     transition: "filter 420ms ease, opacity 420ms ease",
   };
 
-  const imgFallback = (
-    <img
-      src={failed || motionReduced ? FALLBACK_IMG : POSTER}
-      alt=""
+  const fallbackVisual = (
+    <div
       aria-hidden="true"
-      style={mediaStyle}
-      onError={() => setFailed(false)}
-    />
+      style={{
+        ...mediaStyle,
+        display: "grid",
+        placeItems: "center",
+        background:
+          "radial-gradient(circle at 50% 18%, rgba(247,200,98,0.18), transparent 34%), linear-gradient(180deg, rgba(4,8,15,0.98), rgba(2,6,11,1))",
+      }}
+    >
+      <div
+        style={{
+          width: "72px",
+          height: "72px",
+          borderRadius: "999px",
+          display: "grid",
+          placeItems: "center",
+          color: "rgba(255, 222, 145, 0.88)",
+          border: "1px solid rgba(247,200,98,0.26)",
+          boxShadow: "0 0 34px rgba(247,200,98,0.16)",
+          fontSize: "34px",
+          fontWeight: 800,
+          letterSpacing: "-0.04em",
+          background: "rgba(2,6,11,0.32)",
+        }}
+      >
+        O
+      </div>
+    </div>
   );
 
   if (failed || motionReduced) {
@@ -190,7 +212,7 @@ export default function OrkioVideoMedia({
         aria-label="Orkio — presença digital"
       >
         <style>{mindpulseCss}</style>
-        {imgFallback}
+        {fallbackVisual}
         <div className="orkio-mindpulse-vignette" />
         {speaking && <MindpulseOverlay />}
       </div>
@@ -219,7 +241,7 @@ export default function OrkioVideoMedia({
         style={mediaStyle}
       />
 
-      {(!ready || posterOnly) && (
+      {POSTER && (!ready || posterOnly) && (
         <img src={POSTER} alt="" aria-hidden="true" style={{ ...mediaStyle, opacity: 0.94 }} />
       )}
 

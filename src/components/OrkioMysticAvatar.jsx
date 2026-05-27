@@ -15,7 +15,7 @@ import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
  * syncKey ainda é aceito como prop mas ignorado internamente.
  */
 
-const AVATAR_SRC = "/patroai-assets/orkio-mindpulse-male.mp4?v=ao-ux08f";
+const AVATAR_SRC = "";
 
 export default function OrkioMysticAvatar({
   size = 92,
@@ -120,7 +120,7 @@ export default function OrkioMysticAvatar({
           borderRadius={isCard ? "30px" : "999px"}
           onVideoError={() => setVideoFailed(true)}
         />
-      ) : !failed ? (
+      ) : AVATAR_SRC && !failed ? (
         <img
           className="orkio-mystic-avatar__img"
           src={AVATAR_SRC}
