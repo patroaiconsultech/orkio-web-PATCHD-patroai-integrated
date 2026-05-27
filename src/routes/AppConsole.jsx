@@ -10,6 +10,59 @@ import { startSessionHeartbeat } from "../lib/sessionHeartbeat.js";
 import EmptyStatePremium from "../components/EmptyStatePremium.jsx";
 import ExecutionTimeline from "../components/ExecutionTimeline.jsx";
 
+function normalizeUserFacingRuntimeMessage(value, context = "") {
+  const raw = String(value || "").trim();
+  const lower = raw.toLowerCase();
+
+  if (!raw) {
+    return context === "voice"
+      ? "Não consegui acessar a voz neste momento. Você pode continuar por texto."
+      : "Não consegui concluir esta ação agora.";
+  }
+
+  if (
+    lower.includes("requested device not found") ||
+    lower.includes("device not found") ||
+    lower.includes("notfounderror") ||
+    lower.includes("microphone not found") ||
+    lower.includes("no input devices")
+  ) {
+    return "Microfone não encontrado. Verifique se há um microfone conectado e se o navegador tem permissão para usá-lo. Você também pode continuar por texto.";
+  }
+
+  if (
+    lower.includes("permission denied") ||
+    lower.includes("notallowederror") ||
+    lower.includes("permission dismissed")
+  ) {
+    return "Permissão de microfone negada. Libere o acesso ao microfone no navegador ou continue por texto.";
+  }
+
+  if (
+    lower.includes("realtime connection failed") ||
+    lower.includes("realtime connection disconnected") ||
+    lower.includes("pc_failed")
+  ) {
+    return "A conexão de voz oscilou. A conversa por texto segue disponível normalmente.";
+  }
+
+  if (lower.includes("onboarding incomplete") || lower.includes("cadastro complementar pendente")) {
+    return "Seu cadastro complementar precisa ser concluído para liberar este recurso. Se você acabou de salvar o contexto, abra uma nova conversa ou tente novamente em instantes.";
+  }
+
+  if (lower === "[object object]") {
+    return "Não consegui concluir esta ação agora. Tente novamente em instantes.";
+  }
+
+  return raw;
+}
+
+function humanizeConsoleStatusMessage(value) {
+  return normalizeUserFacingRuntimeMessage(value);
+}
+
+
+
 const ORKIO_ENV = (typeof window !== "undefined" && window.__ORKIO_ENV__) ? window.__ORKIO_ENV__ : {};
 const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.VITE_SUMMIT_VOICE_MODE || "realtime").trim().toLowerCase() === "stt_tts")
   ? "stt_tts"
@@ -2537,17 +2590,11 @@ function formatAgentOptionLabel(agent) {
     try { window.requestAnimationFrame(() => textareaRef.current?.focus?.()); } catch {}
   }
 
-  function handlePremiumPrimaryAction() {
-    void sendMessage("@Orion me entregue uma leitura executiva da prioridade mais importante agora e o próximo melhor passo.");
-  }
+  function handlePremiumPrimaryAction() { void sendMessage("Orkio, me ajuda a montar um plano de testes para liberar a plataforma para 5 usuários beta?"); }
 
-  function handlePremiumSecondaryAction() {
-    void sendMessage("@Team mapeiem a oportunidade de maior impacto e menor risco para esta fase da plataforma.");
-  }
+  function handlePremiumSecondaryAction() { fillPremiumPrompt("@Team mapeiem a oportunidade de maior impacto e menor risco para esta fase da plataforma."); try { setUploadStatus("Revise o pedido antes de acionar o Team. O modo multiagente está em estabilização."); setTimeout(() => setUploadStatus(""), 4200); } catch {} }
 
-  function handlePremiumTertiaryAction() {
-    fillPremiumPrompt("@Orion organize um plano prático de execução para hoje com foco em impacto real.");
-  }
+  function handlePremiumTertiaryAction() { fillPremiumPrompt("Orkio, organize um plano prático para eu testar a plataforma hoje com foco em impacto real e baixo risco."); }
 
 function openPatchApprovalModal(message) {
     const meta = extractPatchGovernanceMeta(message?.content || "");
@@ -3619,7 +3666,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
         });
         // BUG-04 FIX: trocar alert() por setV2vError — alert() bloqueia JS thread
         // e impede o V2V de reiniciar o microfone
-        setV2vError(e?.message || "Falha ao enviar mensagem");
+        setV2vError(normalizeUserFacingRuntimeMessage(e?.message || "Falha ao enviar mensagem"));
       }
     } finally {
       const stillCurrentTurn =
@@ -3802,7 +3849,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             } catch (e) {
               console.error('[V2V] v2v_stt_fail trace_id=%s error:', trace, e);
               setV2vPhase('error');
-              setV2vError(`STT falhou: ${e?.message || 'erro desconhecido'}`);
+              setV2vError(normalizeUserFacingRuntimeMessage(e?.message || "erro desconhecido", "voice"));
               setUploadStatus(`❌ STT: ${e?.message || 'Erro de transcrição'}`);
               setTimeout(() => setUploadStatus(''), 3000);
             }
@@ -6040,7 +6087,7 @@ async function stopRealtime(reason = 'client_stop') {
                       : (isSystem ? "Sistema" : resolveAssistantDisplayName(m, "Agent"));
                     const nameTone = isUser ? styles.nameUser : isSystem ? styles.nameSystem : styles.nameAgent;
                     const created = formatDateTime(m.created_at);
-                    const visible = stripEventMarker(m.content);
+                    const visibleRaw = stripEventMarker(m.content); const visible = humanizeConsoleStatusMessage(normalizeUserFacingRuntimeMessage(visibleRaw || m.content));
 
                     return (
                       <>
