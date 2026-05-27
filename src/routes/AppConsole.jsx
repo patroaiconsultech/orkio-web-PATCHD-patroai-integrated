@@ -6325,7 +6325,25 @@ async function stopRealtime(reason = 'client_stop') {
     {!executionTraceExpanded ? (
       <div style={{ padding: "0 14px 14px", display: "grid", gap: 8 }}>
         <div style={{ color: "rgba(255,255,255,0.66)", fontSize: 12, lineHeight: 1.45 }}>
-          {executionTrace.length} etapa(s) registradas. {executionTrace.some((step) => step.kind === "done") ? "Fluxo encerrado com segurança." : "Execução em andamento."}
+          {(() => {
+            // AO45_TRACE_LITE_HONESTY
+            const last = executionTrace[executionTrace.length - 1] || {};
+            const isLite =
+              last?.execution_depth === "lite" ||
+              last?.trace_lite === true ||
+              last?.dispatch_runtime_executed === false ||
+              last?.badges?.includes?.("readonly specialist audit");
+
+            const countLabel = isLite
+              ? `${Math.min(executionTrace.length, 3)} sinal(is) registrados`
+              : `${executionTrace.length} etapa(s) registradas`;
+
+            return `${isLite ? "Trace Lite. " : ""}${countLabel}. ${
+              executionTrace.some((step) => step.kind === "done")
+                ? "Fluxo encerrado com segurança."
+                : "Execução em andamento."
+            }`;
+          })()}
         </div>
         {executionTrace[executionTrace.length - 1]?.badges?.length ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
