@@ -4,12 +4,12 @@
  * Responsabilidades:
  * - centralizar a voz padrão da Orkio;
  * - chamar o TTS público/autenticado com fallback de endpoint;
- * - manter fallback do navegador com curadoria de voz feminina em PT-BR;
+ * - manter fallback do navegador com curadoria de voz masculina/neutral em PT-BR;
  * - limpar URLs blob sem vazamento de memória.
  */
 
-const ORKIO_VOICE_ID = "shimmer";
-const ORKIO_TTS_SPEED = 0.9;
+const ORKIO_VOICE_ID = "";
+const ORKIO_TTS_SPEED = 0.92;
 
 export function getOrkioVoiceId() {
   return ORKIO_VOICE_ID;
@@ -236,7 +236,7 @@ export function speakWithOrkioBrowserVoice(text, {
 
       utterance.lang = locale;
       utterance.rate = ORKIO_TTS_SPEED;
-      utterance.pitch = 1.08;
+      utterance.pitch = 0.92;
       utterance.volume = 1;
 
       utterance.onstart = () => {
