@@ -365,7 +365,7 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
     let cancelled = false;
 
     const intro = isAvatarEntry
-      ? "Olá. Eu sou a Orkio. Vou conduzir seu onboarding inicial com a mesma voz do avatar, clareza e presença."
+      ? "Olá. Eu sou Orkio. Vou conduzir seu onboarding inicial com a mesma voz do avatar, clareza e presença."
       : "Olá. Vamos concluir seu onboarding inicial para personalizar sua experiência na Orkio.";
 
     async function speakIntro() {
@@ -539,8 +539,8 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
           </h2>
           <p style={{ margin: 0, color: "#475569", lineHeight: 1.55 }}>
             {hasPrechat
-              ? "Importei o contexto da conversa inicial com a Orkio. Revise os dados abaixo para continuarmos a experiência dentro da plataforma."
-              : (isAvatarEntry ? "Recebi sua entrada pelo avatar da Orkio. Confirme seus dados para iniciarmos uma experiência guiada dentro da plataforma." : "Conte um pouco sobre seu contexto para personalizarmos sua primeira experiência dentro do Orkio OS.")}
+              ? "Importei o contexto da conversa inicial com Orkio. Revise os dados abaixo para continuarmos a experiência dentro da plataforma."
+              : (isAvatarEntry ? "Recebi sua entrada pelo avatar de Orkio. Confirme seus dados para iniciarmos uma experiência guiada dentro da plataforma." : "Conte um pouco sobre seu contexto para personalizarmos sua primeira experiência dentro do Orkio OS.")}
           </p>
           <div
             style={{

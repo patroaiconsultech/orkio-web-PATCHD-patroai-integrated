@@ -18,7 +18,7 @@ import { useLandingLocale } from "../lib/landingLocale.js";
  * AO-05 — Internacionalização PT/EN:
  * - Adiciona seleção visível de idioma no header.
  * - Mantém português como padrão.
- * - Sincroniza copy da landing com voz/TTS da Orkio.
+ * - Sincroniza copy da landing com voz/TTS de Orkio.
  */
 
 const ROUTES = {
@@ -58,7 +58,7 @@ const PATROAI_PAGE_COPY = {
       trust: "Segurança, privacidade e governança em cada etapa.",
     },
     orkioSpeech:
-      "Olá. Eu sou a Orkio. Posso mostrar como a PatroAI transforma processos, sistemas e inteligência artificial em evolução real para empresas, com clareza, estratégia, governança e execução.",
+      "Olá. Eu sou Orkio. Posso mostrar como a PatroAI transforma processos, sistemas e inteligência artificial em evolução real para empresas, com clareza, estratégia, governança e execução.",
     processAria: "Como atuamos",
     processSteps: [
       {
@@ -121,14 +121,14 @@ const PATROAI_PAGE_COPY = {
       },
     ],
     orkioSection: {
-      label: "Conheça a Orkio",
-      title: "Conheça a Orkio, a inteligência operacional da PatroAI.",
+      label: "Conheça Orkio",
+      title: "Conheça Orkio, a inteligência operacional da PatroAI.",
       text:
-        "A Orkio é nossa assistente de IA que entende o contexto do seu negócio, responde suas perguntas, orienta decisões e acelera a execução com inteligência e precisão.",
+        "Orkio é nossa assistente de IA que entende o contexto do seu negócio, responde suas perguntas, orienta decisões e acelera a execução com inteligência e precisão.",
       primary: "Explorar a Orkio OS →",
-      secondary: "Conversar com a Orkio",
-      avatarLabel: "A Orkio — presença místico-tecnológica da PatroAI",
-      avatarTitle: "Presença da Orkio",
+      secondary: "Conversar com Orkio",
+      avatarLabel: "Orkio — presença místico-tecnológica da PatroAI",
+      avatarTitle: "Presença de Orkio",
       avatarText: "Avatar místico-tecnológico preparado para voz, texto e diagnóstico guiado.",
     },
     orkioBenefits: [

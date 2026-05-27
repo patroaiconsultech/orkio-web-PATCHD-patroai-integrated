@@ -17,7 +17,7 @@ import { useLandingLocale } from "../lib/landingLocale.js";
  * AO-05 — Internacionalização PT/EN:
  * - Adiciona seleção visível de idioma no header.
  * - Mantém português como padrão.
- * - Sincroniza copy da landing com voz/TTS da Orkio.
+ * - Sincroniza copy da landing com voz/TTS de Orkio.
  */
 
 const ROUTES = {
@@ -81,7 +81,7 @@ const ORKIO_PAGE_COPY = {
       recommendation: "Revisar gargalos no fluxo de aprovação de pedidos.",
       seeRecommendation: "Ver recomendação →",
     },
-    capabilitiesAria: "Recursos da Orkio OS",
+    capabilitiesAria: "Recursos de Orkio OS",
     capabilities: [
       {
         number: "01",
@@ -116,7 +116,7 @@ const ORKIO_PAGE_COPY = {
       {
         number: "06",
         title: "Voz e Texto",
-        text: "Permite interação natural com a Orkio por conversa escrita ou falada.",
+        text: "Permite interação natural com Orkio por conversa escrita ou falada.",
         icon: "≋",
       },
     ],
@@ -129,11 +129,11 @@ const ORKIO_PAGE_COPY = {
       ["Aprender", "Aprendemos com a operação e sugerimos melhorias."],
     ],
     assistant: {
-      titleBefore: "Olá, eu sou a",
+      titleBefore: "Olá, eu sou",
       titleHighlight: "Orkio.",
       text:
         "Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional em poucos minutos. Meu papel é preservar continuidade, reduzir repetição e conduzir próximos passos com clareza.",
-      voice: "≋ Falar com a Orkio",
+      voice: "≋ Falar com Orkio",
       textButton: "□ Digitar mensagem",
       diagnosis: "✦ Começar diagnóstico",
       statuses: [
@@ -150,7 +150,7 @@ const ORKIO_PAGE_COPY = {
       subtitle:
         "A Orkio conversa, registra contexto, entende prioridades e ajuda a conduzir a evolução da empresa com agentes inteligentes e governança.",
       speech:
-        "Olá. Eu sou a Orkio. Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional em poucos minutos.",
+        "Olá. Eu sou Orkio. Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional em poucos minutos.",
       primaryLabel: "Iniciar diagnóstico",
       secondaryLabel: "Conhecer a Patroai",
       tertiaryLabel: "Falar com especialista",
