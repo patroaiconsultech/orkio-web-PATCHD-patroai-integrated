@@ -15,7 +15,7 @@ import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
  * syncKey ainda é aceito como prop mas ignorado internamente.
  */
 
-const AVATAR_SRC = "/patroai-assets/orkio-mystic-tech-v1.webp";
+const AVATAR_SRC = "/patroai-assets/orkio-video-poster.webp";
 
 export default function OrkioMysticAvatar({
   size = 92,
@@ -32,7 +32,7 @@ export default function OrkioMysticAvatar({
   const dimension = typeof size === "number" ? `${size}px` : size;
   const Wrapper = onClick ? "button" : "div";
 
-  const shouldUseVideo = useVideo && isCard && !videoFailed;
+  const shouldUseVideo = useVideo && !videoFailed;
 
   return (
     <Wrapper
