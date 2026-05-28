@@ -116,13 +116,14 @@ export default function OrkioVideoMedia({
     inset: 0,
     width: "100%",
     height: "100%",
-    objectFit: "contain",
+    objectFit: "cover",
     objectPosition: "center center",
+    transform: "scale(1.10)",
     borderRadius,
     pointerEvents: "none",
     opacity: loadError ? 0 : 1,
     filter: speaking ? "saturate(1.08) contrast(1.04)" : "saturate(0.98) contrast(1)",
-    transition: "filter 420ms ease, opacity 420ms ease",
+    transition: "filter 420ms ease, opacity 420ms ease, transform 420ms ease",
   };
 
   return (
@@ -143,6 +144,7 @@ export default function OrkioVideoMedia({
         playsInline
         preload="auto"
         onError={handleVideoError}
+        className="orkio-mindpulse-video"
         style={mediaStyle}
       >
         <source src={VIDEO_SRC} type="video/mp4" />
@@ -177,6 +179,25 @@ function MindpulseOverlay() {
 }
 
 const mindpulseCss = `
+
+.orkio-mindpulse-video {
+  object-fit: cover !important;
+  object-position: center center !important;
+  transform: scale(1.10);
+}
+
+@media (max-width: 768px) {
+  .orkio-mindpulse-video {
+    transform: scale(1.18);
+  }
+}
+
+@media (min-width: 1280px) {
+  .orkio-mindpulse-video {
+    transform: scale(1.08);
+  }
+}
+
 .orkio-mindpulse-loading,
 .orkio-mindpulse-soft-fallback {
   position: absolute;

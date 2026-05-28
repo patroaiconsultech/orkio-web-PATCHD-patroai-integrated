@@ -132,7 +132,7 @@ const ORKIO_PAGE_COPY = {
       titleBefore: "Olá, eu sou",
       titleHighlight: "Orkio.",
       text:
-        "Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional em poucos minutos. Meu papel é preservar continuidade, reduzir repetição e conduzir próximos passos com clareza.",
+        "Gostaria de falar comigo?",
       voice: "≋ Falar com Orkio",
       textButton: "□ Digitar mensagem",
       diagnosis: "✦ Começar diagnóstico",
