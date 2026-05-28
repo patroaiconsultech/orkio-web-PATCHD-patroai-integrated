@@ -5694,80 +5694,6 @@ async function stopRealtime(reason = 'client_stop') {
           }}
         />
       ) : null}
-      {isMobile ? (
-        <div
-          style={{
-            position: "fixed",
-            left: 12,
-            right: 12,
-            bottom: "calc(86px + env(safe-area-inset-bottom, 0px))",
-            zIndex: 32,
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            justifyContent: "center",
-            pointerEvents: "none",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              try { void loadThreads({ preserveThreadId: String(activeThreadIdRef.current || threadId || "") }); } catch {}
-              setMobileSidebarOpen(true);
-            }}
-            style={{
-              pointerEvents: "auto",
-              minHeight: 42,
-              flex: "1 1 auto",
-              maxWidth: 220,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(8,11,20,0.88)",
-              color: "#fff",
-              fontWeight: 800,
-              letterSpacing: "-0.01em",
-              boxShadow: "0 16px 44px rgba(0,0,0,0.36)",
-              backdropFilter: "blur(14px)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              padding: "0 14px",
-            }}
-            aria-label="Abrir conversas"
-            title="Abrir conversas"
-          >
-            <IconMessage />
-            Conversas
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { void createThread(); }}
-            style={{
-              pointerEvents: "auto",
-              minHeight: 42,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.16)",
-              background: "linear-gradient(135deg, rgba(255,255,255,0.98), rgba(226,232,240,0.92))",
-              color: "#0b1020",
-              fontWeight: 900,
-              boxShadow: "0 16px 44px rgba(0,0,0,0.32)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 7,
-              padding: "0 14px",
-            }}
-            aria-label="Criar nova conversa"
-            title="Nova conversa"
-          >
-            <IconPlus />
-            Nova
-          </button>
-        </div>
-      ) : null}
-
       {/* Sidebar */}
       <div style={{ ...styles.sidebar, display: (!isMobile || mobileSidebarOpen) ? "flex" : "none", position: isMobile ? "fixed" : styles.sidebar.position, inset: isMobile ? "0 auto 0 0" : "auto", width: isMobile ? "min(88vw, 360px)" : styles.sidebar.width, zIndex: isMobile ? 40 : styles.sidebar.zIndex, boxShadow: isMobile ? "0 24px 80px rgba(0,0,0,0.45)" : styles.sidebar.boxShadow, borderRight: isMobile ? "1px solid rgba(255,255,255,0.08)" : styles.sidebar.borderRight }}>
         <div style={styles.topRow}>
@@ -5866,6 +5792,70 @@ async function stopRealtime(reason = 'client_stop') {
           <div>
             <div style={styles.title}>{threads.find((t) => t.id === threadId)?.title || "Conversa"}</div>
             <div style={styles.health}>Destino: {destMode === "team" ? "Team" : destMode === "single" ? "Agente" : "Multi"} • @Team / @Orkio / @Chris / @Orion</div>
+            {isMobile ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    try { void loadThreads({ preserveThreadId: String(activeThreadIdRef.current || threadId || "") }); } catch {}
+                    setMobileSidebarOpen(true);
+                  }}
+                  style={{
+                    minHeight: 42,
+                    borderRadius: 16,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.08)",
+                    color: "#fff",
+                    fontWeight: 900,
+                    letterSpacing: "-0.01em",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    padding: "0 14px",
+                    boxShadow: "0 12px 32px rgba(0,0,0,0.22)",
+                    backdropFilter: "blur(12px)",
+                  }}
+                  aria-label="Abrir conversas"
+                  title="Abrir conversas"
+                >
+                  <IconMessage />
+                  Conversas
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { void createThread(); }}
+                  style={{
+                    minHeight: 42,
+                    borderRadius: 16,
+                    border: "1px solid rgba(255,255,255,0.16)",
+                    background: "linear-gradient(135deg, rgba(139,92,246,0.78), rgba(245,158,11,0.54))",
+                    color: "#fff",
+                    fontWeight: 950,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    padding: "0 14px",
+                    boxShadow: "0 12px 32px rgba(0,0,0,0.24)",
+                  }}
+                  aria-label="Criar nova conversa"
+                  title="Nova conversa"
+                >
+                  <IconPlus />
+                  Nova
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: isMobile ? "wrap" : "nowrap", justifyContent: "flex-end" }}>
