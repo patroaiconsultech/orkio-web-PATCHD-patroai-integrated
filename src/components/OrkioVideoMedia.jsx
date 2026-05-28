@@ -1,39 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 /**
- * AO-UX08B — Orkio Mindpulse Video
+ * AO-UX08H — Orkio Stable Mindpulse Video
  *
  * Princípio UX:
- * - Orkio não faz lip-sync falso;
- * - a voz vem do runtime/TTS;
- * - o vídeo é presença mental/pulsante;
- * - quando speaking=true, aura/luz/equalizer reagem à fala;
- * - se vídeo falhar, poster/imagem preserva a experiência.
+ * - o vídeo masculino é a presença visual principal;
+ * - não há lip-sync falso;
+ * - não há poster/fallback antigo por cima do vídeo;
+ * - no mobile, o vídeo não deve cortar o rosto;
+ * - se autoplay falhar, tentamos novamente em interação do usuário.
  */
 
-const IDLE_MP4 = "/patroai-assets/orkio-mindpulse-male.mp4?v=ao-ux08f";
-const IDLE_WEBM = "";
-const POSTER = "";
-const FALLBACK_IMG = "";
-
-function canPlayWebM() {
-  if (typeof document === "undefined") return false;
-  try {
-    const video = document.createElement("video");
-    return Boolean(video.canPlayType?.('video/webm; codecs="vp9"'));
-  } catch {
-    return false;
-  }
-}
-
-function prefersReducedMotion() {
-  if (typeof window === "undefined") return false;
-  try {
-    return Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
-  } catch {
-    return false;
-  }
-}
+const VIDEO_SRC = "/patroai-assets/orkio-mindpulse-male.mp4?v=ao-ux08h";
 
 function normalizeSize(size) {
   if (typeof size === "number") return `${size}px`;
@@ -52,94 +30,67 @@ export default function OrkioVideoMedia({
   onReady,
 }) {
   const videoRef = useRef(null);
-  const mountedRef = useRef(false);
-
   const [ready, setReady] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [posterOnly, setPosterOnly] = useState(false);
-  const [preferWebM, setPreferWebM] = useState(false);
-  const [motionReduced, setMotionReduced] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    mountedRef.current = true;
-    setPreferWebM(canPlayWebM());
-    setMotionReduced(prefersReducedMotion());
-
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const videoSrc = useMemo(() => (preferWebM && IDLE_WEBM ? IDLE_WEBM : IDLE_MP4), [preferWebM]);
-
-  useEffect(() => {
-    if (failed || motionReduced) return undefined;
-
     const video = videoRef.current;
     if (!video) return undefined;
 
     let cancelled = false;
 
-    const prepareVideo = () => {
-      video.muted = true;
-      video.loop = true;
-      video.playsInline = true;
-      video.preload = "auto";
-      video.setAttribute("muted", "");
-      video.setAttribute("playsinline", "");
-      video.setAttribute("aria-hidden", "true");
-    };
-
     const markReady = () => {
-      if (cancelled || !mountedRef.current) return;
+      if (cancelled) return;
       setReady(true);
-      setPosterOnly(false);
+      setLoadError(false);
       if (typeof onReady === "function") onReady();
     };
 
-    const startVideo = async () => {
+    const tryPlay = async () => {
       try {
-        prepareVideo();
-        const playPromise = video.play();
-        if (playPromise && typeof playPromise.then === "function") await playPromise;
-        markReady();
+        video.muted = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.preload = "auto";
+        video.setAttribute("muted", "");
+        video.setAttribute("playsinline", "");
+        const promise = video.play();
+        if (promise && typeof promise.then === "function") await promise;
       } catch {
-        if (!cancelled) setPosterOnly(true);
+        // Não derruba para fallback visual. Em alguns browsers o play só libera após interação.
       }
     };
 
-    const readyTimer = window.setTimeout(startVideo, 40);
-
-    const posterTimer = window.setTimeout(() => {
-      if (!cancelled && !ready) setPosterOnly(true);
-    }, 1600);
-
-    const retryOnInteraction = () => {
-      if (!cancelled && !failed && !motionReduced) startVideo();
+    const handleInteraction = () => {
+      void tryPlay();
     };
 
-    video.addEventListener("canplay", markReady);
     video.addEventListener("loadeddata", markReady);
+    video.addEventListener("canplay", markReady);
+    video.addEventListener("playing", markReady);
 
-    window.addEventListener("pointerdown", retryOnInteraction, { passive: true });
-    window.addEventListener("touchstart", retryOnInteraction, { passive: true });
-    window.addEventListener("keydown", retryOnInteraction);
+    window.addEventListener("pointerdown", handleInteraction, { passive: true });
+    window.addEventListener("touchstart", handleInteraction, { passive: true });
+    window.addEventListener("keydown", handleInteraction);
+
+    const timer = window.setTimeout(() => {
+      void tryPlay();
+    }, 80);
 
     return () => {
       cancelled = true;
-      window.clearTimeout(readyTimer);
-      window.clearTimeout(posterTimer);
-      video.removeEventListener("canplay", markReady);
+      window.clearTimeout(timer);
       video.removeEventListener("loadeddata", markReady);
-      window.removeEventListener("pointerdown", retryOnInteraction);
-      window.removeEventListener("touchstart", retryOnInteraction);
-      window.removeEventListener("keydown", retryOnInteraction);
+      video.removeEventListener("canplay", markReady);
+      video.removeEventListener("playing", markReady);
+      window.removeEventListener("pointerdown", handleInteraction);
+      window.removeEventListener("touchstart", handleInteraction);
+      window.removeEventListener("keydown", handleInteraction);
     };
-  }, [failed, motionReduced, onReady, ready, videoSrc]);
+  }, [syncKey, onReady]);
 
-  function reportVideoError() {
-    setFailed(true);
-    setPosterOnly(false);
+  function handleVideoError() {
+    setLoadError(true);
     if (typeof onVideoError === "function") onVideoError();
     if (typeof onError === "function") onError();
   }
@@ -152,7 +103,7 @@ export default function OrkioVideoMedia({
     borderRadius,
     overflow: "hidden",
     background:
-      "radial-gradient(circle at 50% 18%, rgba(247,200,98,0.18), transparent 36%), linear-gradient(180deg, rgba(4,8,15,0.98), rgba(2,6,11,1))",
+      "radial-gradient(circle at 50% 18%, rgba(247,200,98,0.14), transparent 34%), linear-gradient(180deg, rgba(4,8,15,0.98), rgba(2,6,11,1))",
     boxShadow: speaking
       ? "0 0 80px rgba(245,185,56,0.24), inset 0 0 80px rgba(245,185,56,0.08)"
       : "0 0 44px rgba(0,0,0,0.36)",
@@ -165,59 +116,14 @@ export default function OrkioVideoMedia({
     inset: 0,
     width: "100%",
     height: "100%",
-    objectFit: "cover",
+    objectFit: "contain",
+    objectPosition: "center center",
     borderRadius,
     pointerEvents: "none",
-    filter: speaking ? "saturate(1.08) contrast(1.04)" : "saturate(0.96) contrast(1)",
+    opacity: loadError ? 0 : 1,
+    filter: speaking ? "saturate(1.08) contrast(1.04)" : "saturate(0.98) contrast(1)",
     transition: "filter 420ms ease, opacity 420ms ease",
   };
-
-  const fallbackVisual = (
-    <div
-      aria-hidden="true"
-      style={{
-        ...mediaStyle,
-        display: "grid",
-        placeItems: "center",
-        background:
-          "radial-gradient(circle at 50% 18%, rgba(247,200,98,0.18), transparent 34%), linear-gradient(180deg, rgba(4,8,15,0.98), rgba(2,6,11,1))",
-      }}
-    >
-      <div
-        style={{
-          width: "72px",
-          height: "72px",
-          borderRadius: "999px",
-          display: "grid",
-          placeItems: "center",
-          color: "rgba(255, 222, 145, 0.88)",
-          border: "1px solid rgba(247,200,98,0.26)",
-          boxShadow: "0 0 34px rgba(247,200,98,0.16)",
-          fontSize: "34px",
-          fontWeight: 800,
-          letterSpacing: "-0.04em",
-          background: "rgba(2,6,11,0.32)",
-        }}
-      >
-        O
-      </div>
-    </div>
-  );
-
-  if (failed || motionReduced) {
-    return (
-      <div
-        className={`orkio-mindpulse-media ${speaking ? "is-speaking" : ""} ${className}`}
-        style={containerStyle}
-        aria-label="Orkio — presença digital"
-      >
-        <style>{mindpulseCss}</style>
-        {fallbackVisual}
-        <div className="orkio-mindpulse-vignette" />
-        {speaking && <MindpulseOverlay />}
-      </div>
-    );
-  }
 
   return (
     <div
@@ -229,21 +135,21 @@ export default function OrkioVideoMedia({
       <style>{mindpulseCss}</style>
 
       <video
+        key={VIDEO_SRC}
         ref={videoRef}
-        src={videoSrc}
-        poster={POSTER || undefined}
         autoPlay
         muted
         loop
         playsInline
         preload="auto"
-        onError={reportVideoError}
+        onError={handleVideoError}
         style={mediaStyle}
-      />
+      >
+        <source src={VIDEO_SRC} type="video/mp4" />
+      </video>
 
-      {POSTER && (!ready || posterOnly) && (
-        <img src={POSTER} alt="" aria-hidden="true" style={{ ...mediaStyle, opacity: 0.94 }} />
-      )}
+      {!ready && !loadError && <div className="orkio-mindpulse-loading" aria-hidden="true" />}
+      {loadError && <div className="orkio-mindpulse-soft-fallback" aria-hidden="true" />}
 
       <div className="orkio-mindpulse-vignette" />
       {speaking && <MindpulseOverlay />}
@@ -271,13 +177,38 @@ function MindpulseOverlay() {
 }
 
 const mindpulseCss = `
+.orkio-mindpulse-loading,
+.orkio-mindpulse-soft-fallback {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 36%, rgba(247,200,98,0.16), transparent 24%),
+    linear-gradient(180deg, rgba(4,8,15,0.98), rgba(2,6,11,1));
+}
+
+.orkio-mindpulse-loading::after,
+.orkio-mindpulse-soft-fallback::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 84px;
+  height: 84px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  border: 1px solid rgba(247, 200, 98, 0.22);
+  box-shadow: 0 0 38px rgba(247, 200, 98, 0.14), inset 0 0 24px rgba(247, 200, 98, 0.08);
+  animation: orkioMindAura 2.6s ease-in-out infinite;
+}
+
 .orkio-mindpulse-vignette {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 50% 22%, transparent 0%, transparent 34%, rgba(0,0,0,0.34) 100%),
-    linear-gradient(180deg, rgba(0,0,0,0.04), rgba(0,0,0,0.38));
+    radial-gradient(circle at 50% 22%, transparent 0%, transparent 42%, rgba(0,0,0,0.26) 100%),
+    linear-gradient(180deg, rgba(0,0,0,0.02), rgba(0,0,0,0.26));
 }
 
 .orkio-mindpulse-aura {
