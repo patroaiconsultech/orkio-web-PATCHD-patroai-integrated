@@ -5823,12 +5823,12 @@ async function stopRealtime(reason = 'client_stop') {
       <div style={styles.main}>
         <div style={{ ...styles.topbar, padding: isMobile ? "12px 14px" : styles.topbar.padding }}>
           <div>
-            <div style={styles.title}>{threads.find((t) => t.id === threadId)?.title || "Conversa"}</div>
+            <div style={{ ...styles.title, display: isMobile ? "none" : undefined }}>{threads.find((t) => t.id === threadId)?.title || "Conversa"}</div>
             <div style={{ ...styles.health, display: isMobile ? "none" : undefined }}>Destino: {destMode === "team" ? "Team" : destMode === "single" ? "Agente" : "Multi"} • @Team / @Orkio / @Chris / @Orion</div>
             {isMobile ? (
               <div
                 style={{
-                  marginTop: 12,
+                  marginTop: isMobile ? 0 : 12,
                   display: "flex",
                   gap: 10,
                   alignItems: "center",
