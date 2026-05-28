@@ -34,7 +34,7 @@ const LOGO_FALLBACK = "/patroai-assets/logo-patroai-novo.webp";
 const ORKIO_PAGE_COPY = {
   pt: {
     logoTagline: "Sistema Operacional de Inteligência Empresarial",
-    headerAria: "Ir para Orkio OS",
+    headerAria: "Ir parOrkio OS",
     navAria: "Navegação principal",
     nav: {
       resources: "Recursos",
@@ -50,7 +50,7 @@ const ORKIO_PAGE_COPY = {
       subtitle:
         "Orkio OS conecta estratégia, dados, automação, agentes inteligentes e execução em uma plataforma viva que entende o contexto da empresa e conduz próximos passos com clareza.",
       primary: "Iniciar diagnóstico inteligente →",
-      secondary: "Ver a Orkio em ação",
+      secondary: "Ver Orkio em ação",
     },
     dashboard: {
       headerTitle: "Orkio OS",
@@ -148,13 +148,13 @@ const ORKIO_PAGE_COPY = {
       kicker: "Orkio OS • Voz e texto",
       title: "Uma interface viva para entender, organizar e executar.",
       subtitle:
-        "A Orkio conversa, registra contexto, entende prioridades e ajuda a conduzir a evolução da empresa com agentes inteligentes e governança.",
+        "Orkio conversa, registra contexto, entende prioridades e ajuda a conduzir a evolução da empresa com agentes inteligentes e governança.",
       speech:
         "Olá. Eu sou Orkio. Posso conversar por voz ou texto, entender o contexto da sua empresa e iniciar um diagnóstico operacional em poucos minutos.",
       primaryLabel: "Iniciar diagnóstico",
       secondaryLabel: "Conhecer a Patroai",
       tertiaryLabel: "Falar com especialista",
-      quickTitle: "Perguntas que a Orkio pode responder",
+      quickTitle: "Perguntas que Orkio pode responder",
       quickPrompts: [
         "Como organizar melhor meus processos internos?",
         "Quais agentes de IA fazem sentido para minha empresa?",
@@ -176,7 +176,7 @@ const ORKIO_PAGE_COPY = {
   },
   en: {
     logoTagline: "Business Intelligence Operating System",
-    headerAria: "Go to Orkio OS",
+    headerAria: "Go tOrkio OS",
     navAria: "Main navigation",
     nav: {
       resources: "Features",
@@ -275,7 +275,7 @@ const ORKIO_PAGE_COPY = {
       titleHighlight: "Orkio.",
       text:
         "I can talk by voice or text, understand your company context and start an operational diagnosis in a few minutes. My role is to preserve continuity, reduce repetition and guide next steps with clarity.",
-      voice: "≋ Talk to Orkio",
+      voice: "≋ Talk tOrkio",
       textButton: "□ Type a message",
       diagnosis: "✦ Start diagnosis",
       statuses: [

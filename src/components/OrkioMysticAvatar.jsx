@@ -5,7 +5,7 @@ import OrkioVideoMedia from "./OrkioVideoMedia.jsx";
  * AO-04K — OrkioMysticAvatar corretivo
  *
  * Simplificado: syncKey removido (desnecessário com a nova abordagem
- * de opacidade contínua no OrkioVideoMedia).
+ * de opacidade contínua nOrkioVideoMedia).
  *
  * O vídeo speaking roda continuamente em background.
  * Quando speaking=true, a opacidade do idle vai para 0 instantaneamente,

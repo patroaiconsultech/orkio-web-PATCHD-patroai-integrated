@@ -38,7 +38,7 @@ const PATROAI_PAGE_COPY = {
     brandAria: "Ir para PatroAI",
     nav: {
       solutions: "Soluções",
-      orkio: "Plataforma Orkio",
+      orkio: "PlataformOrkio",
       resources: "Recursos",
       about: "Sobre nós",
     },
@@ -121,11 +121,11 @@ const PATROAI_PAGE_COPY = {
       },
     ],
     orkioSection: {
-      label: "Conheça Orkio",
-      title: "Conheça Orkio, a inteligência operacional da PatroAI.",
+      label: "ConheçOrkio",
+      title: "ConheçOrkio, a inteligência operacional da PatroAI.",
       text:
         "Orkio é nossa assistente de IA que entende o contexto do seu negócio, responde suas perguntas, orienta decisões e acelera a execução com inteligência e precisão.",
-      primary: "Explorar a Orkio OS →",
+      primary: "Explorar Orkio OS →",
       secondary: "Conversar com Orkio",
       avatarLabel: "Orkio — presença místico-tecnológica da PatroAI",
       avatarTitle: "Presença de Orkio",
@@ -163,7 +163,7 @@ const PATROAI_PAGE_COPY = {
       subtitle:
         "PatroAI Consultech combines strategic consulting, software development, automation and personalized AI agents to turn business challenges into intelligent, governable and scalable processes.",
       primary: "Discover PatroAI →",
-      secondary: "Talk to Orkio",
+      secondary: "Talk tOrkio",
       trust: "Security, privacy and governance at every step.",
     },
     orkioSpeech:
@@ -235,7 +235,7 @@ const PATROAI_PAGE_COPY = {
       text:
         "Orkio is our AI assistant that understands your business context, answers your questions, guides decisions and accelerates execution with intelligence and precision.",
       primary: "Explore Orkio OS →",
-      secondary: "Talk to Orkio",
+      secondary: "Talk tOrkio",
       avatarLabel: "Orkio — PatroAI's mystic-technological presence",
       avatarTitle: "Orkio's presence",
       avatarText: "Mystic-technological avatar prepared for voice, text and guided diagnosis.",

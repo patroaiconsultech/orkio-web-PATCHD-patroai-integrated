@@ -45,7 +45,7 @@ const AGENTS = [
 
 const SUGGESTIONS = [
   "Orkio, me ajuda a montar um plano de testes para liberar a plataforma para 5 usuários beta?",
-  "Chris, como explico a proposta do Orkio em 30 segundos?",
+  "Chris, como explico a proposta dOrkio em 30 segundos?",
   "Orion, quais riscos técnicos eu devo validar antes de ampliar o beta?",
 ];
 

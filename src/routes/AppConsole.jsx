@@ -2934,7 +2934,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
         },
         {
           kind: "status",
-          label: "Enviando para o runtime do Orkio",
+          label: "Enviando para o runtime dOrkio",
           detail: ORKIO_CHAT_STREAM_PRIMARY
             ? "Aguardando resposta do stream principal."
             : "Aguardando resposta do trilho direto com timeout controlado.",
@@ -3217,7 +3217,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
               appendExecutionTrace({
                 kind: "system",
                 label: "Alternando para resposta direta",
-                detail: "O histórico ainda não tinha resposta persistida. O Orkio vai tentar /api/chat com timeout controlado.",
+                detail: "O histórico ainda não tinha resposta persistida. Orkio vai tentar /api/chat com timeout controlado.",
               });
               try {
                 resp = await runDirectChat();
@@ -3234,7 +3234,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             appendExecutionTrace({
               kind: "warning",
               label: "Capacidade temporariamente atingida",
-              detail: "O stream retornou 429. O Orkio não acionou fallback duplicado; tente novamente em alguns instantes.",
+              detail: "O stream retornou 429. Orkio não acionou fallback duplicado; tente novamente em alguns instantes.",
             });
             setMessages((prev) =>
               (Array.isArray(prev) ? prev : []).map((m) =>
@@ -3264,8 +3264,8 @@ async function sendMessage(presetMsg = null, opts = {}) {
               kind: "warning",
               label: streamErr?.status === 403 ? "Acesso negado neste fluxo" : "Sessão expirada ou inconsistente",
               detail: streamErr?.status === 403
-                ? "O Orkio não acionou fallback duplicado após 403."
-                : "O Orkio não acionou fallback duplicado após 401. Validando a sessão atual.",
+                ? "Orkio não acionou fallback duplicado após 403."
+                : "Orkio não acionou fallback duplicado após 401. Validando a sessão atual.",
             });
             setMessages((prev) =>
               (Array.isArray(prev) ? prev : []).map((m) =>
@@ -3298,7 +3298,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             appendExecutionTrace({
               kind: "system",
               label: "Alternando para resposta direta",
-              detail: "O stream foi degradado. O Orkio vai tentar /api/chat com timeout controlado.",
+              detail: "O stream foi degradado. Orkio vai tentar /api/chat com timeout controlado.",
             });
             try {
               resp = await runDirectChat();

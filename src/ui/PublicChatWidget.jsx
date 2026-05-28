@@ -94,11 +94,11 @@ export default function PublicChatWidget({ autoOpen = false }) {
       <button
         onClick={() => setOpen(true)}
         className="fixed bottom-5 right-5 z-40 flex items-center gap-3 rounded-[22px] border border-white/12 bg-[#0c1120]/92 px-4 py-3 font-extrabold shadow-[0_24px_70px_rgba(0,0,0,0.5)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-[#10172a]"
-        aria-label="Talk to Orkio"
+        aria-label="Talk tOrkio"
       >
         <OrkioSphereMark size={26} badge />
         <div className="text-left">
-          <div className="text-sm leading-none">Talk to Orkio</div>
+          <div className="text-sm leading-none">Talk tOrkio</div>
           <div className="mt-1 text-[11px] font-semibold tracking-[0.18em] text-white/45 uppercase">Live concierge</div>
         </div>
       </button>

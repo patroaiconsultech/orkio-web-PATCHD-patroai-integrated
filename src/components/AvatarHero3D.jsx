@@ -67,7 +67,7 @@ export default function AvatarHero3D({
             "I can help you turn scattered questions into diagnosis, operational clarity and next steps for your company's evolution.",
           preparing: "Preparing voice...",
           speaking: "Orkio is speaking...",
-          speak: "Talk to Orkio",
+          speak: "Talk tOrkio",
           type: "Type a question",
           diagnosis: "Start business diagnosis",
           loadingStatus: "Preparing Orkio's voice.",
@@ -81,7 +81,7 @@ export default function AvatarHero3D({
       : {
           defaultSpeech:
             "Olá. Eu sou Orkio. Posso ajudar você a transformar perguntas soltas em diagnóstico, clareza operacional e próximos passos.",
-          eyebrow: "Conheça Orkio",
+          eyebrow: "ConheçOrkio",
           titlePrefix: "Olá, eu sou",
           body:
             "Posso te ajudar a transformar perguntas soltas em diagnóstico, clareza operacional e próximos passos para evolução da sua empresa.",
