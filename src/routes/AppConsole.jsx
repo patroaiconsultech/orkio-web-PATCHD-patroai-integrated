@@ -2417,17 +2417,50 @@ useEffect(() => {
       nav("/auth");
     }
   }
+
+function sanitizePublicAgentText(value = "") {
+  return String(value || "")
+    .replace(/\b(gpt[-_\s]?\d+(?:\.\d+)?|gpt|openai|claude|anthropic|gemini|llama|mistral|deepseek|reasoning|premium_reasoning|premium_reasoning_cto|model|llm)\b/gi, "")
+    .replace(/\s*[·|/,-]\s*$/g, "")
+    .replace(/^[\s·|/,-]+/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function getPublicAgentRole(agent = {}) {
+  const raw =
+    agent.public_role ||
+    agent.publicRole ||
+    agent.role_label ||
+    agent.roleLabel ||
+    agent.function ||
+    agent.title ||
+    agent.role ||
+    "";
+
+  const cleaned = sanitizePublicAgentText(raw);
+
+  if (!cleaned || /^agente$/i.test(cleaned)) {
+    const id = String(agent.id || agent.name || "").toLowerCase();
+    if (id.includes("orion")) return "Auditor técnico";
+    if (id.includes("chris")) return "Estratégia e negócios";
+    if (id.includes("orkio")) return "Assistente principal";
+    if (id.includes("team")) return "Equipe multiagente";
+    return "Agente especialista";
+  }
+
+  return cleaned;
+}
+
+function formatPublicAgentLabel(agent = {}) {
+  const name = sanitizePublicAgentText(agent.name || agent.label || agent.id || "Agente") || "Agente";
+  const role = getPublicAgentRole(agent);
+  if (!role || role.toLowerCase() === name.toLowerCase()) return name;
+  return `${name} · ${role}`;
+}
+
 function formatAgentOptionLabel(agent) {
-  const name = String(agent?.name || "Agent");
-  const model = String(agent?.model || "").trim();
-  const profile = String(agent?.reasoning_profile || "").trim();
-  const provider = String(agent?.provider || "").trim();
-  const parts = [name];
-  if (profile) parts.push(profile);
-  if (model) parts.push(model);
-  else if (provider) parts.push(provider);
-  if (agent?.is_default) parts.push("default");
-  return parts.join(" • ");
+  return formatPublicAgentLabel(agent);
 }
 
 
@@ -5791,7 +5824,7 @@ async function stopRealtime(reason = 'client_stop') {
         <div style={{ ...styles.topbar, padding: isMobile ? "12px 14px" : styles.topbar.padding }}>
           <div>
             <div style={styles.title}>{threads.find((t) => t.id === threadId)?.title || "Conversa"}</div>
-            <div style={styles.health}>Destino: {destMode === "team" ? "Team" : destMode === "single" ? "Agente" : "Multi"} • @Team / @Orkio / @Chris / @Orion</div>
+            <div style={{ ...styles.health, display: isMobile ? "none" : undefined }}>Destino: {destMode === "team" ? "Team" : destMode === "single" ? "Agente" : "Multi"} • @Team / @Orkio / @Chris / @Orion</div>
             {isMobile ? (
               <div
                 style={{
@@ -6089,7 +6122,7 @@ async function stopRealtime(reason = 'client_stop') {
 
                   <div style={styles.premiumStatusRow}>
                     <div style={styles.premiumStatusCard}>
-                      <div style={styles.premiumStatusLabel}>Nova conversa</div>
+                      <div style={{ ...styles.premiumStatusLabel, display: isMobile ? "none" : undefined }}>Nova conversa</div>
                       <div style={styles.premiumStatusValue}>Preservada</div>
                     </div>
                     <div style={styles.premiumStatusCard}>
