@@ -193,7 +193,7 @@ const statusBox = {
   lineHeight: 1.55,
 };
 
-const AUTH_REQUEST_TIMEOUT_MS = 45000;
+const AUTH_REQUEST_TIMEOUT_MS = 20000;
 const POST_LOGIN_REDIRECT_FALLBACK_MS = 900;
 const PRECHAT_KEY = "orkio_prechat_context";
 const PRECHAT_LEGACY_KEY = "orkio_prechat_context_v1";
@@ -423,7 +423,11 @@ function normalizeAuthErrorMessage(err, fallbackMessage) {
   if (err?.name === "AbortError" || err?.code === "AUTH_REQUEST_TIMEOUT") {
     return "A solicitação demorou demais. Tente novamente em instantes.";
   }
-  return err?.message || fallbackMessage;
+  const raw = String(err?.message || fallbackMessage || "Falha no acesso.").trim();
+  if (!raw || raw === "[object Object]") return fallbackMessage || "Falha no acesso.";
+  if (/failed to fetch|network|load failed/i.test(raw)) return "Não consegui conectar ao servidor de autenticação. Tente novamente em instantes.";
+  if (/invalid session payload/i.test(raw)) return "O servidor respondeu, mas a sessão não veio completa. Tente novamente.";
+  return raw;
 }
 
 async function apiFetchWithTimeout(path, options = {}, timeoutMs = AUTH_REQUEST_TIMEOUT_MS) {
@@ -860,7 +864,7 @@ export default function AuthPage() {
     }
 
     setBusy(true);
-    setStatus("Validando acesso e recuperando contexto...");
+    setStatus("Validando acesso e recuperando contexto..."); try { console.info("AUTH_LOGIN_START", { email: emailNormalized, tenant }); } catch {}
 
     try {
       const { data } = await apiFetchWithTimeout(
@@ -878,7 +882,8 @@ export default function AuthPage() {
         AUTH_REQUEST_TIMEOUT_MS
       );
 
-      if (data?.pending_otp) {
+      try { console.info("AUTH_LOGIN_RESPONSE", { pending_otp: !!data?.pending_otp, has_token: !!data?.access_token, has_user: !!data?.user }); } catch {}
+    if (data?.pending_otp) {
         savePendingOtpContext({
           email: data.email || emailNormalized,
           tenant,
@@ -890,13 +895,15 @@ export default function AuthPage() {
       }
 
       if (data?.access_token && data?.user) {
-        await finalizeSession(data, tenant);
+        try { console.info("AUTH_LOGIN_SUCCESS", { email: emailNormalized, tenant }); } catch {}
+      await finalizeSession(data, tenant);
         return;
       }
 
       setStatus(data?.message || "Unable to complete sign in.");
     } catch (err) {
-      setStatus(normalizeAuthErrorMessage(err, "Sign in failed."));
+      try { console.error("AUTH_LOGIN_ERROR", err); } catch {}
+      setStatus(normalizeAuthErrorMessage(err, "Não foi possível entrar agora."));
     } finally {
       setBusy(false);
     }
