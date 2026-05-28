@@ -121,8 +121,8 @@ const PATROAI_PAGE_COPY = {
       },
     ],
     orkioSection: {
-      label: "ConheçOrkio",
-      title: "ConheçOrkio, a inteligência operacional da PatroAI.",
+      label: "Conheça Orkio",
+      title: "Conheça Orkio, a inteligência operacional da PatroAI.",
       text:
         "Orkio é nossa assistente de IA que entende o contexto do seu negócio, responde suas perguntas, orienta decisões e acelera a execução com inteligência e precisão.",
       primary: "Explorar Orkio OS →",

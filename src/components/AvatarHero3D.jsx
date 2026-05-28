@@ -81,7 +81,7 @@ export default function AvatarHero3D({
       : {
           defaultSpeech:
             "Olá. Eu sou Orkio. Posso ajudar você a transformar perguntas soltas em diagnóstico, clareza operacional e próximos passos.",
-          eyebrow: "ConheçOrkio",
+          eyebrow: "Conheça Orkio",
           titlePrefix: "Olá, eu sou",
           body:
             "Posso te ajudar a transformar perguntas soltas em diagnóstico, clareza operacional e próximos passos para evolução da sua empresa.",
