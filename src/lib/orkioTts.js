@@ -1,8 +1,8 @@
 /**
- * orkioTts — runtime único de voz da Orkio
+ * orkioTts — runtime único de voz dOrkio
  *
  * Responsabilidades:
- * - centralizar a voz padrão da Orkio;
+ * - centralizar a voz padrão dOrkio;
  * - chamar o TTS público/autenticado com fallback de endpoint;
  * - manter fallback do navegador com curadoria de voz masculina/neutral em PT-BR;
  * - limpar URLs blob sem vazamento de memória.

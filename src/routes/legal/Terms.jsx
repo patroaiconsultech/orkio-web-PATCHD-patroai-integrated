@@ -5,7 +5,7 @@ const sections = [
   {
     title: "1. Sobre a plataforma",
     body:
-      "O Orkio é uma plataforma de agentes de inteligência artificial, automação assistida, organização de informações e apoio operacional. Durante a fase de testes, funcionalidades podem ser ajustadas, limitadas, expandidas ou temporariamente suspensas para garantir segurança, estabilidade e evolução controlada.",
+      "Orkio é uma plataforma de agentes de inteligência artificial, automação assistida, organização de informações e apoio operacional. Durante a fase de testes, funcionalidades podem ser ajustadas, limitadas, expandidas ou temporariamente suspensas para garantir segurança, estabilidade e evolução controlada.",
   },
   {
     title: "2. Aceitação dos termos",
@@ -40,7 +40,7 @@ const sections = [
   {
     title: "8. Limitação de responsabilidade",
     body:
-      "O Orkio é uma ferramenta de apoio e não substitui análise profissional especializada. O usuário é responsável por revisar informações, validar resultados e decidir como utilizar as respostas e recursos oferecidos pela plataforma.",
+      "Orkio é uma ferramenta de apoio e não substitui análise profissional especializada. O usuário é responsável por revisar informações, validar resultados e decidir como utilizar as respostas e recursos oferecidos pela plataforma.",
   },
   {
     title: "9. Atualizações dos termos",
@@ -80,7 +80,7 @@ export default function Terms() {
           </h1>
 
           <p className="mt-4 max-w-3xl text-base leading-8 text-white/72 sm:text-lg">
-            Condições gerais para uso responsável da plataforma Orkio em ambiente de testes controlados.
+            Condições gerais para uso responsável da plataformOrkio em ambiente de testes controlados.
           </p>
 
           <p className="mt-5 text-sm leading-6 text-white/45">

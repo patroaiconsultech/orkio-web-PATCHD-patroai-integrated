@@ -20,7 +20,7 @@ const PRECHAT_COPY = {
       },
       {
         id: "goal",
-        label: "Se a Orkio te ajudasse muito bem, o que mudaria nos próximos 90 dias?",
+        label: "Se Orkio te ajudasse muito bem, o que mudaria nos próximos 90 dias?",
         placeholder: "Ex.: ganhar velocidade, melhorar gestão, automatizar processos...",
         type: "textarea",
       },
@@ -33,7 +33,7 @@ const PRECHAT_COPY = {
     diagnosisIntegration: "Há sinal de necessidade de integração e ganho operacional com ativação guiada.",
     diagnosisSales: "Há sinal de foco em crescimento comercial e aceleração da operação.",
     eyebrow: "Jornada do Avatar",
-    title: "Antes do cadastro, deixe a Orkio te conhecer.",
+    title: "Antes do cadastro, deixe Orkio te conhecer.",
     subtitle: "Vou te fazer algumas perguntas rápidas para começar com mais contexto, clareza e presença.",
     question: "Pergunta",
     of: "de",

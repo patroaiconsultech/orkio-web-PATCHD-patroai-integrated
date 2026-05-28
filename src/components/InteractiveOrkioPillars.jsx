@@ -78,7 +78,7 @@ export default function InteractiveOrkioPillars({ locale = "pt" }) {
   }, [activeKey, pillars]);
 
   return (
-    <section className="orkio-pillars" aria-label={locale === "en" ? "Orkio interactive pillars" : "Pilares interativos da Orkio"}>
+    <section className="orkio-pillars" aria-label={locale === "en" ? "Orkio interactive pillars" : "Pilares interativos dOrkio"}>
       <style>{`
         .orkio-pillars {
           position: relative;

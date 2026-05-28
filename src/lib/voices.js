@@ -7,7 +7,7 @@ export const ORKIO_DEFAULT_VOICE_ID = "shimmer";
 export const ORKIO_DEFAULT_TTS_SPEED = 0.9;
 
 // Curadoria de experiência:
-// - shimmer: padrão Orkio, feminina, suave e acolhedora para avatar/PWA
+// - shimmer: padrãOrkio, feminina, suave e acolhedora para avatar/PWA
 // - marin/coral/sage: boas alternativas naturais e próximas
 // - cedar/echo: mantidas para perfis mais graves, mas não são default
 export const ORKIO_VOICES = [

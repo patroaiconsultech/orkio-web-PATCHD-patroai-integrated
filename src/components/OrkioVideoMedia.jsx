@@ -211,7 +211,7 @@ const mindpulseCss = `
   }
 }
 
-/* AO-UX11A_FRAME_FIX — enquadramento perceptivo do vídeo Orkio */
+/* AO-UX11A_FRAME_FIX — enquadramento perceptivo do vídeOrkio */
 @media (max-width: 768px) {
   .orkio-mindpulse-video {
     object-position: 78% center !important;

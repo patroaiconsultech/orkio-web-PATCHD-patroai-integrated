@@ -32,11 +32,11 @@ export default function OrkioVoiceHero({
   tenant,
   token,
   defaultLocale = "pt-BR",
-  kicker = "PatroAI apresenta Orkio",
+  kicker = "PatroAI apresentOrkio",
   title = "Da concepção à execução cirúrgica.",
   subtitle = "Orkio é a Business Execution Engine da PatroAI: organiza tese, estrutura business plans sofisticados, coordena agentes e acompanha a execução com governança.",
   speech = "Olá. Eu sou Orkio. Através de mim, a PatroAI pode conceber novos negócios, estruturar business plans sofisticados e conduzir a execução com clareza, inteligência e governança.",
-  primaryLabel = "Conhecer a Orkio",
+  primaryLabel = "Conhecer Orkio",
   secondaryLabel = "Entrar agora",
   tertiaryLabel = "Falar com a PatroAI",
   badgeLabel = "Voz ativa",
@@ -263,7 +263,7 @@ export default function OrkioVoiceHero({
 
     if (voiceSlow) {
       return isPt
-        ? "A voz está levando um pouco mais. Mantive a Orkio pronta sem travar a página."
+        ? "A voz está levando um pouco mais. Mantive Orkio pronta sem travar a página."
         : "Voice is taking a little longer. Orkio is still ready and the page is not blocked.";
     }
 
@@ -597,7 +597,7 @@ export default function OrkioVoiceHero({
               disabled={voiceLoading || playing}
               aria-busy={voiceLoading ? "true" : "false"}
             >
-              {voiceLoading ? (isPt ? "Preparando..." : "Preparing...") : playing ? (isPt ? "Orkio falando..." : "Orkio speaking...") : (isPt ? "▶ Ouvir a Orkio" : "▶ Hear Orkio")}
+              {voiceLoading ? (isPt ? "Preparando..." : "Preparing...") : playing ? (isPt ? "Orkio falando..." : "Orkio speaking...") : (isPt ? "▶ Ouvir Orkio" : "▶ Hear Orkio")}
             </button>
             {onPrimaryAction && (
               <button type="button" className="orkio-voice-hero__cta" onClick={onPrimaryAction}>

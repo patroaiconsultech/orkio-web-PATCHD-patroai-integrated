@@ -5,7 +5,7 @@
 /**
  * AO-04C — Orkio speech motion runtime com boca digital
  *
- * Motion controller leve para sincronizar a presença visual da Orkio com áudio real.
+ * Motion controller leve para sincronizar a presença visual dOrkio com áudio real.
  * - Quando há áudio de TTS, usa Web Audio API para medir energia da voz.
  * - Quando o navegador usa speechSynthesis, usa movimento sintético suave.
  * - Expõe variáveis de boca: abertura, mandíbula, arredondamento e largura.

@@ -366,7 +366,7 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
 
     const intro = isAvatarEntry
       ? "Olá. Eu sou Orkio. Vou conduzir seu onboarding inicial com a mesma voz do avatar, clareza e presença."
-      : "Olá. Vamos concluir seu onboarding inicial para personalizar sua experiência na Orkio.";
+      : "Olá. Vamos concluir seu onboarding inicial para personalizar sua experiência nOrkio.";
 
     async function speakIntro() {
       autoSpeakDoneRef.current = true;
@@ -540,7 +540,7 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
           <p style={{ margin: 0, color: "#475569", lineHeight: 1.55 }}>
             {hasPrechat
               ? "Importei o contexto da conversa inicial com Orkio. Revise os dados abaixo para continuarmos a experiência dentro da plataforma."
-              : (isAvatarEntry ? "Recebi sua entrada pelo avatar de Orkio. Confirme seus dados para iniciarmos uma experiência guiada dentro da plataforma." : "Conte um pouco sobre seu contexto para personalizarmos sua primeira experiência dentro do Orkio OS.")}
+              : (isAvatarEntry ? "Recebi sua entrada pelo avatar de Orkio. Confirme seus dados para iniciarmos uma experiência guiada dentro da plataforma." : "Conte um pouco sobre seu contexto para personalizarmos sua primeira experiência dentro dOrkio OS.")}
           </p>
           <div
             style={{
@@ -556,7 +556,7 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
             }}
           >
             Vou usar essas respostas para personalizar sua primeira conversa. Depois de salvar,
-            o Orkio mostrará o contexto recebido e sugerirá um próximo passo.
+            Orkio mostrará o contexto recebido e sugerirá um próximo passo.
           </div>
         </div>
 
@@ -577,7 +577,7 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
             <strong style={{ display: "block", color: "#14532d", marginBottom: 6 }}>
               Diagnóstico inicial importado da landing
             </strong>
-            {prechat?.diagnosis || "A Orkio iniciou um primeiro mapa estratégico com base nas suas respostas."}
+            {prechat?.diagnosis || "Orkio iniciou um primeiro mapa estratégico com base nas suas respostas."}
             <div style={{ marginTop: 10, color: "#166534", fontWeight: 800 }}>
               Trial ativo: {trialDays} dias gratuitos.
             </div>
@@ -694,7 +694,7 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
               style={{ ...fieldStyle, minHeight: 138, resize: "vertical", lineHeight: 1.5 }}
               value={form.notes}
               onChange={(e) => setField("notes", e.target.value)}
-              placeholder="Conte o objetivo, desafio principal, prioridade dos próximos dias ou algo que o Orkio deve lembrar no primeiro chat..."
+              placeholder="Conte o objetivo, desafio principal, prioridade dos próximos dias ou algo que Orkio deve lembrar no primeiro chat..."
             />
           </label>
         </div>
@@ -778,7 +778,7 @@ export default function OnboardingModal({ user, onComplete, onClose, entrySource
               boxShadow: "0 12px 28px rgba(37,99,235,0.22)",
             }}
           >
-            {busy ? "Salvando..." : "Salvar contexto e entrar no Orkio"}
+            {busy ? "Salvando..." : "Salvar contexto e entrar nOrkio"}
           </button>
         </div>
       </form>

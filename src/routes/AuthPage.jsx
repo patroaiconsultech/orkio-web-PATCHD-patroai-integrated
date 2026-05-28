@@ -325,7 +325,7 @@ function getAuthPresentation({ mode, otpMode, journey }) {
         "Digite o código enviado para seu e-mail. Essa etapa protege sua sessão e preserva a continuidade da jornada.",
       panelTitle: "Validação com segurança",
       panelBody:
-        "O Orkio mantém o contexto preparado enquanto você conclui a verificação. Depois disso, seguimos para o ambiente certo.",
+        "Orkio mantém o contexto preparado enquanto você conclui a verificação. Depois disso, seguimos para o ambiente certo.",
       steps: ["Código por e-mail", "Sessão validada", "Continuidade preservada"],
     };
   }
@@ -358,12 +358,12 @@ function getAuthPresentation({ mode, otpMode, journey }) {
     if (fromAvatar) {
       return {
         badge: "Orkio iniciou o contexto",
-        title: "Preserve sua conversa com o Orkio",
+        title: "Preserve sua conversa com Orkio",
         subtitle:
           "Crie seu acesso para salvar o diagnóstico iniciado, manter memória contextual e continuar a jornada dentro da plataforma.",
         panelTitle: "Sua conversa não precisa recomeçar",
         panelBody:
-          "O Orkio já sabe de onde você veio. Agora o cadastro cria uma sessão segura para transformar conversa em diagnóstico, plano e execução.",
+          "Orkio já sabe de onde você veio. Agora o cadastro cria uma sessão segura para transformar conversa em diagnóstico, plano e execução.",
         steps: ["Contexto recebido", "Conta criada", "Diagnóstico continuado"],
       };
     }
@@ -386,7 +386,7 @@ function getAuthPresentation({ mode, otpMode, journey }) {
         badge: fromPatroai ? "Patroai Consultech" : "Orkio OS",
         title: "Crie seu acesso inteligente",
         subtitle:
-          "Entre na plataforma para iniciar diagnóstico, conversar com o Orkio e transformar contexto em plano de evolução.",
+          "Entre na plataforma para iniciar diagnóstico, conversar com Orkio e transformar contexto em plano de evolução.",
         panelTitle: "Uma entrada com continuidade",
         panelBody:
           "A jornada começa antes do formulário: origem, intenção e próximo passo acompanham o usuário até o app.",
@@ -398,7 +398,7 @@ function getAuthPresentation({ mode, otpMode, journey }) {
       badge: "Novo acesso",
       title: "Crie sua conta",
       subtitle:
-        "Comece com um acesso gratuito para conhecer o Orkio e explorar a jornada de inteligência empresarial.",
+        "Comece com um acesso gratuito para conhecer Orkio e explorar a jornada de inteligência empresarial.",
       panelTitle: "Comece com clareza",
       panelBody:
         "A criação da conta prepara seu espaço para conversas, agentes, diagnósticos e evolução operacional.",
