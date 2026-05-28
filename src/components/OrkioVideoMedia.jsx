@@ -117,8 +117,8 @@ export default function OrkioVideoMedia({
     width: "100%",
     height: "100%",
     objectFit: "cover",
-    objectPosition: "72% center",
-    transform: "scale(1.04)",
+    objectPosition: "58% center",
+    transform: "scale(1.00)",
     borderRadius,
     pointerEvents: "none",
     opacity: loadError ? 0 : 1,
@@ -179,37 +179,54 @@ function MindpulseOverlay() {
 }
 
 const mindpulseCss = `
+
+/* AO-UX11B_PORTRAIT_SAFE — reduz corte em molduras circulares e cards verticais */
+.orkio-mindpulse-media[style*="999px"] .orkio-mindpulse-video,
+.orkio-mindpulse-media[style*="50%"] .orkio-mindpulse-video {
+  object-fit: contain !important;
+  object-position: center center !important;
+  transform: scale(1.08) !important;
+  background: radial-gradient(circle at 50% 35%, rgba(247,200,98,0.10), rgba(2,6,11,1) 72%);
+}
+
+@media (max-width: 768px) {
+  .orkio-mindpulse-video {
+    object-position: 58% center !important;
+    transform: scale(1.00) !important;
+  }
+}
+
 /* AO-UX11A_FRAME_FIX — enquadramento perceptivo do vídeo Orkio */
 @media (max-width: 768px) {
   .orkio-mindpulse-video {
-    object-position: 72% center !important;
-    transform: scale(1.02) !important;
+    object-position: 58% center !important;
+    transform: scale(1.00) !important;
   }
 }
 
 @media (min-width: 769px) {
   .orkio-mindpulse-video {
-    object-position: 72% center !important;
-    transform: scale(1.03) !important;
+    object-position: 58% center !important;
+    transform: scale(1.00) !important;
   }
 }
 
 
 .orkio-mindpulse-video {
   object-fit: cover !important;
-  object-position: 72% center !important;
-  transform: scale(1.04);
+  object-position: 58% center !important;
+  transform: scale(1.00);
 }
 
 @media (max-width: 768px) {
   .orkio-mindpulse-video {
-    transform: scale(1.04);
+    transform: scale(1.00);
   }
 }
 
 @media (min-width: 1280px) {
   .orkio-mindpulse-video {
-    transform: scale(1.03);
+    transform: scale(1.00);
   }
 }
 
