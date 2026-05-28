@@ -117,8 +117,8 @@ export default function OrkioVideoMedia({
     width: "100%",
     height: "100%",
     objectFit: "cover",
-    objectPosition: "64% center",
-    transform: "scale(1.02)",
+    objectPosition: "78% center",
+    transform: "scale(1.01)",
     borderRadius,
     pointerEvents: "none",
     opacity: loadError ? 0 : 1,
@@ -182,16 +182,31 @@ const mindpulseCss = `
 
 
 
-/* AO-UX11C_FACE_CENTER_CROP — foco facial com presença cheia */
+
+/* AO-UX11D_FACE_REFRAME — foco facial ajustado para o asset horizontal atual */
 .orkio-mindpulse-video {
   object-fit: cover !important;
-  object-position: 64% center !important;
-  transform: scale(1.02) !important;
+  object-position: 78% center !important;
+  transform: scale(1.01) !important;
 }
 
 @media (max-width: 768px) {
   .orkio-mindpulse-video {
-    object-position: 64% center !important;
+    object-position: 78% center !important;
+    transform: scale(1.00) !important;
+  }
+}
+
+/* AO-UX11C_FACE_CENTER_CROP — foco facial com presença cheia */
+.orkio-mindpulse-video {
+  object-fit: cover !important;
+  object-position: 78% center !important;
+  transform: scale(1.01) !important;
+}
+
+@media (max-width: 768px) {
+  .orkio-mindpulse-video {
+    object-position: 78% center !important;
     transform: scale(1.01) !important;
   }
 }
@@ -199,34 +214,34 @@ const mindpulseCss = `
 /* AO-UX11A_FRAME_FIX — enquadramento perceptivo do vídeo Orkio */
 @media (max-width: 768px) {
   .orkio-mindpulse-video {
-    object-position: 64% center !important;
-    transform: scale(1.02) !important;
+    object-position: 78% center !important;
+    transform: scale(1.01) !important;
   }
 }
 
 @media (min-width: 769px) {
   .orkio-mindpulse-video {
-    object-position: 64% center !important;
-    transform: scale(1.02) !important;
+    object-position: 78% center !important;
+    transform: scale(1.01) !important;
   }
 }
 
 
 .orkio-mindpulse-video {
   object-fit: cover !important;
-  object-position: 64% center !important;
-  transform: scale(1.02);
+  object-position: 78% center !important;
+  transform: scale(1.01);
 }
 
 @media (max-width: 768px) {
   .orkio-mindpulse-video {
-    transform: scale(1.02);
+    transform: scale(1.01);
   }
 }
 
 @media (min-width: 1280px) {
   .orkio-mindpulse-video {
-    transform: scale(1.02);
+    transform: scale(1.01);
   }
 }
 
