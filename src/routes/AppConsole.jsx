@@ -1329,6 +1329,22 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
     ).trim();
   }
 
+  function promoteThreadToTop(threadIdToPromote, fallbackTitle = "Última conversa") {
+    const safeId = String(threadIdToPromote || "").trim();
+    if (!safeId) return;
+
+    setThreads((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      const found = list.find((t) => String(t?.id || "") === safeId);
+      const rest = list.filter((t) => String(t?.id || "") !== safeId);
+
+      return [
+        found || { id: safeId, title: fallbackTitle, recovered: true },
+        ...rest,
+      ];
+    });
+  }
+
   function isLikelyEmptyThread(thread = {}) {
     const title = String(thread?.title || "").trim().toLowerCase();
     const messageCount = Number(
@@ -2244,6 +2260,7 @@ useEffect(() => {
         setMessages(normalized);
         if (hasMeaningfulMessages(normalized)) {
           persistMeaningfulThreadId(targetId);
+          promoteThreadToTop(targetId, "Última conversa");
         }
       }
       return normalized;
@@ -2569,6 +2586,88 @@ useEffect(() => {
     setMessages([]);
     void loadMessages(currentThreadId, { force: true, expectedEpoch: epochAtEffect });
   }, [threadId]);
+
+  // AO-UX13G — abrir automaticamente a última conversa útil no ingresso.
+  useEffect(() => {
+    if (!token || !onboardingChecked || onboardingOpen) return;
+    if (meaningfulRestoreInFlightRef?.current) return;
+
+    const meaningfulId = String(readMeaningfulThreadId?.() || "").trim();
+    if (!meaningfulId) return;
+
+    const currentId = String(activeThreadIdRef.current || threadId || "").trim();
+
+    if (currentId === meaningfulId) {
+      promoteThreadToTop(meaningfulId, "Última conversa");
+      return;
+    }
+
+    const list = Array.isArray(threads) ? threads : [];
+    const currentThread = currentId
+      ? list.find((t) => String(t?.id || "") === currentId)
+      : null;
+
+    const shouldRestore =
+      !currentId ||
+      !currentThread ||
+      isLikelyEmptyThread(currentThread);
+
+    if (!shouldRestore) return;
+
+    meaningfulRestoreInFlightRef.current = true;
+
+    const timer = window.setTimeout(() => {
+      try {
+        console.info("AO_UX13G_AUTO_OPEN_LAST_MEANINGFUL_THREAD", {
+          from: currentId || null,
+          to: meaningfulId,
+        });
+      } catch {}
+
+      promoteThreadToTop(meaningfulId, "Última conversa");
+
+      try {
+        activateThread(meaningfulId, {
+          clearMessages: true,
+          persist: true,
+          lockMs: 18000,
+        });
+
+        void loadMessages(meaningfulId, {
+          force: true,
+          expectedEpoch: activeThreadEpochRef.current,
+        });
+      } catch (e) {
+        try { console.warn("AO_UX13G auto open failed:", e); } catch {}
+      } finally {
+        window.setTimeout(() => {
+          meaningfulRestoreInFlightRef.current = false;
+        }, 900);
+      }
+    }, 120);
+
+    return () => {
+      try { window.clearTimeout(timer); } catch {}
+      meaningfulRestoreInFlightRef.current = false;
+    };
+  }, [token, onboardingChecked, onboardingOpen, threadId, threads.length]);
+
+  // AO-UX13G — ao abrir Conversas no mobile, rolar até a conversa ativa.
+  useEffect(() => {
+    if (!mobileSidebarOpen || !threadId) return;
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    const timer = window.setTimeout(() => {
+      try {
+        const el = document.querySelector(`[data-orkio-thread-id="${CSS.escape(String(threadId))}"]`);
+        el?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+      } catch {}
+    }, 180);
+
+    return () => {
+      try { window.clearTimeout(timer); } catch {}
+    };
+  }, [mobileSidebarOpen, threadId, threads.length]);
 
   // AO-UX13F — se o console entrou numa thread vazia automática,
   // restaura a última conversa útil antes do usuário digitar.
@@ -6075,6 +6174,7 @@ async function stopRealtime(reason = 'client_stop') {
             threads.map((t) => (
               <button
                 key={t.id}
+                data-orkio-thread-id={String(t.id || "")}
                 onClick={() => {
                   const nextId = String(t?.id || "");
                   if (nextId && nextId !== String(activeThreadIdRef.current || threadId || "")) {
