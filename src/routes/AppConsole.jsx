@@ -1259,6 +1259,7 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const messagesAbortRef = useRef(null);
   const messagesLoadRequestRef = useRef(0);
   const requestedThreadIdRef = useRef("");
+  const postLoginThreadBootstrapDoneRef = useRef(false);
   const threadSelectionLockUntilRef = useRef(0);
   const pinnedThreadIdRef = useRef("");
   const explicitNewThreadIdRef = useRef("");
@@ -2622,6 +2623,85 @@ useEffect(() => {
     if (!token || !onboardingChecked || onboardingOpen) return;
     loadThreads();
     loadAgents();
+  }, [token, tenant, onboardingChecked, onboardingOpen]);
+
+  // AO-UX13J — retry pós-login para hidratar threads no primeiro acesso.
+  // Não altera scroll, não cria conversa nova e não mexe no fluxo de envio.
+  useEffect(() => {
+    if (!token || !onboardingChecked || onboardingOpen) return;
+    if (postLoginThreadBootstrapDoneRef.current) return;
+    if (typeof window === "undefined") return;
+
+    postLoginThreadBootstrapDoneRef.current = true;
+
+    const timers = [];
+
+    const runBootstrapRetry = async (reason = "post_login_retry") => {
+      try {
+        const beforeThreadId = String(activeThreadIdRef.current || threadId || "").trim();
+
+        const preferredId = String(
+          readMeaningfulThreadId?.() ||
+          beforeThreadId ||
+          readStoredThreadId?.() ||
+          ""
+        ).trim();
+
+        const list = await loadThreads({
+          preserveThreadId: preferredId,
+          keepMessages: true,
+        });
+
+        const threadsList = Array.isArray(list) ? list : [];
+        const bestId = chooseBestInitialThread(threadsList, preferredId);
+
+        if (!bestId) return;
+
+        const currentId = String(activeThreadIdRef.current || threadId || "").trim();
+        const currentThread = currentId
+          ? threadsList.find((t) => String(t?.id || "") === currentId)
+          : null;
+
+        const currentLooksEmpty = !currentId || !currentThread || isLikelyEmptyThread(currentThread);
+        const shouldSwitch = currentId !== bestId && currentLooksEmpty;
+        const shouldHydrateSameThread = currentId === bestId && (!Array.isArray(messages) || messages.length === 0);
+
+        if (!shouldSwitch && !shouldHydrateSameThread) return;
+
+        try {
+          console.info("AO_UX13J_POST_LOGIN_THREAD_BOOTSTRAP", {
+            reason,
+            from: currentId || null,
+            to: bestId,
+            shouldSwitch,
+            shouldHydrateSameThread,
+          });
+        } catch {}
+
+        if (shouldSwitch) {
+          activateThread(bestId, {
+            clearMessages: true,
+            persist: true,
+            lockMs: 20000,
+          });
+        }
+
+        await loadMessages(bestId, {
+          force: true,
+          expectedEpoch: activeThreadEpochRef.current,
+        });
+      } catch (e) {
+        try { console.warn("AO_UX13J bootstrap retry failed:", e); } catch {}
+      }
+    };
+
+    timers.push(window.setTimeout(() => { void runBootstrapRetry("post_login_350ms"); }, 350));
+    timers.push(window.setTimeout(() => { void runBootstrapRetry("post_login_1200ms"); }, 1200));
+    timers.push(window.setTimeout(() => { void runBootstrapRetry("post_login_2200ms"); }, 2200));
+
+    return () => {
+      try { timers.forEach((timer) => window.clearTimeout(timer)); } catch {}
+    };
   }, [token, tenant, onboardingChecked, onboardingOpen]);
 
   // AO-UX13A — PWA/thread rehydration guard.
