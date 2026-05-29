@@ -3394,9 +3394,11 @@ async function sendMessage(presetMsg = null, opts = {}) {
 
       if (effectiveTidForLoad) {
         consumeStoredThreadBootstrap(effectiveTidForLoad);
-        if (effectiveTidForLoad !== String(activeThreadIdRef.current || "")) {
-          activateThread(effectiveTidForLoad, { clearMessages: false, persist: true, lockMs: 20000 });
-        } else {
+        const currentActiveForFinalize = String(activeThreadIdRef.current || "");
+        // AO01_THREAD_FOCUS_GUARD:
+        // Uma finalização atrasada de stream não pode roubar o foco
+        // quando o usuário já selecionou manualmente outra conversa.
+        if (effectiveTidForLoad === currentActiveForFinalize) {
           activeThreadIdRef.current = effectiveTidForLoad;
           requestedThreadIdRef.current = effectiveTidForLoad;
           persistActiveThreadId(effectiveTidForLoad);
