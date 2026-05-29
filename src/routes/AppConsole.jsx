@@ -1294,6 +1294,42 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
     initialStoredThreadIdRef.current = String(nextId || "").trim();
   }
 
+  function getLastKnownThreadId() {
+    return String(
+      activeThreadIdRef.current ||
+      threadId ||
+      readStoredThreadId() ||
+      initialStoredThreadIdRef.current ||
+      ""
+    ).trim();
+  }
+
+  async function recoverLastKnownThread(reason = "unknown") {
+    const lastId = getLastKnownThreadId();
+    if (!lastId) return false;
+
+    try { console.info("AO_UX13B_RECOVER_LAST_THREAD", { reason, threadId: lastId }); } catch {}
+
+    setThreads((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      if (list.some((t) => String(t?.id || "") === lastId)) return list;
+      return [{ id: lastId, title: "Última conversa", recovered: true }, ...list];
+    });
+
+    activateThread(lastId, { clearMessages: false, persist: true, lockMs: 12000 });
+
+    try {
+      await loadMessages(lastId, {
+        force: true,
+        expectedEpoch: activeThreadEpochRef.current,
+      });
+    } catch (e) {
+      try { console.warn("AO_UX13B loadMessages recovery failed:", e); } catch {}
+    }
+
+    return true;
+  }
+
   function lockThreadSelection(nextId = "", ttlMs = 15000) {
     const safeId = String(nextId || "").trim();
     if (safeId) pinnedThreadIdRef.current = safeId;
@@ -1968,6 +2004,13 @@ useEffect(() => {
 
       const { data } = await apiFetch("/api/threads", { token, org: tenant });
       const list = Array.isArray(data) ? data : [];
+
+      if (!list.length) {
+        setThreads([]);
+        const recovered = await recoverLastKnownThread("empty_threads_response");
+        if (recovered) return [{ id: getLastKnownThreadId(), title: "Última conversa", recovered: true }];
+      }
+
       setThreads(list);
 
       const hasPreserved = preserveThreadId && list.some((t) => String(t?.id || "") === preserveThreadId);
@@ -5814,12 +5857,15 @@ async function stopRealtime(reason = 'client_stop') {
               <div>Nenhuma conversa carregada.</div>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   try {
-                    void loadThreads({
-                      preserveThreadId: String(activeThreadIdRef.current || threadId || ""),
-                      keepMessages: true,
-                    });
+                    const recovered = await recoverLastKnownThread("empty_state_button");
+                    if (!recovered) {
+                      await loadThreads({
+                        preserveThreadId: String(activeThreadIdRef.current || threadId || readStoredThreadId() || ""),
+                        keepMessages: true,
+                      });
+                    }
                   } catch {}
                 }}
                 style={{
