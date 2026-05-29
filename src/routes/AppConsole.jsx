@@ -4311,7 +4311,10 @@ function scheduleRealtimeIdleFollowup() {
       try { console.log("REALTIME_SESSION_STARTED", { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null }); } catch {}
       setLastRealtimeSessionId(start?.session_id || null);
       rtcThreadIdRef.current = start?.thread_id || threadId || null;
-      if (start?.thread_id && start.thread_id !== threadId) {
+      // AO01_REALTIME_THREAD_FOCUS_GUARD:
+      // Realtime pode receber thread_id do backend, mas não pode roubar
+      // o foco de uma conversa já ativa/escolhida pelo usuário.
+      if (start?.thread_id && !threadId && !activeThreadIdRef.current) {
         try { activateThread(start.thread_id, { clearMessages: true }); } catch {}
       }
 
