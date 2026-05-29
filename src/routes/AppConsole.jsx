@@ -1377,7 +1377,10 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
 
   function chooseBestInitialThread(list = [], preferredId = "") {
     const threadsList = Array.isArray(list) ? list.filter(Boolean) : [];
-    const safePreferredId = String(readMeaningfulThreadId() || preferredId || "").trim();
+    // AO-UX13K — seleção explícita vence memória global.
+    // A meaningful thread só entra como fallback quando nenhum preferredId foi passado.
+    const explicitPreferredId = String(preferredId || "").trim();
+    const safePreferredId = String(explicitPreferredId || readMeaningfulThreadId() || "").trim();
 
     if (!threadsList.length) return "";
 
@@ -2141,9 +2144,15 @@ useEffect(() => {
 
       setThreads(list);
 
-      // AO-UX13I — se a lista chegou e a thread atual é nova/vazia,
+      // AO-UX13I/AO-UX13K — se a lista chegou e a thread atual é nova/vazia,
       // abrir imediatamente a primeira conversa útil disponível.
+      // Mas nunca sobrescrever uma seleção manual ainda protegida por lock.
       try {
+        const autoSelectLocked = threadSelectionLockUntilRef.current > Date.now();
+        if (autoSelectLocked) {
+          throw new Error("AO_UX13K_AUTO_SELECT_SKIPPED_DUE_SELECTION_LOCK");
+        }
+
         const currentIdForAutoSelect = String(activeThreadIdRef.current || threadId || "").trim();
         const currentThreadForAutoSelect = currentIdForAutoSelect
           ? list.find((t) => String(t?.id || "") === currentIdForAutoSelect)
@@ -2178,7 +2187,10 @@ useEffect(() => {
           return list;
         }
       } catch (e) {
-        try { console.warn("AO_UX13I auto-select failed:", e); } catch {}
+        const msg = String(e?.message || "");
+        if (msg !== "AO_UX13K_AUTO_SELECT_SKIPPED_DUE_SELECTION_LOCK") {
+          try { console.warn("AO_UX13I auto-select failed:", e); } catch {}
+        }
       }
 
       const preservedThread = preserveThreadId
