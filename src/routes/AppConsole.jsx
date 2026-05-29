@@ -1431,6 +1431,17 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
     threadSelectionLockUntilRef.current = Date.now() + Math.max(1000, Number(ttlMs || 0));
   }
 
+  function isManualThreadSelectionLocked(targetId = "") {
+    const safeTargetId = String(targetId || "").trim();
+    const pinnedId = String(pinnedThreadIdRef.current || "").trim();
+    return Boolean(
+      safeTargetId &&
+      pinnedId &&
+      safeTargetId === pinnedId &&
+      threadSelectionLockUntilRef.current > Date.now()
+    );
+  }
+
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
@@ -2670,6 +2681,10 @@ useEffect(() => {
         if (!bestId) return;
 
         const currentId = String(activeThreadIdRef.current || threadId || "").trim();
+
+        // AO-UX13L — se o usuário acabou de escolher uma conversa, retry pós-login não troca.
+        if (isManualThreadSelectionLocked(currentId)) return;
+
         const currentThread = currentId
           ? threadsList.find((t) => String(t?.id || "") === currentId)
           : null;
@@ -2806,6 +2821,9 @@ useEffect(() => {
     const currentId = String(activeThreadIdRef.current || threadId || "").trim();
     if (currentId === meaningfulId) return;
 
+    // AO-UX13L — seleção manual de conversa não pode ser sequestrada pelo restore.
+    if (isManualThreadSelectionLocked(currentId)) return;
+
     // Se o usuário clicou explicitamente em Nova nesta sessão, respeita.
     if (explicitNewThreadIdRef?.current && currentId === explicitNewThreadIdRef.current) {
       return;
@@ -2864,6 +2882,9 @@ useEffect(() => {
     if (!meaningfulId) return;
 
     const currentId = String(activeThreadIdRef.current || threadId || "").trim();
+
+    // AO-UX13L — durante seleção manual, não restaurar a última conversa global.
+    if (isManualThreadSelectionLocked(currentId)) return;
 
     if (currentId === meaningfulId) {
       promoteThreadToTop(meaningfulId, "Última conversa");
@@ -6446,7 +6467,15 @@ async function stopRealtime(reason = 'client_stop') {
                 onClick={() => {
                   const nextId = String(t?.id || "");
                   if (nextId && nextId !== String(activeThreadIdRef.current || threadId || "")) {
-                    activateThread(nextId, { clearMessages: true, persist: true, lockMs: 15000 });
+                    activateThread(nextId, { clearMessages: true, persist: true, lockMs: 22000 });
+
+                    try {
+                      void loadMessages(nextId, {
+                        force: true,
+                        expectedEpoch: activeThreadEpochRef.current,
+                      });
+                    } catch {}
+
                     if (isMobile) setMobileSidebarOpen(false);
                   }
                 }}
