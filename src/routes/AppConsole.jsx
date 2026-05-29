@@ -2321,6 +2321,71 @@ useEffect(() => {
     loadAgents();
   }, [token, tenant, onboardingChecked, onboardingOpen]);
 
+  // AO-UX13A — PWA/thread rehydration guard.
+  // Quando o usuário retorna ao app/PWA, a lista real de conversas precisa ser recarregada
+  // sem depender apenas do bootstrap inicial.
+  useEffect(() => {
+    if (!token || !onboardingChecked || onboardingOpen) return undefined;
+    if (typeof window === "undefined") return undefined;
+
+    let timer = null;
+
+    const refreshThreadsAfterResume = () => {
+      try {
+        if (typeof document !== "undefined" && document.visibilityState && document.visibilityState !== "visible") {
+          return;
+        }
+      } catch {}
+
+      try { window.clearTimeout(timer); } catch {}
+
+      timer = window.setTimeout(() => {
+        try {
+          void loadThreads({
+            preserveThreadId: String(activeThreadIdRef.current || threadId || ""),
+            keepMessages: true,
+          });
+        } catch (e) {
+          try { console.warn("AO-UX13A thread resume refresh failed:", e); } catch {}
+        }
+      }, 180);
+    };
+
+    const onVisibilityChange = () => {
+      try {
+        if (document.visibilityState === "visible") refreshThreadsAfterResume();
+      } catch {
+        refreshThreadsAfterResume();
+      }
+    };
+
+    window.addEventListener("focus", refreshThreadsAfterResume);
+    window.addEventListener("pageshow", refreshThreadsAfterResume);
+    try { document.addEventListener("visibilitychange", onVisibilityChange); } catch {}
+
+    refreshThreadsAfterResume();
+
+    return () => {
+      try { window.clearTimeout(timer); } catch {}
+      window.removeEventListener("focus", refreshThreadsAfterResume);
+      window.removeEventListener("pageshow", refreshThreadsAfterResume);
+      try { document.removeEventListener("visibilitychange", onVisibilityChange); } catch {}
+    };
+  }, [token, tenant, onboardingChecked, onboardingOpen, threadId]);
+
+  // AO-UX13A — sempre que o drawer/sidebar mobile abrir, recarregar a biblioteca real.
+  useEffect(() => {
+    if (!token || !mobileSidebarOpen) return;
+    try {
+      void loadThreads({
+        preserveThreadId: String(activeThreadIdRef.current || threadId || ""),
+        keepMessages: true,
+      });
+    } catch (e) {
+      try { console.warn("AO-UX13A mobile sidebar thread refresh failed:", e); } catch {}
+    }
+  }, [token, tenant, mobileSidebarOpen, threadId]);
+
   useEffect(() => {
     const currentThreadId = String(threadId || "");
     if (!currentThreadId) {
@@ -5745,7 +5810,29 @@ async function stopRealtime(reason = 'client_stop') {
 
         <div style={styles.threads}>
           {threads.length === 0 ? (
-            <div style={styles.emptyThreads}>Nenhuma conversa ainda.</div>
+            <div style={styles.emptyThreads}>
+              <div>Nenhuma conversa carregada.</div>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    void loadThreads({
+                      preserveThreadId: String(activeThreadIdRef.current || threadId || ""),
+                      keepMessages: true,
+                    });
+                  } catch {}
+                }}
+                style={{
+                  ...styles.newThreadBtn,
+                  width: "100%",
+                  marginTop: 10,
+                  justifyContent: "center",
+                }}
+                title="Atualizar conversas"
+              >
+                Atualizar conversas
+              </button>
+            </div>
           ) : (
             threads.map((t) => (
               <button
