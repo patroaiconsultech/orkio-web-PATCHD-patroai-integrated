@@ -2104,6 +2104,46 @@ useEffect(() => {
 
       setThreads(list);
 
+      // AO-UX13I — se a lista chegou e a thread atual é nova/vazia,
+      // abrir imediatamente a primeira conversa útil disponível.
+      try {
+        const currentIdForAutoSelect = String(activeThreadIdRef.current || threadId || "").trim();
+        const currentThreadForAutoSelect = currentIdForAutoSelect
+          ? list.find((t) => String(t?.id || "") === currentIdForAutoSelect)
+          : null;
+
+        const currentIsEmptyOrMissing = !currentIdForAutoSelect || !currentThreadForAutoSelect || isLikelyEmptyThread(currentThreadForAutoSelect);
+        const usefulThread = list.find((t) => !isLikelyEmptyThread(t));
+
+        if (
+          currentIsEmptyOrMissing &&
+          usefulThread?.id &&
+          String(usefulThread.id || "") !== currentIdForAutoSelect
+        ) {
+          const usefulId = String(usefulThread.id || "");
+          console.info("AO_UX13I_AUTO_SELECT_FIRST_USEFUL_THREAD", {
+            from: currentIdForAutoSelect || null,
+            to: usefulId,
+            title: usefulThread?.title || "",
+          });
+
+          persistMeaningfulThreadId?.(usefulId);
+          promoteThreadToTop?.(usefulId, usefulThread?.title || "Última conversa");
+          activateThread(usefulId, { clearMessages: true, persist: true, lockMs: 20000 });
+
+          try {
+            void loadMessages(usefulId, {
+              force: true,
+              expectedEpoch: activeThreadEpochRef.current,
+            });
+          } catch {}
+
+          return list;
+        }
+      } catch (e) {
+        try { console.warn("AO_UX13I auto-select failed:", e); } catch {}
+      }
+
       const preservedThread = preserveThreadId
         ? list.find((t) => String(t?.id || "") === preserveThreadId)
         : null;
