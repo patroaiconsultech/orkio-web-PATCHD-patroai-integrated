@@ -2063,10 +2063,30 @@ useEffect(() => {
 
       setThreads(list);
 
-      const hasPreserved = preserveThreadId && list.some((t) => String(t?.id || "") === preserveThreadId);
+      const preservedThread = preserveThreadId
+        ? list.find((t) => String(t?.id || "") === preserveThreadId)
+        : null;
+      const hasPreserved = !!preservedThread;
+      const hasUsefulAlternative = list.some((t) => (
+        String(t?.id || "") !== preserveThreadId && !isLikelyEmptyThread(t)
+      ));
+      const shouldUsePreserved = hasPreserved && !(
+        preservedThread &&
+        isLikelyEmptyThread(preservedThread) &&
+        hasUsefulAlternative
+      );
       const isLocked = threadSelectionLockUntilRef.current > Date.now();
 
-      if (hasPreserved) {
+      if (hasPreserved && !shouldUsePreserved) {
+        try {
+          console.info("AO_UX13D_SKIP_EMPTY_PRESERVED_THREAD", {
+            preservedThreadId: preserveThreadId,
+            preservedTitle: preservedThread?.title || "",
+          });
+        } catch {}
+      }
+
+      if (shouldUsePreserved) {
         consumeStoredThreadBootstrap(preserveThreadId);
         if (String(activeThreadIdRef.current || "") !== preserveThreadId || String(threadId || "") !== preserveThreadId) {
           activateThread(preserveThreadId, { clearMessages: !opts?.keepMessages, persist: true, lockMs: isLocked ? Math.max(threadSelectionLockUntilRef.current - Date.now(), 1000) : 8000 });
@@ -2080,7 +2100,33 @@ useEffect(() => {
         consumeStoredThreadBootstrap("");
       }
 
-      if (isLocked && preserveThreadId) {
+      const currentThread = currentActive
+        ? list.find((t) => String(t?.id || "") === currentActive)
+        : null;
+
+      if (
+        currentThread &&
+        isLikelyEmptyThread(currentThread) &&
+        list.some((t) => String(t?.id || "") !== currentActive && !isLikelyEmptyThread(t))
+      ) {
+        const bestUsefulId = chooseBestInitialThread(
+          list.filter((t) => String(t?.id || "") !== currentActive),
+          ""
+        );
+
+        if (bestUsefulId && bestUsefulId !== currentActive) {
+          try {
+            console.info("AO_UX13D_REPLACE_EMPTY_CURRENT_THREAD", {
+              from: currentActive,
+              to: bestUsefulId,
+            });
+          } catch {}
+          activateThread(bestUsefulId, { clearMessages: true, persist: true, lockMs: 8000 });
+          return list;
+        }
+      }
+
+      if (isLocked && preserveThreadId && shouldUsePreserved) {
         return list;
       }
 
