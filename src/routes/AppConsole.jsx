@@ -157,7 +157,7 @@ function withTimeout(promise, ms, label = "timeout") {
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => {
       const err = new Error(label);
-      safeSetErrorCode(err, "STREAM_TIMEOUT");
+      err.code = "STREAM_TIMEOUT";
       reject(err);
     }, Math.max(1000, Number(ms || 0)));
   });
@@ -165,27 +165,6 @@ function withTimeout(promise, ms, label = "timeout") {
   return Promise.race([promise, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
   });
-}
-
-
-function safeSetErrorCode(err, code) {
-  if (!err || !code) return err;
-  try {
-    err.code = code;
-    return err;
-  } catch (_) {
-    try {
-      Object.defineProperty(err, "orkio_code", {
-        value: code,
-        configurable: true,
-      });
-    } catch {}
-    return err;
-  }
-}
-
-function getErrorCode(err) {
-  return err?.code || err?.orkio_code || "";
 }
 
 function isAbortLikeError(err) {
@@ -220,7 +199,7 @@ async function consumeChatStream(
     try { reader.cancel?.(); } catch {}
     const err = new Error("CHAT_STREAM_ABORTED");
     err.name = "AbortError";
-    safeSetErrorCode(err, "CHAT_STREAM_ABORTED");
+    err.code = "CHAT_STREAM_ABORTED";
     throw err;
   };
 
@@ -242,7 +221,7 @@ async function consumeChatStream(
 
   const buildStreamTerminalError = (code, message) => {
     const err = new Error(message || code);
-    safeSetErrorCode(err, code);
+    err.code = code;
     err.thread_id = lastThreadId;
     err.trace_id = lastTraceId;
     err.draftText = draftText;
@@ -1280,16 +1259,12 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const messagesAbortRef = useRef(null);
   const messagesLoadRequestRef = useRef(0);
   const requestedThreadIdRef = useRef("");
-  const postLoginThreadBootstrapDoneRef = useRef(false);
   const threadSelectionLockUntilRef = useRef(0);
   const pinnedThreadIdRef = useRef("");
-  const explicitNewThreadIdRef = useRef("");
-  const meaningfulRestoreInFlightRef = useRef(false);
   const initialStoredThreadIdRef = useRef("");
   const storageBootstrapConsumedRef = useRef(false);
   const storageBootstrapInitializedRef = useRef(false);
   const THREAD_STORAGE_KEY = "orkio_active_thread_id";
-  const MEANINGFUL_THREAD_STORAGE_KEY = "orkio_last_meaningful_thread_id";
 
   function readStoredThreadId() {
     if (typeof window === "undefined") return "";
@@ -1303,27 +1278,6 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
       if (safeId) window.localStorage?.setItem(THREAD_STORAGE_KEY, safeId);
       else window.localStorage?.removeItem(THREAD_STORAGE_KEY);
     } catch {}
-  }
-
-  function readMeaningfulThreadId() {
-    if (typeof window === "undefined") return "";
-    try { return String(window.localStorage?.getItem(MEANINGFUL_THREAD_STORAGE_KEY) || "").trim(); } catch { return ""; }
-  }
-
-  function persistMeaningfulThreadId(nextId) {
-    const safeId = String(nextId || "").trim();
-    if (typeof window === "undefined" || !safeId) return;
-    try { window.localStorage?.setItem(MEANINGFUL_THREAD_STORAGE_KEY, safeId); } catch {}
-  }
-
-  function hasMeaningfulMessages(list = []) {
-    return Array.isArray(list) && list.some((m) => {
-      const role = String(m?.role || m?.speaker || m?.type || "").toLowerCase();
-      const content = String(m?.content || m?.text || m?.message || "").trim();
-      if (!content) return false;
-      if (role.includes("system")) return false;
-      return true;
-    });
   }
 
   function getBootstrapStoredThreadId() {
@@ -1340,127 +1294,10 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
     initialStoredThreadIdRef.current = String(nextId || "").trim();
   }
 
-  function getLastKnownThreadId() {
-    return String(
-      readMeaningfulThreadId() ||
-      activeThreadIdRef.current ||
-      threadId ||
-      readStoredThreadId() ||
-      initialStoredThreadIdRef.current ||
-      ""
-    ).trim();
-  }
-
-  function promoteThreadToTop(threadIdToPromote, fallbackTitle = "Última conversa") {
-    const safeId = String(threadIdToPromote || "").trim();
-    if (!safeId) return;
-
-    setThreads((prev) => {
-      const list = Array.isArray(prev) ? prev : [];
-      const found = list.find((t) => String(t?.id || "") === safeId);
-      const rest = list.filter((t) => String(t?.id || "") !== safeId);
-
-      return [
-        found || { id: safeId, title: fallbackTitle, recovered: true },
-        ...rest,
-      ];
-    });
-  }
-
-  function isLikelyEmptyThread(thread = {}) {
-    const title = String(thread?.title || "").trim().toLowerCase();
-    const messageCount = Number(
-      thread?.message_count ??
-      thread?.messages_count ??
-      thread?.messageCount ??
-      thread?.messagesCount ??
-      0
-    );
-
-    if (messageCount > 0) return false;
-    if (!title) return true;
-    return title === "nova conversa" || title === "new conversation" || title === "conversa";
-  }
-
-  function getThreadActivityTime(thread = {}) {
-    const raw =
-      thread?.last_message_at ||
-      thread?.lastMessageAt ||
-      thread?.updated_at ||
-      thread?.updatedAt ||
-      thread?.created_at ||
-      thread?.createdAt ||
-      "";
-
-    const time = raw ? Date.parse(raw) : 0;
-    return Number.isFinite(time) ? time : 0;
-  }
-
-  function chooseBestInitialThread(list = [], preferredId = "") {
-    const threadsList = Array.isArray(list) ? list.filter(Boolean) : [];
-    // AO-UX13K — seleção explícita vence memória global.
-    // A meaningful thread só entra como fallback quando nenhum preferredId foi passado.
-    const explicitPreferredId = String(preferredId || "").trim();
-    const safePreferredId = String(explicitPreferredId || readMeaningfulThreadId() || "").trim();
-
-    if (!threadsList.length) return "";
-
-    if (safePreferredId) {
-      const exact = threadsList.find((t) => String(t?.id || "") === safePreferredId);
-      if (exact) return String(exact.id || "");
-    }
-
-    const activeLike = threadsList
-      .filter((t) => !isLikelyEmptyThread(t))
-      .sort((a, b) => getThreadActivityTime(b) - getThreadActivityTime(a));
-
-    if (activeLike?.[0]?.id) return String(activeLike[0].id || "");
-
-    const sorted = [...threadsList].sort((a, b) => getThreadActivityTime(b) - getThreadActivityTime(a));
-    return String(sorted?.[0]?.id || threadsList?.[0]?.id || "");
-  }
-
-  async function recoverLastKnownThread(reason = "unknown") {
-    const lastId = getLastKnownThreadId();
-    if (!lastId) return false;
-
-    try { console.info("AO_UX13B_RECOVER_LAST_THREAD", { reason, threadId: lastId }); } catch {}
-
-    setThreads((prev) => {
-      const list = Array.isArray(prev) ? prev : [];
-      if (list.some((t) => String(t?.id || "") === lastId)) return list;
-      return [{ id: lastId, title: "Última conversa", recovered: true }, ...list];
-    });
-
-    activateThread(lastId, { clearMessages: false, persist: true, lockMs: 12000 });
-
-    try {
-      await loadMessages(lastId, {
-        force: true,
-        expectedEpoch: activeThreadEpochRef.current,
-      });
-    } catch (e) {
-      try { console.warn("AO_UX13B loadMessages recovery failed:", e); } catch {}
-    }
-
-    return true;
-  }
-
   function lockThreadSelection(nextId = "", ttlMs = 15000) {
     const safeId = String(nextId || "").trim();
     if (safeId) pinnedThreadIdRef.current = safeId;
     threadSelectionLockUntilRef.current = Date.now() + Math.max(1000, Number(ttlMs || 0));
-  }
-
-  function isManualThreadSelectionLocked(targetId = "") {
-    const safeTargetId = String(targetId || "").trim();
-    const pinnedId = String(pinnedThreadIdRef.current || "").trim();
-    return Boolean(
-      safeTargetId &&
-      pinnedId &&
-      safeTargetId === pinnedId &&
-      threadSelectionLockUntilRef.current > Date.now()
-    );
   }
 
   const [text, setText] = useState("");
@@ -2001,49 +1838,13 @@ useEffect(() => {
     }
   }
 
-  function scrollToBottom(reason = "messages_changed", behavior = "auto") {
+  function scrollToBottom() {
     try {
-      const run = () => {
-        try {
-          messagesEndRef.current?.scrollIntoView({
-            behavior,
-            block: "end",
-            inline: "nearest",
-          });
-        } catch (e) {
-          try { console.warn("AO50D scrollToBottom inner failed", { reason, e }); } catch {}
-        }
-      };
-
-      if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-        window.requestAnimationFrame(run);
-      } else {
-        run();
-      }
-    } catch (e) {
-      try { console.warn("AO50D scrollToBottom failed", { reason, e }); } catch {}
-    }
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch {}
   }
 
-  // AO50D — scroll seguro após render.
-  // Não toca em loadMessages, setMessages, activateThread ou threadId.
-  useEffect(() => {
-    if (!Array.isArray(messages) || messages.length === 0) return undefined;
-
-    const timers = [];
-    try {
-      scrollToBottom("messages_changed_immediate", "auto");
-
-      if (typeof window !== "undefined") {
-        timers.push(window.setTimeout(() => scrollToBottom("messages_changed_80ms", "auto"), 80));
-        timers.push(window.setTimeout(() => scrollToBottom("messages_changed_220ms", "auto"), 220));
-      }
-    } catch {}
-
-    return () => {
-      try { timers.forEach((timer) => window.clearTimeout(timer)); } catch {}
-    };
-  }, [threadId, messages.length]);
+  useEffect(() => { scrollToBottom(); }, [messages]);
 
   const walletBalanceUsd = Number(walletSummary?.wallet?.balance_usd || 0);
   const walletLowBalanceThresholdUsd = Number(
@@ -2167,91 +1968,12 @@ useEffect(() => {
 
       const { data } = await apiFetch("/api/threads", { token, org: tenant });
       const list = Array.isArray(data) ? data : [];
-
-      if (!list.length) {
-        setThreads([]);
-        // AO01_THREAD_RECOVERY_GUARD:
-        // Não ressuscitar automaticamente "Última conversa" quando /api/threads
-        // retorna vazio momentâneo. Isso causava repetição da última conversa
-        // e sumiço visual das demais em race de bootstrap/reload.
-        return [];
-      }
-
       setThreads(list);
 
-      // AO-UX13I/AO-UX13K — se a lista chegou e a thread atual é nova/vazia,
-      // abrir imediatamente a primeira conversa útil disponível.
-      // Mas nunca sobrescrever uma seleção manual ainda protegida por lock.
-      try {
-        const autoSelectLocked = threadSelectionLockUntilRef.current > Date.now();
-        if (autoSelectLocked) {
-          throw new Error("AO_UX13K_AUTO_SELECT_SKIPPED_DUE_SELECTION_LOCK");
-        }
-
-        const currentIdForAutoSelect = String(activeThreadIdRef.current || threadId || "").trim();
-        const currentThreadForAutoSelect = currentIdForAutoSelect
-          ? list.find((t) => String(t?.id || "") === currentIdForAutoSelect)
-          : null;
-
-        const currentIsEmptyOrMissing = !currentIdForAutoSelect || !currentThreadForAutoSelect || isLikelyEmptyThread(currentThreadForAutoSelect);
-        const usefulThread = list.find((t) => !isLikelyEmptyThread(t));
-
-        if (
-          currentIsEmptyOrMissing &&
-          usefulThread?.id &&
-          String(usefulThread.id || "") !== currentIdForAutoSelect
-        ) {
-          const usefulId = String(usefulThread.id || "");
-          console.info("AO_UX13I_AUTO_SELECT_FIRST_USEFUL_THREAD", {
-            from: currentIdForAutoSelect || null,
-            to: usefulId,
-            title: usefulThread?.title || "",
-          });
-
-          persistMeaningfulThreadId?.(usefulId);
-          promoteThreadToTop?.(usefulId, usefulThread?.title || "Última conversa");
-          activateThread(usefulId, { clearMessages: true, persist: true, lockMs: 20000 });
-
-          try {
-            void loadMessages(usefulId, {
-              force: true,
-              expectedEpoch: activeThreadEpochRef.current,
-            });
-          } catch {}
-
-          return list;
-        }
-      } catch (e) {
-        const msg = String(e?.message || "");
-        if (msg !== "AO_UX13K_AUTO_SELECT_SKIPPED_DUE_SELECTION_LOCK") {
-          try { console.warn("AO_UX13I auto-select failed:", e); } catch {}
-        }
-      }
-
-      const preservedThread = preserveThreadId
-        ? list.find((t) => String(t?.id || "") === preserveThreadId)
-        : null;
-      const hasPreserved = !!preservedThread;
-      const hasUsefulAlternative = list.some((t) => (
-        String(t?.id || "") !== preserveThreadId && !isLikelyEmptyThread(t)
-      ));
-      const shouldUsePreserved = hasPreserved && !(
-        preservedThread &&
-        isLikelyEmptyThread(preservedThread) &&
-        hasUsefulAlternative
-      );
+      const hasPreserved = preserveThreadId && list.some((t) => String(t?.id || "") === preserveThreadId);
       const isLocked = threadSelectionLockUntilRef.current > Date.now();
 
-      if (hasPreserved && !shouldUsePreserved) {
-        try {
-          console.info("AO_UX13D_SKIP_EMPTY_PRESERVED_THREAD", {
-            preservedThreadId: preserveThreadId,
-            preservedTitle: preservedThread?.title || "",
-          });
-        } catch {}
-      }
-
-      if (shouldUsePreserved) {
+      if (hasPreserved) {
         consumeStoredThreadBootstrap(preserveThreadId);
         if (String(activeThreadIdRef.current || "") !== preserveThreadId || String(threadId || "") !== preserveThreadId) {
           activateThread(preserveThreadId, { clearMessages: !opts?.keepMessages, persist: true, lockMs: isLocked ? Math.max(threadSelectionLockUntilRef.current - Date.now(), 1000) : 8000 });
@@ -2265,50 +1987,19 @@ useEffect(() => {
         consumeStoredThreadBootstrap("");
       }
 
-      const currentThread = currentActive
-        ? list.find((t) => String(t?.id || "") === currentActive)
-        : null;
-
-      if (
-        currentThread &&
-        isLikelyEmptyThread(currentThread) &&
-        list.some((t) => String(t?.id || "") !== currentActive && !isLikelyEmptyThread(t))
-      ) {
-        const bestUsefulId = chooseBestInitialThread(
-          list.filter((t) => String(t?.id || "") !== currentActive),
-          ""
-        );
-
-        if (bestUsefulId && bestUsefulId !== currentActive) {
-          try {
-            console.info("AO_UX13D_REPLACE_EMPTY_CURRENT_THREAD", {
-              from: currentActive,
-              to: bestUsefulId,
-            });
-          } catch {}
-          activateThread(bestUsefulId, { clearMessages: true, persist: true, lockMs: 8000 });
-          return list;
-        }
-      }
-
-      if (isLocked && preserveThreadId && shouldUsePreserved) {
+      if (isLocked && preserveThreadId) {
         return list;
       }
 
-      if (!currentActive && list?.length) {
-        const bestInitialId = chooseBestInitialThread(list, readMeaningfulThreadId() || preserveThreadId || readStoredThreadId());
-        if (bestInitialId) {
-          try { console.info("AO_UX13C_INITIAL_THREAD_SELECTED", { threadId: bestInitialId }); } catch {}
-          activateThread(bestInitialId, { clearMessages: true, persist: true, lockMs: 8000 });
-        }
+      if (!currentActive && list?.[0]?.id) {
+        activateThread(list[0].id, { clearMessages: true, persist: true, lockMs: 5000 });
         return list;
       }
 
       if (currentActive && !list.some((t) => String(t?.id || "") === currentActive)) {
-        const fallbackId = chooseBestInitialThread(list, readMeaningfulThreadId() || readStoredThreadId());
+        const fallbackId = String(list?.[0]?.id || "");
         if (fallbackId) {
-          try { console.info("AO_UX13C_FALLBACK_THREAD_SELECTED", { threadId: fallbackId }); } catch {}
-          activateThread(fallbackId, { clearMessages: true, persist: true, lockMs: 8000 });
+          activateThread(fallbackId, { clearMessages: true, persist: true, lockMs: 5000 });
         } else {
           activateThread("", { clearMessages: true, persist: true, lockMs: 2000 });
         }
@@ -2368,62 +2059,20 @@ useEffect(() => {
       const sameEpoch = expectedEpoch === activeThreadEpochRef.current;
       const wasAborted = !!controller?.signal?.aborted;
       const finalizeTurn = !!opts?.finalizeTurn;
-      // AO50B_FRONTEND_FORCE_ACTIVE_MESSAGES_APPLY
-      // During bootstrap restore, activateThread/useEffect can advance activeThreadEpochRef
-      // while /api/messages is already in flight. If the response still belongs to the
-      // current active/requested thread, a forced load must hydrate the UI instead of
-      // being discarded by epoch drift.
-      const forceActiveLoad = force && sameRequestedThread && sameActiveThread;
       const canApply =
         sameActiveThread &&
         !wasAborted &&
         (
           finalizeTurn ||
-          forceActiveLoad ||
           (
             sameRequestedThread &&
             sameEpoch &&
-            sameRequest
+            (force ? sameActiveThread : sameRequest)
           )
         );
 
-      try {
-        console.info("AO50B_LOAD_MESSAGES_APPLY_CHECK", {
-          targetId,
-          count: normalized.length,
-          force,
-          finalizeTurn,
-          sameActiveThread,
-          sameRequestedThread,
-          sameEpoch,
-          sameRequest,
-          forceActiveLoad,
-          canApply,
-          wasAborted,
-        });
-      } catch {}
-
       if (canApply) {
         setMessages(normalized);
-        if (hasMeaningfulMessages(normalized)) {
-          persistMeaningfulThreadId(targetId);
-          promoteThreadToTop(targetId, "Última conversa");
-        }
-      } else {
-        try {
-          console.warn("AO50B_LOAD_MESSAGES_SKIPPED", {
-            targetId,
-            count: normalized.length,
-            force,
-            finalizeTurn,
-            sameActiveThread,
-            sameRequestedThread,
-            sameEpoch,
-            sameRequest,
-            forceActiveLoad,
-            wasAborted,
-          });
-        } catch {}
       }
       return normalized;
     } catch (e) {
@@ -2672,154 +2321,6 @@ useEffect(() => {
     loadAgents();
   }, [token, tenant, onboardingChecked, onboardingOpen]);
 
-  // AO-UX13J — retry pós-login para hidratar threads no primeiro acesso.
-  // Não altera scroll, não cria conversa nova e não mexe no fluxo de envio.
-  useEffect(() => {
-    if (!token || !onboardingChecked || onboardingOpen) return;
-    if (postLoginThreadBootstrapDoneRef.current) return;
-    if (typeof window === "undefined") return;
-
-    postLoginThreadBootstrapDoneRef.current = true;
-
-    const timers = [];
-
-    const runBootstrapRetry = async (reason = "post_login_retry") => {
-      try {
-        const beforeThreadId = String(activeThreadIdRef.current || threadId || "").trim();
-
-        const preferredId = String(
-          readMeaningfulThreadId?.() ||
-          beforeThreadId ||
-          readStoredThreadId?.() ||
-          ""
-        ).trim();
-
-        const list = await loadThreads({
-          preserveThreadId: preferredId,
-          keepMessages: true,
-        });
-
-        const threadsList = Array.isArray(list) ? list : [];
-        const bestId = chooseBestInitialThread(threadsList, preferredId);
-
-        if (!bestId) return;
-
-        const currentId = String(activeThreadIdRef.current || threadId || "").trim();
-
-        // AO-UX13L — se o usuário acabou de escolher uma conversa, retry pós-login não troca.
-        if (isManualThreadSelectionLocked(currentId)) return;
-
-        const currentThread = currentId
-          ? threadsList.find((t) => String(t?.id || "") === currentId)
-          : null;
-
-        const currentLooksEmpty = !currentId || !currentThread || isLikelyEmptyThread(currentThread);
-        const shouldSwitch = currentId !== bestId && currentLooksEmpty;
-        const shouldHydrateSameThread = currentId === bestId && (!Array.isArray(messages) || messages.length === 0);
-
-        if (!shouldSwitch && !shouldHydrateSameThread) return;
-
-        try {
-          console.info("AO_UX13J_POST_LOGIN_THREAD_BOOTSTRAP", {
-            reason,
-            from: currentId || null,
-            to: bestId,
-            shouldSwitch,
-            shouldHydrateSameThread,
-          });
-        } catch {}
-
-        if (shouldSwitch) {
-          activateThread(bestId, {
-            clearMessages: true,
-            persist: true,
-            lockMs: 20000,
-          });
-        }
-
-        await loadMessages(bestId, {
-          force: true,
-          expectedEpoch: activeThreadEpochRef.current,
-        });
-      } catch (e) {
-        try { console.warn("AO_UX13J bootstrap retry failed:", e); } catch {}
-      }
-    };
-
-    timers.push(window.setTimeout(() => { void runBootstrapRetry("post_login_350ms"); }, 350));
-    timers.push(window.setTimeout(() => { void runBootstrapRetry("post_login_1200ms"); }, 1200));
-    timers.push(window.setTimeout(() => { void runBootstrapRetry("post_login_2200ms"); }, 2200));
-
-    return () => {
-      try { timers.forEach((timer) => window.clearTimeout(timer)); } catch {}
-    };
-  }, [token, tenant, onboardingChecked, onboardingOpen]);
-
-  // AO-UX13A — PWA/thread rehydration guard.
-  // Quando o usuário retorna ao app/PWA, a lista real de conversas precisa ser recarregada
-  // sem depender apenas do bootstrap inicial.
-  useEffect(() => {
-    if (!token || !onboardingChecked || onboardingOpen) return undefined;
-    if (typeof window === "undefined") return undefined;
-
-    let timer = null;
-
-    const refreshThreadsAfterResume = () => {
-      try {
-        if (typeof document !== "undefined" && document.visibilityState && document.visibilityState !== "visible") {
-          return;
-        }
-      } catch {}
-
-      try { window.clearTimeout(timer); } catch {}
-
-      timer = window.setTimeout(() => {
-        try {
-          void loadThreads({
-            preserveThreadId: String(readMeaningfulThreadId() || activeThreadIdRef.current || threadId || ""),
-            keepMessages: true,
-          });
-        } catch (e) {
-          try { console.warn("AO-UX13A thread resume refresh failed:", e); } catch {}
-        }
-      }, 180);
-    };
-
-    const onVisibilityChange = () => {
-      try {
-        if (document.visibilityState === "visible") refreshThreadsAfterResume();
-      } catch {
-        refreshThreadsAfterResume();
-      }
-    };
-
-    window.addEventListener("focus", refreshThreadsAfterResume);
-    window.addEventListener("pageshow", refreshThreadsAfterResume);
-    try { document.addEventListener("visibilitychange", onVisibilityChange); } catch {}
-
-    refreshThreadsAfterResume();
-
-    return () => {
-      try { window.clearTimeout(timer); } catch {}
-      window.removeEventListener("focus", refreshThreadsAfterResume);
-      window.removeEventListener("pageshow", refreshThreadsAfterResume);
-      try { document.removeEventListener("visibilitychange", onVisibilityChange); } catch {}
-    };
-  }, [token, tenant, onboardingChecked, onboardingOpen, threadId]);
-
-  // AO-UX13A — sempre que o drawer/sidebar mobile abrir, recarregar a biblioteca real.
-  useEffect(() => {
-    if (!token || !mobileSidebarOpen) return;
-    try {
-      void loadThreads({
-        preserveThreadId: String(readMeaningfulThreadId() || activeThreadIdRef.current || threadId || ""),
-        keepMessages: true,
-      });
-    } catch (e) {
-      try { console.warn("AO-UX13A mobile sidebar thread refresh failed:", e); } catch {}
-    }
-  }, [token, tenant, mobileSidebarOpen, threadId]);
-
   useEffect(() => {
     const currentThreadId = String(threadId || "");
     if (!currentThreadId) {
@@ -2831,85 +2332,6 @@ useEffect(() => {
     setMessages([]);
     void loadMessages(currentThreadId, { force: true, expectedEpoch: epochAtEffect });
   }, [threadId]);
-
-  // AO-UX13G — ao abrir Conversas no mobile, rolar até a conversa ativa.
-  useEffect(() => {
-    if (!mobileSidebarOpen || !threadId) return;
-    if (typeof window === "undefined" || typeof document === "undefined") return;
-
-    const timer = window.setTimeout(() => {
-      try {
-        const el = document.querySelector(`[data-orkio-thread-id="${CSS.escape(String(threadId))}"]`);
-        el?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
-      } catch {}
-    }, 180);
-
-    return () => {
-      try { window.clearTimeout(timer); } catch {}
-    };
-  }, [mobileSidebarOpen, threadId, threads.length]);
-
-  // AO-UX13F — se o console entrou numa thread vazia automática,
-  // restaura a última conversa útil antes do usuário digitar.
-  useEffect(() => {
-    if (!token || !onboardingChecked || onboardingOpen) return;
-    if (meaningfulRestoreInFlightRef.current) return;
-
-    const meaningfulId = String(readMeaningfulThreadId?.() || "").trim();
-    if (!meaningfulId) return;
-
-    const currentId = String(activeThreadIdRef.current || threadId || "").trim();
-    if (!currentId || currentId === meaningfulId) return;
-
-    // Se a thread atual foi criada explicitamente pelo usuário nesta sessão,
-    // respeitamos a intenção e não redirecionamos.
-    if (explicitNewThreadIdRef.current && currentId === explicitNewThreadIdRef.current) {
-      return;
-    }
-
-    const list = Array.isArray(threads) ? threads : [];
-    const currentThread = list.find((t) => String(t?.id || "") === currentId);
-
-    // Só troca automaticamente quando a atual é ausente/vazia.
-    // Não sequestra uma conversa antiga que o usuário escolheu.
-    const currentLooksEmpty = !currentThread || isLikelyEmptyThread(currentThread);
-    if (!currentLooksEmpty) return;
-
-    meaningfulRestoreInFlightRef.current = true;
-
-    const timer = window.setTimeout(() => {
-      try {
-        console.info("AO_UX13F_RESTORE_MEANINGFUL_BEFORE_INPUT", {
-          from: currentId,
-          to: meaningfulId,
-        });
-      } catch {}
-
-      try {
-        activateThread(meaningfulId, {
-          clearMessages: true,
-          persist: true,
-          lockMs: 15000,
-        });
-
-        void loadMessages(meaningfulId, {
-          force: true,
-          expectedEpoch: activeThreadEpochRef.current,
-        });
-      } catch (e) {
-        try { console.warn("AO_UX13F restore failed:", e); } catch {}
-      } finally {
-        window.setTimeout(() => {
-          meaningfulRestoreInFlightRef.current = false;
-        }, 700);
-      }
-    }, 220);
-
-    return () => {
-      try { window.clearTimeout(timer); } catch {}
-      meaningfulRestoreInFlightRef.current = false;
-    };
-  }, [token, onboardingChecked, onboardingOpen, threadId, threads.length]);
 
 
 
@@ -2926,7 +2348,6 @@ useEffect(() => {
       });
       if (data?.id) {
         const newId = String(data.id || "");
-        explicitNewThreadIdRef.current = newId;
         consumeStoredThreadBootstrap(newId);
         activateThread(newId, { clearMessages: true, persist: true, lockMs: 20000 });
         setThreads((prev) => {
@@ -3391,7 +2812,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
 
       const failStreamWithoutDirectFallback = (reason = "CHAT_STREAM_FAILED_NO_DIRECT_FALLBACK") => {
         const err = new Error(reason);
-        safeSetErrorCode(err, reason);
+        err.code = reason;
         appendExecutionTrace({
           kind: "error",
           label: "Stream não estabilizou",
@@ -3439,7 +2860,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
         } catch (err) {
           if (directCtl.signal.aborted) {
             const wrapped = err instanceof Error ? err : new Error(String(err || "CHAT_DIRECT_TIMEOUT"));
-            safeSetErrorCode(wrapped, "CHAT_DIRECT_TIMEOUT");
+            wrapped.code = "CHAT_DIRECT_TIMEOUT";
             wrapped.wasAborted = true;
             throw wrapped;
           }
@@ -6324,49 +5745,15 @@ async function stopRealtime(reason = 'client_stop') {
 
         <div style={styles.threads}>
           {threads.length === 0 ? (
-            <div style={styles.emptyThreads}>
-              <div>Nenhuma conversa carregada.</div>
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const recovered = await recoverLastKnownThread("empty_state_button");
-                    if (!recovered) {
-                      await loadThreads({
-                        preserveThreadId: String(readMeaningfulThreadId() || activeThreadIdRef.current || threadId || readStoredThreadId() || ""),
-                        keepMessages: true,
-                      });
-                    }
-                  } catch {}
-                }}
-                style={{
-                  ...styles.newThreadBtn,
-                  width: "100%",
-                  marginTop: 10,
-                  justifyContent: "center",
-                }}
-                title="Atualizar conversas"
-              >
-                Atualizar conversas
-              </button>
-            </div>
+            <div style={styles.emptyThreads}>Nenhuma conversa ainda.</div>
           ) : (
             threads.map((t) => (
               <button
                 key={t.id}
-                data-orkio-thread-id={String(t.id || "")}
                 onClick={() => {
                   const nextId = String(t?.id || "");
                   if (nextId && nextId !== String(activeThreadIdRef.current || threadId || "")) {
-                    activateThread(nextId, { clearMessages: true, persist: true, lockMs: 22000 });
-
-                    try {
-                      void loadMessages(nextId, {
-                        force: true,
-                        expectedEpoch: activeThreadEpochRef.current,
-                      });
-                    } catch {}
-
+                    activateThread(nextId, { clearMessages: true, persist: true, lockMs: 15000 });
                     if (isMobile) setMobileSidebarOpen(false);
                   }
                 }}
