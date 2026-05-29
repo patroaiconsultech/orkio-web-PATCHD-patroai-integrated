@@ -2149,8 +2149,11 @@ useEffect(() => {
 
       if (!list.length) {
         setThreads([]);
-        const recovered = await recoverLastKnownThread("empty_threads_response");
-        if (recovered) return [{ id: getLastKnownThreadId(), title: "Última conversa", recovered: true }];
+        // AO01_THREAD_RECOVERY_GUARD:
+        // Não ressuscitar automaticamente "Última conversa" quando /api/threads
+        // retorna vazio momentâneo. Isso causava repetição da última conversa
+        // e sumiço visual das demais em race de bootstrap/reload.
+        return [];
       }
 
       setThreads(list);
