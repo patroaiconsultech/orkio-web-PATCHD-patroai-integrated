@@ -2284,17 +2284,40 @@ useEffect(() => {
       const sameEpoch = expectedEpoch === activeThreadEpochRef.current;
       const wasAborted = !!controller?.signal?.aborted;
       const finalizeTurn = !!opts?.finalizeTurn;
+      // AO50B_FRONTEND_FORCE_ACTIVE_MESSAGES_APPLY
+      // During bootstrap restore, activateThread/useEffect can advance activeThreadEpochRef
+      // while /api/messages is already in flight. If the response still belongs to the
+      // current active/requested thread, a forced load must hydrate the UI instead of
+      // being discarded by epoch drift.
+      const forceActiveLoad = force && sameRequestedThread && sameActiveThread;
       const canApply =
         sameActiveThread &&
         !wasAborted &&
         (
           finalizeTurn ||
+          forceActiveLoad ||
           (
             sameRequestedThread &&
             sameEpoch &&
-            (force ? sameActiveThread : sameRequest)
+            sameRequest
           )
         );
+
+      try {
+        console.info("AO50B_LOAD_MESSAGES_APPLY_CHECK", {
+          targetId,
+          count: normalized.length,
+          force,
+          finalizeTurn,
+          sameActiveThread,
+          sameRequestedThread,
+          sameEpoch,
+          sameRequest,
+          forceActiveLoad,
+          canApply,
+          wasAborted,
+        });
+      } catch {}
 
       if (canApply) {
         setMessages(normalized);
@@ -2302,6 +2325,21 @@ useEffect(() => {
           persistMeaningfulThreadId(targetId);
           promoteThreadToTop(targetId, "Última conversa");
         }
+      } else {
+        try {
+          console.warn("AO50B_LOAD_MESSAGES_SKIPPED", {
+            targetId,
+            count: normalized.length,
+            force,
+            finalizeTurn,
+            sameActiveThread,
+            sameRequestedThread,
+            sameEpoch,
+            sameRequest,
+            forceActiveLoad,
+            wasAborted,
+          });
+        } catch {}
       }
       return normalized;
     } catch (e) {
