@@ -1304,6 +1304,56 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
     ).trim();
   }
 
+  function isLikelyEmptyThread(thread = {}) {
+    const title = String(thread?.title || "").trim().toLowerCase();
+    const messageCount = Number(
+      thread?.message_count ??
+      thread?.messages_count ??
+      thread?.messageCount ??
+      thread?.messagesCount ??
+      0
+    );
+
+    if (messageCount > 0) return false;
+    if (!title) return true;
+    return title === "nova conversa" || title === "new conversation" || title === "conversa";
+  }
+
+  function getThreadActivityTime(thread = {}) {
+    const raw =
+      thread?.last_message_at ||
+      thread?.lastMessageAt ||
+      thread?.updated_at ||
+      thread?.updatedAt ||
+      thread?.created_at ||
+      thread?.createdAt ||
+      "";
+
+    const time = raw ? Date.parse(raw) : 0;
+    return Number.isFinite(time) ? time : 0;
+  }
+
+  function chooseBestInitialThread(list = [], preferredId = "") {
+    const threadsList = Array.isArray(list) ? list.filter(Boolean) : [];
+    const safePreferredId = String(preferredId || "").trim();
+
+    if (!threadsList.length) return "";
+
+    if (safePreferredId) {
+      const exact = threadsList.find((t) => String(t?.id || "") === safePreferredId);
+      if (exact) return String(exact.id || "");
+    }
+
+    const activeLike = threadsList
+      .filter((t) => !isLikelyEmptyThread(t))
+      .sort((a, b) => getThreadActivityTime(b) - getThreadActivityTime(a));
+
+    if (activeLike?.[0]?.id) return String(activeLike[0].id || "");
+
+    const sorted = [...threadsList].sort((a, b) => getThreadActivityTime(b) - getThreadActivityTime(a));
+    return String(sorted?.[0]?.id || threadsList?.[0]?.id || "");
+  }
+
   async function recoverLastKnownThread(reason = "unknown") {
     const lastId = getLastKnownThreadId();
     if (!lastId) return false;
@@ -2034,15 +2084,20 @@ useEffect(() => {
         return list;
       }
 
-      if (!currentActive && list?.[0]?.id) {
-        activateThread(list[0].id, { clearMessages: true, persist: true, lockMs: 5000 });
+      if (!currentActive && list?.length) {
+        const bestInitialId = chooseBestInitialThread(list, preserveThreadId || readStoredThreadId());
+        if (bestInitialId) {
+          try { console.info("AO_UX13C_INITIAL_THREAD_SELECTED", { threadId: bestInitialId }); } catch {}
+          activateThread(bestInitialId, { clearMessages: true, persist: true, lockMs: 8000 });
+        }
         return list;
       }
 
       if (currentActive && !list.some((t) => String(t?.id || "") === currentActive)) {
-        const fallbackId = String(list?.[0]?.id || "");
+        const fallbackId = chooseBestInitialThread(list, readStoredThreadId());
         if (fallbackId) {
-          activateThread(fallbackId, { clearMessages: true, persist: true, lockMs: 5000 });
+          try { console.info("AO_UX13C_FALLBACK_THREAD_SELECTED", { threadId: fallbackId }); } catch {}
+          activateThread(fallbackId, { clearMessages: true, persist: true, lockMs: 8000 });
         } else {
           activateThread("", { clearMessages: true, persist: true, lockMs: 2000 });
         }
