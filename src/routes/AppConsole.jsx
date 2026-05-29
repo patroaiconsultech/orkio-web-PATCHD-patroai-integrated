@@ -1265,6 +1265,7 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const storageBootstrapConsumedRef = useRef(false);
   const storageBootstrapInitializedRef = useRef(false);
   const THREAD_STORAGE_KEY = "orkio_active_thread_id";
+  const MEANINGFUL_THREAD_STORAGE_KEY = "orkio_last_meaningful_thread_id";
 
   function readStoredThreadId() {
     if (typeof window === "undefined") return "";
@@ -1278,6 +1279,27 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
       if (safeId) window.localStorage?.setItem(THREAD_STORAGE_KEY, safeId);
       else window.localStorage?.removeItem(THREAD_STORAGE_KEY);
     } catch {}
+  }
+
+  function readMeaningfulThreadId() {
+    if (typeof window === "undefined") return "";
+    try { return String(window.localStorage?.getItem(MEANINGFUL_THREAD_STORAGE_KEY) || "").trim(); } catch { return ""; }
+  }
+
+  function persistMeaningfulThreadId(nextId) {
+    const safeId = String(nextId || "").trim();
+    if (typeof window === "undefined" || !safeId) return;
+    try { window.localStorage?.setItem(MEANINGFUL_THREAD_STORAGE_KEY, safeId); } catch {}
+  }
+
+  function hasMeaningfulMessages(list = []) {
+    return Array.isArray(list) && list.some((m) => {
+      const role = String(m?.role || m?.speaker || m?.type || "").toLowerCase();
+      const content = String(m?.content || m?.text || m?.message || "").trim();
+      if (!content) return false;
+      if (role.includes("system")) return false;
+      return true;
+    });
   }
 
   function getBootstrapStoredThreadId() {
@@ -1296,6 +1318,7 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
 
   function getLastKnownThreadId() {
     return String(
+      readMeaningfulThreadId() ||
       activeThreadIdRef.current ||
       threadId ||
       readStoredThreadId() ||
@@ -1335,7 +1358,7 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
 
   function chooseBestInitialThread(list = [], preferredId = "") {
     const threadsList = Array.isArray(list) ? list.filter(Boolean) : [];
-    const safePreferredId = String(preferredId || "").trim();
+    const safePreferredId = String(readMeaningfulThreadId() || preferredId || "").trim();
 
     if (!threadsList.length) return "";
 
@@ -2131,7 +2154,7 @@ useEffect(() => {
       }
 
       if (!currentActive && list?.length) {
-        const bestInitialId = chooseBestInitialThread(list, preserveThreadId || readStoredThreadId());
+        const bestInitialId = chooseBestInitialThread(list, readMeaningfulThreadId() || preserveThreadId || readStoredThreadId());
         if (bestInitialId) {
           try { console.info("AO_UX13C_INITIAL_THREAD_SELECTED", { threadId: bestInitialId }); } catch {}
           activateThread(bestInitialId, { clearMessages: true, persist: true, lockMs: 8000 });
@@ -2140,7 +2163,7 @@ useEffect(() => {
       }
 
       if (currentActive && !list.some((t) => String(t?.id || "") === currentActive)) {
-        const fallbackId = chooseBestInitialThread(list, readStoredThreadId());
+        const fallbackId = chooseBestInitialThread(list, readMeaningfulThreadId() || readStoredThreadId());
         if (fallbackId) {
           try { console.info("AO_UX13C_FALLBACK_THREAD_SELECTED", { threadId: fallbackId }); } catch {}
           activateThread(fallbackId, { clearMessages: true, persist: true, lockMs: 8000 });
@@ -2217,6 +2240,9 @@ useEffect(() => {
 
       if (canApply) {
         setMessages(normalized);
+        if (hasMeaningfulMessages(normalized)) {
+          persistMeaningfulThreadId(targetId);
+        }
       }
       return normalized;
     } catch (e) {
@@ -2486,7 +2512,7 @@ useEffect(() => {
       timer = window.setTimeout(() => {
         try {
           void loadThreads({
-            preserveThreadId: String(activeThreadIdRef.current || threadId || ""),
+            preserveThreadId: String(readMeaningfulThreadId() || activeThreadIdRef.current || threadId || ""),
             keepMessages: true,
           });
         } catch (e) {
@@ -2522,7 +2548,7 @@ useEffect(() => {
     if (!token || !mobileSidebarOpen) return;
     try {
       void loadThreads({
-        preserveThreadId: String(activeThreadIdRef.current || threadId || ""),
+        preserveThreadId: String(readMeaningfulThreadId() || activeThreadIdRef.current || threadId || ""),
         keepMessages: true,
       });
     } catch (e) {
@@ -5963,7 +5989,7 @@ async function stopRealtime(reason = 'client_stop') {
                     const recovered = await recoverLastKnownThread("empty_state_button");
                     if (!recovered) {
                       await loadThreads({
-                        preserveThreadId: String(activeThreadIdRef.current || threadId || readStoredThreadId() || ""),
+                        preserveThreadId: String(readMeaningfulThreadId() || activeThreadIdRef.current || threadId || readStoredThreadId() || ""),
                         keepMessages: true,
                       });
                     }
