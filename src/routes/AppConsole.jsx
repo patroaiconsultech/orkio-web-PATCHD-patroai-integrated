@@ -1965,13 +1965,49 @@ useEffect(() => {
     }
   }
 
-  function scrollToBottom() {
+  function scrollToBottom(reason = "messages_changed", behavior = "auto") {
     try {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    } catch {}
+      const run = () => {
+        try {
+          messagesEndRef.current?.scrollIntoView({
+            behavior,
+            block: "end",
+            inline: "nearest",
+          });
+        } catch (e) {
+          try { console.warn("AO50D scrollToBottom inner failed", { reason, e }); } catch {}
+        }
+      };
+
+      if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(run);
+      } else {
+        run();
+      }
+    } catch (e) {
+      try { console.warn("AO50D scrollToBottom failed", { reason, e }); } catch {}
+    }
   }
 
-  useEffect(() => { scrollToBottom(); }, [messages]);
+  // AO50D — scroll seguro após render.
+  // Não toca em loadMessages, setMessages, activateThread ou threadId.
+  useEffect(() => {
+    if (!Array.isArray(messages) || messages.length === 0) return undefined;
+
+    const timers = [];
+    try {
+      scrollToBottom("messages_changed_immediate", "auto");
+
+      if (typeof window !== "undefined") {
+        timers.push(window.setTimeout(() => scrollToBottom("messages_changed_80ms", "auto"), 80));
+        timers.push(window.setTimeout(() => scrollToBottom("messages_changed_220ms", "auto"), 220));
+      }
+    } catch {}
+
+    return () => {
+      try { timers.forEach((timer) => window.clearTimeout(timer)); } catch {}
+    };
+  }, [threadId, messages.length]);
 
   const walletBalanceUsd = Number(walletSummary?.wallet?.balance_usd || 0);
   const walletLowBalanceThresholdUsd = Number(
