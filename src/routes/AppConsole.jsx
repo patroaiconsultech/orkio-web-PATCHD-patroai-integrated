@@ -2587,6 +2587,68 @@ useEffect(() => {
     void loadMessages(currentThreadId, { force: true, expectedEpoch: epochAtEffect });
   }, [threadId]);
 
+  // AO-UX13H — restauração forte antes do console vazio aceitar input.
+  // Se o usuário entra e cai numa conversa vazia, restauramos a última conversa útil
+  // imediatamente, sem esperar o primeiro envio.
+  useEffect(() => {
+    if (!token || !onboardingChecked || onboardingOpen) return;
+    if (meaningfulRestoreInFlightRef?.current) return;
+
+    const meaningfulId = String(readMeaningfulThreadId?.() || "").trim();
+    if (!meaningfulId) return;
+
+    const currentId = String(activeThreadIdRef.current || threadId || "").trim();
+    if (currentId === meaningfulId) return;
+
+    // Se o usuário clicou explicitamente em Nova nesta sessão, respeita.
+    if (explicitNewThreadIdRef?.current && currentId === explicitNewThreadIdRef.current) {
+      return;
+    }
+
+    const visibleMessages = Array.isArray(messages) ? messages : [];
+    const consoleHasContent = hasMeaningfulMessages(visibleMessages);
+
+    // Só força restauração se o console está vazio.
+    if (consoleHasContent) return;
+
+    meaningfulRestoreInFlightRef.current = true;
+
+    const timer = window.setTimeout(() => {
+      try {
+        console.info("AO_UX13H_FORCE_RESTORE_BEFORE_EMPTY_CONSOLE", {
+          from: currentId || null,
+          to: meaningfulId,
+        });
+      } catch {}
+
+      try {
+        promoteThreadToTop?.(meaningfulId, "Última conversa");
+
+        activateThread(meaningfulId, {
+          clearMessages: true,
+          persist: true,
+          lockMs: 25000,
+        });
+
+        void loadMessages(meaningfulId, {
+          force: true,
+          expectedEpoch: activeThreadEpochRef.current,
+        });
+      } catch (e) {
+        try { console.warn("AO_UX13H force restore failed:", e); } catch {}
+      } finally {
+        window.setTimeout(() => {
+          meaningfulRestoreInFlightRef.current = false;
+        }, 900);
+      }
+    }, 80);
+
+    return () => {
+      try { window.clearTimeout(timer); } catch {}
+      meaningfulRestoreInFlightRef.current = false;
+    };
+  }, [token, onboardingChecked, onboardingOpen, threadId, messages.length]);
+
   // AO-UX13G — abrir automaticamente a última conversa útil no ingresso.
   useEffect(() => {
     if (!token || !onboardingChecked || onboardingOpen) return;
