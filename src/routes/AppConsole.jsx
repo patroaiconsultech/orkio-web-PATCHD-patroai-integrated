@@ -1644,29 +1644,6 @@ useEffect(() => {
 }, [token, tenant]);
 
 const messagesEndRef = useRef(null);
-
-  function scrollMessagesToBottom(reason = "unknown", behavior = "auto") {
-    try {
-      const run = () => {
-        try {
-          messagesEndRef.current?.scrollIntoView?.({
-            behavior,
-            block: "end",
-          });
-        } catch (e) {
-          try { console.warn("AO50C scrollMessagesToBottom inner failed", { reason, e }); } catch {}
-        }
-      };
-
-      if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-        window.requestAnimationFrame(run);
-      } else {
-        run();
-      }
-    } catch (e) {
-      try { console.warn("AO50C scrollMessagesToBottom failed", { reason, e }); } catch {}
-    }
-  }
   const messagesRef = useRef([]); // PATCH0100_20B: keep latest messages for voice-to-voice sequencing
 
   // Voice-to-text (manual toggle)
@@ -2344,11 +2321,6 @@ useEffect(() => {
 
       if (canApply) {
         setMessages(normalized);
-        try {
-          window.setTimeout(() => {
-            scrollMessagesToBottom("loadMessages_applied", "auto");
-          }, 40);
-        } catch {}
         if (hasMeaningfulMessages(normalized)) {
           persistMeaningfulThreadId(targetId);
           promoteThreadToTop(targetId, "Última conversa");
@@ -2692,20 +2664,6 @@ useEffect(() => {
     setMessages([]);
     void loadMessages(currentThreadId, { force: true, expectedEpoch: epochAtEffect });
   }, [threadId]);
-
-  // AO50C — após restaurar/carregar mensagens, posicionar viewport no fim da conversa.
-  useEffect(() => {
-    if (!threadId) return;
-    if (!Array.isArray(messages) || messages.length === 0) return;
-
-    const timer = window.setTimeout(() => {
-      scrollMessagesToBottom("messages_changed", "auto");
-    }, 80);
-
-    return () => {
-      try { window.clearTimeout(timer); } catch {}
-    };
-  }, [threadId, messages.length]);
 
   // AO-UX13H — restauração forte antes do console vazio aceitar input.
   // Se o usuário entra e cai numa conversa vazia, restauramos a última conversa útil
