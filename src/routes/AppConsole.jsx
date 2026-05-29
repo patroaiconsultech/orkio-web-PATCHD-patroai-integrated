@@ -157,7 +157,7 @@ function withTimeout(promise, ms, label = "timeout") {
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => {
       const err = new Error(label);
-      err.code = "STREAM_TIMEOUT";
+      safeSetErrorCode(err, "STREAM_TIMEOUT");
       reject(err);
     }, Math.max(1000, Number(ms || 0)));
   });
@@ -165,6 +165,27 @@ function withTimeout(promise, ms, label = "timeout") {
   return Promise.race([promise, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
   });
+}
+
+
+function safeSetErrorCode(err, code) {
+  if (!err || !code) return err;
+  try {
+    err.code = code;
+    return err;
+  } catch (_) {
+    try {
+      Object.defineProperty(err, "orkio_code", {
+        value: code,
+        configurable: true,
+      });
+    } catch {}
+    return err;
+  }
+}
+
+function getErrorCode(err) {
+  return err?.code || err?.orkio_code || "";
 }
 
 function isAbortLikeError(err) {
@@ -199,7 +220,7 @@ async function consumeChatStream(
     try { reader.cancel?.(); } catch {}
     const err = new Error("CHAT_STREAM_ABORTED");
     err.name = "AbortError";
-    err.code = "CHAT_STREAM_ABORTED";
+    safeSetErrorCode(err, "CHAT_STREAM_ABORTED");
     throw err;
   };
 
@@ -221,7 +242,7 @@ async function consumeChatStream(
 
   const buildStreamTerminalError = (code, message) => {
     const err = new Error(message || code);
-    err.code = code;
+    safeSetErrorCode(err, code);
     err.thread_id = lastThreadId;
     err.trace_id = lastTraceId;
     err.draftText = draftText;
@@ -3370,7 +3391,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
 
       const failStreamWithoutDirectFallback = (reason = "CHAT_STREAM_FAILED_NO_DIRECT_FALLBACK") => {
         const err = new Error(reason);
-        err.code = reason;
+        safeSetErrorCode(err, reason);
         appendExecutionTrace({
           kind: "error",
           label: "Stream não estabilizou",
@@ -3418,7 +3439,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
         } catch (err) {
           if (directCtl.signal.aborted) {
             const wrapped = err instanceof Error ? err : new Error(String(err || "CHAT_DIRECT_TIMEOUT"));
-            wrapped.code = "CHAT_DIRECT_TIMEOUT";
+            safeSetErrorCode(wrapped, "CHAT_DIRECT_TIMEOUT");
             wrapped.wasAborted = true;
             throw wrapped;
           }
