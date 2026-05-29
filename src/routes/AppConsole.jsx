@@ -1261,6 +1261,8 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const requestedThreadIdRef = useRef("");
   const threadSelectionLockUntilRef = useRef(0);
   const pinnedThreadIdRef = useRef("");
+  const explicitNewThreadIdRef = useRef("");
+  const meaningfulRestoreInFlightRef = useRef(false);
   const initialStoredThreadIdRef = useRef("");
   const storageBootstrapConsumedRef = useRef(false);
   const storageBootstrapInitializedRef = useRef(false);
@@ -2568,6 +2570,68 @@ useEffect(() => {
     void loadMessages(currentThreadId, { force: true, expectedEpoch: epochAtEffect });
   }, [threadId]);
 
+  // AO-UX13F — se o console entrou numa thread vazia automática,
+  // restaura a última conversa útil antes do usuário digitar.
+  useEffect(() => {
+    if (!token || !onboardingChecked || onboardingOpen) return;
+    if (meaningfulRestoreInFlightRef.current) return;
+
+    const meaningfulId = String(readMeaningfulThreadId?.() || "").trim();
+    if (!meaningfulId) return;
+
+    const currentId = String(activeThreadIdRef.current || threadId || "").trim();
+    if (!currentId || currentId === meaningfulId) return;
+
+    // Se a thread atual foi criada explicitamente pelo usuário nesta sessão,
+    // respeitamos a intenção e não redirecionamos.
+    if (explicitNewThreadIdRef.current && currentId === explicitNewThreadIdRef.current) {
+      return;
+    }
+
+    const list = Array.isArray(threads) ? threads : [];
+    const currentThread = list.find((t) => String(t?.id || "") === currentId);
+
+    // Só troca automaticamente quando a atual é ausente/vazia.
+    // Não sequestra uma conversa antiga que o usuário escolheu.
+    const currentLooksEmpty = !currentThread || isLikelyEmptyThread(currentThread);
+    if (!currentLooksEmpty) return;
+
+    meaningfulRestoreInFlightRef.current = true;
+
+    const timer = window.setTimeout(() => {
+      try {
+        console.info("AO_UX13F_RESTORE_MEANINGFUL_BEFORE_INPUT", {
+          from: currentId,
+          to: meaningfulId,
+        });
+      } catch {}
+
+      try {
+        activateThread(meaningfulId, {
+          clearMessages: true,
+          persist: true,
+          lockMs: 15000,
+        });
+
+        void loadMessages(meaningfulId, {
+          force: true,
+          expectedEpoch: activeThreadEpochRef.current,
+        });
+      } catch (e) {
+        try { console.warn("AO_UX13F restore failed:", e); } catch {}
+      } finally {
+        window.setTimeout(() => {
+          meaningfulRestoreInFlightRef.current = false;
+        }, 700);
+      }
+    }, 220);
+
+    return () => {
+      try { window.clearTimeout(timer); } catch {}
+      meaningfulRestoreInFlightRef.current = false;
+    };
+  }, [token, onboardingChecked, onboardingOpen, threadId, threads.length]);
+
 
 
 
@@ -2583,6 +2647,7 @@ useEffect(() => {
       });
       if (data?.id) {
         const newId = String(data.id || "");
+        explicitNewThreadIdRef.current = newId;
         consumeStoredThreadBootstrap(newId);
         activateThread(newId, { clearMessages: true, persist: true, lockMs: 20000 });
         setThreads((prev) => {
