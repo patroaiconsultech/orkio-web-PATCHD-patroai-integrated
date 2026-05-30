@@ -13,6 +13,7 @@ import AdminValuationCenter from "./routes/AdminValuationCenter.jsx";
 import AdminEvolutionCenter from "./routes/AdminEvolutionCenter.jsx";
 import BillingWalletCenter from "./routes/BillingWalletCenter.jsx";
 import PrivacySettings from "./routes/PrivacySettings.jsx";
+import BetaAccessGate from "./routes/BetaAccessGate.jsx";
 import Privacy from "./routes/legal/Privacy.jsx";
 import Terms from "./routes/legal/Terms.jsx";
 import Cookies from "./routes/legal/Cookies.jsx";
@@ -26,12 +27,13 @@ export default function App() {
         <Route path="/" element={<PatroaiLanding />} />
         <Route path="/patroai" element={<PatroaiLanding />} />
         <Route path="/orkio" element={<Landing />} />
-        <Route path="/auth" element={<AuthPage />} />
-        <Route path="/app" element={<AppConsole />} />
-        <Route path="/orkio/app" element={<AppConsole />} />
+        <Route path="/beta" element={<BetaAccessGate />} />
+        <Route path="/auth" element={<BetaAccessGate><AuthPage /></BetaAccessGate>} />
+        <Route path="/app" element={<BetaAccessGate><AppConsole /></BetaAccessGate>} />
+        <Route path="/orkio/app" element={<BetaAccessGate><AppConsole /></BetaAccessGate>} />
 
-        <Route path="/admin" element={<AdminConsole />} />
-        <Route path="/orkio/admin" element={<AdminConsole />} />
+        <Route path="/admin" element={<BetaAccessGate><AdminConsole /></BetaAccessGate>} />
+        <Route path="/orkio/admin" element={<BetaAccessGate><AdminConsole /></BetaAccessGate>} />
         <Route path="/admin/escalations" element={<AdminEscalations />} />
         <Route path="/admin/trademarks" element={<AdminTrademarkCenter />} />
         <Route path="/admin/valuation" element={<AdminValuationCenter />} />
@@ -43,7 +45,7 @@ export default function App() {
         <Route path="/admin/pte" element={<AdminEvolutionCenter />} />
         <Route path="/admin/autoevolucao" element={<AdminEvolutionCenter />} />
 
-        <Route path="/wallet" element={<BillingWalletCenter />} />
+        <Route path="/wallet" element={<BetaAccessGate><BillingWalletCenter /></BetaAccessGate>} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/privacy-settings" element={<PrivacySettings />} />
         <Route path="/legal/privacy" element={<Privacy />} />
