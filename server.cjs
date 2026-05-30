@@ -4,6 +4,22 @@ const { Readable } = require("stream");
 
 const app = express();
 
+// AO-SEO01B: canonical redirect from apex domain to www.
+// Keeps the original path and query string.
+function canonicalWwwRedirect(req, res, next) {
+  const host = String(req.headers.host || "").split(":")[0].toLowerCase();
+
+  if (host === "patroai.com") {
+    return res.redirect(308, `https://www.patroai.com${req.originalUrl || "/"}`);
+  }
+
+  return next();
+}
+
+app.use(canonicalWwwRedirect);
+
+
+
 const PORT = process.env.PORT || 8080;
 const API_BASE_URL = (process.env.API_BASE_URL||"").replace(/\/+$/, "");
 
