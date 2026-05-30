@@ -9,7 +9,13 @@ const app = express();
 function canonicalWwwRedirect(req, res, next) {
   const host = String(req.headers.host || "").split(":")[0].toLowerCase();
 
-  if (host === "patroai.com") {
+  const legacyHosts = new Set([
+    "patroai.com",
+    "patroai.com.br",
+    "www.patroai.com.br",
+  ]);
+
+  if (legacyHosts.has(host)) {
     return res.redirect(308, `https://www.patroai.com${req.originalUrl || "/"}`);
   }
 
