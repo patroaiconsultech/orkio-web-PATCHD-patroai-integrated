@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import usePatroaiSeo from "../lib/usePatroaiSeo.js"; import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import OrkioVoiceHero from "../components/OrkioVoiceHero.jsx";
 import InteractiveOrkioPillars from "../components/InteractiveOrkioPillars.jsx";
@@ -426,7 +426,7 @@ function LiveDashboard({ copy = ORKIO_PAGE_COPY.pt.dashboard }) {
   );
 }
 
-export default function Landing() {
+export default function Landing() { usePatroaiSeo();
   const nav = useNavigate();
   const { locale, setLocale, ttsLocale } = useLandingLocale();
   const copy = ORKIO_PAGE_COPY[locale] || ORKIO_PAGE_COPY.pt;

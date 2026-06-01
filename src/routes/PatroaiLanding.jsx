@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import usePatroaiSeo from "../lib/usePatroaiSeo.js"; import React, { useMemo, useState } from "react";
 import AvatarHero3D from "../components/AvatarHero3D.jsx";
 import AvatarPrechatModal from "../components/AvatarPrechatModal.jsx";
 import PremiumIcon from "../components/PremiumIcon.jsx";
@@ -296,7 +296,7 @@ function PatroaiLogo({ compact = false }) {
   );
 }
 
-export default function PatroaiLanding() {
+export default function PatroaiLanding() { usePatroaiSeo();
   const [prechatOpen, setPrechatOpen] = useState(false);
   const { locale, setLocale, ttsLocale } = useLandingLocale();
   const copy = PATROAI_PAGE_COPY[locale] || PATROAI_PAGE_COPY.pt;
