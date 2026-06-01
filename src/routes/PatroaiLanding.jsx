@@ -527,23 +527,15 @@ export default function PatroaiLanding() {
           box-shadow: inset 0 0 80px rgba(250,204,21,.12), 0 24px 72px rgba(0,0,0,.34);
         }
 
+        .orkio-avatar video,
         .orkio-avatar img {
-          width: 76%;
-          height: 76%;
-          object-fit: contain;
+          width: 78%;
+          height: 78%;
+          object-fit: cover;
+          object-position: 64% center;
           border-radius: 999px;
-        }
-
-        .orkio-card h2 {
-          margin: 0;
-          font-size: 28px;
-          letter-spacing: -.035em;
-        }
-
-        .orkio-card p {
-          margin: 0;
-          color: rgba(255,255,255,.70);
-          line-height: 1.55;
+          display: block;
+          box-shadow: 0 24px 64px rgba(0,0,0,.32);
         }
 
         .patroai-section {
@@ -786,10 +778,15 @@ export default function PatroaiLanding() {
         <aside className="orkio-card" aria-label={copy.orkioSection.avatarLabel}>
           <div className="orkio-card-inner">
             <div className="orkio-avatar">
-              <img src="/patroai-assets/orkio-video-poster.webp" alt="Orkio" />
+              <video
+                src="/patroai-assets/orkio-mindpulse-male.mp4"
+                autoPlay
+                muted
+                loop
+                playsInline
+                aria-label="Orkio"
+              />
             </div>
-            <h2>{copy.orkioSection.avatarTitle}</h2>
-            <p>{copy.orkioSection.avatarText}</p>
           </div>
         </aside>
       </section>
