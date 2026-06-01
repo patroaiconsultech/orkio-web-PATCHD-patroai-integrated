@@ -62,6 +62,78 @@ function humanizeConsoleStatusMessage(value) {
 }
 
 
+// ORKIO_UI_SAFE_TRACE_OBJECT_NORMALIZATION_FINAL
+// Normaliza valores antes de entrarem no executionTrace.
+// Evita que objetos JS apareçam como "[object Object]" no painel "Ver execução".
+function safeTraceText(value, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw || raw === "[object Object]") return fallback;
+    return raw;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((item) => safeTraceText(item, ""))
+      .filter(Boolean)
+      .join(", ");
+    return joined || fallback;
+  }
+
+  if (typeof value === "object") {
+    const preferred =
+      value.label ??
+      value.message ??
+      value.status ??
+      value.reason ??
+      value.detail ??
+      value.name ??
+      value.code ??
+      value.event ??
+      value.step ??
+      value.type;
+
+    if (preferred !== undefined) {
+      return safeTraceText(preferred, fallback);
+    }
+
+    try {
+      const compact = JSON.stringify(value);
+      if (compact && compact !== "{}") {
+        return compact.length > 220 ? `${compact.slice(0, 217)}...` : compact;
+      }
+    } catch {}
+  }
+
+  return fallback;
+}
+
+function safeTraceBadges(badges) {
+  if (!Array.isArray(badges)) return [];
+  return badges.map((badge) => safeTraceText(badge, "")).filter(Boolean);
+}
+
+function sanitizeExecutionTraceStep(step) {
+  const source = step && typeof step === "object" ? step : {};
+
+  return {
+    ...source,
+    kind: safeTraceText(source.kind, "status"),
+    label: safeTraceText(source.label, "Etapa registrada"),
+    detail: safeTraceText(source.detail, ""),
+    agentName: safeTraceText(source.agentName, ""),
+    badges: safeTraceBadges(source.badges),
+    source: safeTraceText(source.source, ""),
+  };
+}
+
+
 
 const ORKIO_ENV = (typeof window !== "undefined" && window.__ORKIO_ENV__) ? window.__ORKIO_ENV__ : {};
 const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.VITE_SUMMIT_VOICE_MODE || "realtime").trim().toLowerCase() === "stt_tts")
@@ -596,12 +668,9 @@ function inferSpeakerNameFromContent(content) {
 }
 
 function resolveAssistantDisplayName(messageLike, fallback = "Agent") {
-  // EFATA777_ROUTING_LOCK_UI:
-  // Backend owns the final speaker. The UI must not infer a different agent
-  // from the answer text when final_speaker/agent_name/visible_agent exists.
   const rawName =
-    messageLike?.final_speaker ||
     messageLike?.agent_name ||
+    messageLike?.final_speaker ||
     messageLike?.visible_agent ||
     messageLike?.speaker_name ||
     messageLike?.name ||
@@ -613,16 +682,16 @@ function resolveAssistantDisplayName(messageLike, fallback = "Agent") {
   const normalizedRaw = canonicalizeSpeakerLabel(rawName);
   const rawLower = String(normalizedRaw || "").trim().toLowerCase();
 
-  if (normalizedRaw && !["agent", "assistant", "model", "agente"].includes(rawLower)) {
-    return normalizedRaw;
+  if (explicitFromContent && ["agent", "assistant", "model"].includes(rawLower)) {
+    return explicitFromContent;
   }
-  if (explicitFromContent && ["agent", "assistant", "model", "agente"].includes(rawLower)) {
+  if (explicitFromContent && !rawName) {
     return explicitFromContent;
   }
   if (normalizedRaw) {
     return normalizedRaw;
   }
-  if (explicitFromContent && !rawName) {
+  if (explicitFromContent) {
     return explicitFromContent;
   }
   return fallback;
@@ -1363,37 +1432,44 @@ const fileInputRef = useRef(null);
 const executionTraceRef = useRef([]);
 
 const resetExecutionTrace = (steps = []) => {
-  const normalized = Array.isArray(steps) ? steps.map((step, idx) => ({
-    id: step?.id || `trace-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
-    ts: step?.ts || Date.now(),
-    kind: step?.kind || "status",
-    label: step?.label || "Executando etapa",
-    detail: step?.detail || "",
-    agentName: step?.agentName || "",
-    badges: Array.isArray(step?.badges) ? step.badges : [],
-    source: step?.source || "",
-  })) : [];
+  const normalized = Array.isArray(steps)
+    ? steps.map((step, idx) => {
+        const safeStep = sanitizeExecutionTraceStep(step);
+        return {
+          ...safeStep,
+          id: safeStep.id || `trace-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+          ts: safeStep.ts || Date.now(),
+        };
+      })
+    : [];
+
   executionTraceRef.current = normalized;
   setExecutionTrace(normalized);
 };
 
 const appendExecutionTrace = (step) => {
   if (!step) return;
+
   setExecutionTrace((prev) => {
+    const safeStep = sanitizeExecutionTraceStep(step);
+
     const normalized = {
-      id: step?.id || `trace-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      ts: step?.ts || Date.now(),
-      kind: step?.kind || "status",
-      label: step?.label || "Executando etapa",
-      detail: step?.detail || "",
-      agentName: step?.agentName || "",
-      badges: Array.isArray(step?.badges) ? step.badges : [],
-      source: step?.source || "",
+      ...safeStep,
+      id: safeStep.id || `trace-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      ts: safeStep.ts || Date.now(),
     };
+
     const last = prev[prev.length - 1];
-    if (last && last.kind === normalized.kind && last.label === normalized.label && last.detail === normalized.detail && last.agentName === normalized.agentName) {
+    if (
+      last &&
+      last.kind === normalized.kind &&
+      last.label === normalized.label &&
+      last.detail === normalized.detail &&
+      last.agentName === normalized.agentName
+    ) {
       return prev;
     }
+
     const next = [...prev.slice(-11), normalized];
     executionTraceRef.current = next;
     return next;
@@ -2097,7 +2173,7 @@ useEffect(() => {
     threadId: turnThreadId,
     draftAssistantId,
     finalTextCandidate = "",
-    finalAgentName = "Orkio",
+    finalAgentName = "Orion",
     finalAgentId = null,
     finalVoiceId = null,
     finalAvatarUrl = null,
@@ -3378,33 +3454,10 @@ async function sendMessage(presetMsg = null, opts = {}) {
         ""
       ).trim();
 
-      const selectedDestinationAgentName =
-        destinationContract.visible_agent ||
-        (destMode === "single"
-          ? String((agents.find((a) => String(a.id) === String(destSingle)) || {})?.name || "")
-          : "") ||
-        (destMode === "team" ? "Orkio" : "");
-
-      const finalAgentName = resolveAssistantDisplayName(
-        {
-          final_speaker:
-            streamDonePayload?.final_speaker ||
-            streamMeta?.done_payload?.final_speaker ||
-            "",
-          agent_name:
-            streamDonePayload?.agent_name ||
-            streamMeta?.done_payload?.agent_name ||
-            "",
-          visible_agent:
-            streamDonePayload?.visible_agent ||
-            streamMeta?.done_payload?.visible_agent ||
-            destinationContract.visible_agent ||
-            selectedDestinationAgentName ||
-            "",
-          content: finalTextCandidate,
-        },
-        selectedDestinationAgentName || "Orkio"
-      );
+      const finalAgentName =
+        streamDonePayload?.agent_name ||
+        streamMeta?.done_payload?.agent_name ||
+        "Orion";
       const finalAgentId =
         streamDonePayload?.agent_id ||
         streamMeta?.done_payload?.agent_id ||
@@ -3657,7 +3710,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             threadId: effectiveTidForLoad,
             draftAssistantId,
             finalTextCandidate: "",
-            finalAgentName: activeRuntimeAgent || "Orkio",
+            finalAgentName: activeRuntimeAgent || "Orion",
             turnStartedAt,
           });
         }
@@ -5677,32 +5730,6 @@ async function stopRealtime(reason = 'client_stop') {
     hint: { fontSize: "12px", color: "rgba(255,255,255,0.6)", marginTop: "6px" },
   };
 
-
-  function renderMessageContentWithLinks(value) {
-    const text = String(value || "");
-    if (!text) return "";
-    const urlRegex = /(https?:\/\/[^\s<>"']+)/gi;
-    const parts = text.split(urlRegex);
-    return parts.map((part, idx) => {
-      if (!part) return null;
-      if (/^https?:\/\//i.test(part)) {
-        return (
-          <a
-            key={`url-${idx}`}
-            href={part}
-            target="_blank"
-            rel="noreferrer noopener"
-            style={{ color: "#9fd3ff", fontWeight: 800, textDecoration: "underline", wordBreak: "break-word" }}
-          >
-            {part}
-          </a>
-        );
-      }
-      return <React.Fragment key={`txt-${idx}`}>{part}</React.Fragment>;
-    });
-  }
-
-
   const meName = user?.name || user?.email || "Você";
 
   const pendingApprovedPatchExecution = findPendingApprovedPatchExecution(messages);
@@ -6273,7 +6300,7 @@ async function stopRealtime(reason = 'client_stop') {
                           </div>
                         ) : (
                           <div style={styles.messageContent}>
-                            {renderMessageContentWithLinks(visible || m.content)}
+                            {visible || m.content}
                             {!isUser && !isSystem && (visible || m.content) && (
                               <button
                                 onClick={() => playTts((visible || m.content), (m.agent_id || null), { messageId: m.id || null })}
