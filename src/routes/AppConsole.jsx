@@ -596,9 +596,12 @@ function inferSpeakerNameFromContent(content) {
 }
 
 function resolveAssistantDisplayName(messageLike, fallback = "Agent") {
+  // EFATA777_ROUTING_LOCK_UI:
+  // Backend owns the final speaker. The UI must not infer a different agent
+  // from the answer text when final_speaker/agent_name/visible_agent exists.
   const rawName =
-    messageLike?.agent_name ||
     messageLike?.final_speaker ||
+    messageLike?.agent_name ||
     messageLike?.visible_agent ||
     messageLike?.speaker_name ||
     messageLike?.name ||
@@ -610,16 +613,16 @@ function resolveAssistantDisplayName(messageLike, fallback = "Agent") {
   const normalizedRaw = canonicalizeSpeakerLabel(rawName);
   const rawLower = String(normalizedRaw || "").trim().toLowerCase();
 
-  if (explicitFromContent && ["agent", "assistant", "model"].includes(rawLower)) {
-    return explicitFromContent;
+  if (normalizedRaw && !["agent", "assistant", "model", "agente"].includes(rawLower)) {
+    return normalizedRaw;
   }
-  if (explicitFromContent && !rawName) {
+  if (explicitFromContent && ["agent", "assistant", "model", "agente"].includes(rawLower)) {
     return explicitFromContent;
   }
   if (normalizedRaw) {
     return normalizedRaw;
   }
-  if (explicitFromContent) {
+  if (explicitFromContent && !rawName) {
     return explicitFromContent;
   }
   return fallback;
@@ -2094,7 +2097,7 @@ useEffect(() => {
     threadId: turnThreadId,
     draftAssistantId,
     finalTextCandidate = "",
-    finalAgentName = "Orion",
+    finalAgentName = "Orkio",
     finalAgentId = null,
     finalVoiceId = null,
     finalAvatarUrl = null,
@@ -3375,10 +3378,33 @@ async function sendMessage(presetMsg = null, opts = {}) {
         ""
       ).trim();
 
-      const finalAgentName =
-        streamDonePayload?.agent_name ||
-        streamMeta?.done_payload?.agent_name ||
-        "Orion";
+      const selectedDestinationAgentName =
+        destinationContract.visible_agent ||
+        (destMode === "single"
+          ? String((agents.find((a) => String(a.id) === String(destSingle)) || {})?.name || "")
+          : "") ||
+        (destMode === "team" ? "Orkio" : "");
+
+      const finalAgentName = resolveAssistantDisplayName(
+        {
+          final_speaker:
+            streamDonePayload?.final_speaker ||
+            streamMeta?.done_payload?.final_speaker ||
+            "",
+          agent_name:
+            streamDonePayload?.agent_name ||
+            streamMeta?.done_payload?.agent_name ||
+            "",
+          visible_agent:
+            streamDonePayload?.visible_agent ||
+            streamMeta?.done_payload?.visible_agent ||
+            destinationContract.visible_agent ||
+            selectedDestinationAgentName ||
+            "",
+          content: finalTextCandidate,
+        },
+        selectedDestinationAgentName || "Orkio"
+      );
       const finalAgentId =
         streamDonePayload?.agent_id ||
         streamMeta?.done_payload?.agent_id ||
@@ -3631,7 +3657,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             threadId: effectiveTidForLoad,
             draftAssistantId,
             finalTextCandidate: "",
-            finalAgentName: activeRuntimeAgent || "Orion",
+            finalAgentName: activeRuntimeAgent || "Orkio",
             turnStartedAt,
           });
         }
@@ -5651,6 +5677,32 @@ async function stopRealtime(reason = 'client_stop') {
     hint: { fontSize: "12px", color: "rgba(255,255,255,0.6)", marginTop: "6px" },
   };
 
+
+  function renderMessageContentWithLinks(value) {
+    const text = String(value || "");
+    if (!text) return "";
+    const urlRegex = /(https?:\/\/[^\s<>"']+)/gi;
+    const parts = text.split(urlRegex);
+    return parts.map((part, idx) => {
+      if (!part) return null;
+      if (/^https?:\/\//i.test(part)) {
+        return (
+          <a
+            key={`url-${idx}`}
+            href={part}
+            target="_blank"
+            rel="noreferrer noopener"
+            style={{ color: "#9fd3ff", fontWeight: 800, textDecoration: "underline", wordBreak: "break-word" }}
+          >
+            {part}
+          </a>
+        );
+      }
+      return <React.Fragment key={`txt-${idx}`}>{part}</React.Fragment>;
+    });
+  }
+
+
   const meName = user?.name || user?.email || "Você";
 
   const pendingApprovedPatchExecution = findPendingApprovedPatchExecution(messages);
@@ -6221,7 +6273,7 @@ async function stopRealtime(reason = 'client_stop') {
                           </div>
                         ) : (
                           <div style={styles.messageContent}>
-                            {visible || m.content}
+                            {renderMessageContentWithLinks(visible || m.content)}
                             {!isUser && !isSystem && (visible || m.content) && (
                               <button
                                 onClick={() => playTts((visible || m.content), (m.agent_id || null), { messageId: m.id || null })}
