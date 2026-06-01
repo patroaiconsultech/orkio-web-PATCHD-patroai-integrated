@@ -2,9 +2,37 @@ import usePatroaiSeo from "../lib/usePatroaiSeo.js"; import React, { useMemo, us
 
 const PUBLIC_CODE = "EFATAH777";
 const STORAGE_KEY = "orkio_internal_gate_passed";
+const BETA_ACCESS_CODE_STORAGE_KEY = "orkio_beta_access_code";
 
+// ORKIO_AO56_BETA_ACCESS_GATE_V1
+// Frontend é apenas experiência de entrada. A autoridade final continua no backend.
 function normalize(value) {
   return String(value || "").trim();
+}
+
+function normalizeAccessCode(value) {
+  return normalize(value).replace(/\s+/g, "").toUpperCase();
+}
+
+function getAllowedPublicCodes() {
+  const raw = import.meta.env.VITE_ORKIO_BETA_ACCESS_CODES || PUBLIC_CODE;
+  return String(raw || "")
+    .split(/[;,\n]/g)
+    .map((item) => normalizeAccessCode(item))
+    .filter(Boolean);
+}
+
+function isAllowedPublicAccessCode(value) {
+  const safe = normalizeAccessCode(value);
+  return !!safe && getAllowedPublicCodes().includes(safe);
+}
+
+function rememberBetaAccessCode(value) {
+  const safe = normalizeAccessCode(value);
+  if (!safe) return;
+  try {
+    sessionStorage.setItem(BETA_ACCESS_CODE_STORAGE_KEY, safe);
+  } catch {}
 }
 
 function apiUrl(path) {
@@ -43,6 +71,7 @@ export default function BetaAccessGate({ children = null }) { usePatroaiSeo();
   });
 
   const [code, setCode] = useState("");
+  const [acceptedAccessCode, setAcceptedAccessCode] = useState("");
   const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
@@ -68,19 +97,23 @@ export default function BetaAccessGate({ children = null }) { usePatroaiSeo();
   function submitCode(e) {
     e?.preventDefault?.();
 
-    const safe = normalize(code).toUpperCase();
+    const safe = normalizeAccessCode(code);
 
-    if (internalCode && safe === internalCode.toUpperCase()) {
+    if (internalCode && safe === normalizeAccessCode(internalCode)) {
+      rememberBetaAccessCode(safe);
       unlockInternal();
       return;
     }
 
-    if (safe !== PUBLIC_CODE) {
+    if (!isAllowedPublicAccessCode(safe)) {
+      setAcceptedAccessCode("");
       setError("Acesso antecipado restrito. Verifique seu código de convite.");
       setWaitlistOpen(false);
       return;
     }
 
+    rememberBetaAccessCode(safe);
+    setAcceptedAccessCode(safe);
     setError("");
     setWaitlistOpen(true);
   }
@@ -114,7 +147,7 @@ export default function BetaAccessGate({ children = null }) { usePatroaiSeo();
           whatsapp: form.whatsapp,
           email: form.email,
           consent: form.consent,
-          access_code: PUBLIC_CODE,
+          access_code: acceptedAccessCode || normalizeAccessCode(code) || PUBLIC_CODE,
           source: "orkio_closed_beta_gate",
         }),
       });

@@ -572,6 +572,22 @@ export default function AuthPage() { usePatroaiSeo();
       if (checkout?.password) setPassword((prev) => prev || checkout.password);
       if (checkout?.selectedPlan) setSelectedPlan(checkout.selectedPlan);
       if (checkout?.acceptTerms) setAcceptTerms(true);
+
+      // ORKIO_AO56_AUTH_ACCESS_CODE_PREFILL_V1
+      // Permite que /beta entregue o código aceito ao cadastro sem tornar o frontend autoridade final.
+      const urlAccessCode =
+        params.get("access_code") ||
+        params.get("accessCode") ||
+        params.get("code") ||
+        params.get("invite");
+
+      let storedBetaAccessCode = "";
+      try {
+        storedBetaAccessCode = sessionStorage.getItem("orkio_beta_access_code") || "";
+      } catch {}
+
+      const nextAccessCode = normalizeAccessCode(urlAccessCode || storedBetaAccessCode || "");
+      if (nextAccessCode) setAccessCode(nextAccessCode);
     } catch {}
   }, []);
 
