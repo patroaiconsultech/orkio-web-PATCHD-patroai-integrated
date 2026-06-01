@@ -357,6 +357,27 @@ function PatroaiLogo({ compact = false }) {
   );
 }
 
+function PatroaiHeroLogo() {
+  const [src, setSrc] = useState(LOGO_PRIMARY);
+
+  return (
+    <div className="patroai-hero-orb" aria-hidden="true">
+      <div className="patroai-hero-logo-shell">
+        <span className="patroai-hero-orb-ring one" />
+        <span className="patroai-hero-orb-ring two" />
+        <img
+          src={src}
+          alt=""
+          className="patroai-hero-logo-img"
+          onError={() => {
+            if (src !== LOGO_FALLBACK) setSrc(LOGO_FALLBACK);
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function PremiumMark({ icon = "✦" }) {
   return (
     <span className="premium-mark" aria-hidden="true">
@@ -430,10 +451,10 @@ export default function PatroaiLanding() {
 
         .patroai-header-inner {
           min-height: 82px;
-          display: flex;
+          display: grid;
+          grid-template-columns: auto minmax(260px, 1fr) auto;
           align-items: center;
-          justify-content: space-between;
-          gap: 18px;
+          gap: clamp(14px, 2vw, 26px);
         }
 
         .patroai-logo-button,
@@ -482,7 +503,9 @@ export default function PatroaiLanding() {
         .patroai-nav {
           display: flex;
           align-items: center;
-          gap: 24px;
+          justify-content: center;
+          gap: clamp(16px, 2vw, 24px);
+          min-width: 0;
           color: rgba(255,255,255,.75);
           font-size: 14px;
         }
@@ -500,7 +523,9 @@ export default function PatroaiLanding() {
         .patroai-actions {
           display: flex;
           align-items: center;
+          justify-content: flex-end;
           gap: 10px;
+          min-width: 0;
         }
 
         .patroai-btn {
@@ -535,15 +560,15 @@ export default function PatroaiLanding() {
         }
 
         .patroai-hero {
-          padding: clamp(58px, 8vw, 112px) 0 52px;
+          padding: clamp(62px, 8vw, 112px) 0 52px;
           display: grid;
-          grid-template-columns: 1fr;
-          gap: clamp(30px, 5vw, 74px);
+          grid-template-columns: minmax(0, 1.08fr) minmax(280px, .72fr);
+          gap: clamp(32px, 5vw, 76px);
           align-items: center;
         }
 
         .patroai-hero-main {
-          max-width: 940px;
+          max-width: 820px;
         }
 
         .patroai-kicker,
@@ -564,10 +589,10 @@ export default function PatroaiLanding() {
 
         .patroai-hero h1 {
           margin: 24px 0 18px;
-          font-size: clamp(44px, 8vw, 86px);
+          font-size: clamp(44px, 7vw, 82px);
           line-height: .92;
           letter-spacing: -.075em;
-          max-width: 860px;
+          max-width: 820px;
         }
 
         .patroai-hero h1 span,
@@ -600,6 +625,94 @@ export default function PatroaiLanding() {
           color: rgba(255,255,255,.74);
           font-size: 14px;
           font-weight: 700;
+        }
+
+        .patroai-hero-orb {
+          position: relative;
+          min-height: 420px;
+          display: grid;
+          place-items: center;
+          isolation: isolate;
+        }
+
+        .patroai-hero-orb::before {
+          content: "";
+          position: absolute;
+          width: min(460px, 34vw);
+          aspect-ratio: 1;
+          border-radius: 999px;
+          background:
+            radial-gradient(circle at 50% 48%, rgba(250,204,21,.22), transparent 35%),
+            radial-gradient(circle at 50% 50%, rgba(34,197,94,.16), transparent 62%);
+          filter: blur(4px);
+          animation: patroaiGlowPulse 4.8s ease-in-out infinite;
+          z-index: -2;
+        }
+
+        .patroai-hero-logo-shell {
+          position: relative;
+          width: clamp(230px, 28vw, 360px);
+          aspect-ratio: 1;
+          display: grid;
+          place-items: center;
+          border-radius: 42px;
+          background:
+            radial-gradient(circle at 50% 45%, rgba(250,204,21,.16), transparent 36%),
+            linear-gradient(145deg, rgba(255,255,255,.10), rgba(255,255,255,.035));
+          border: 1px solid rgba(250,204,21,.20);
+          box-shadow:
+            0 28px 90px rgba(0,0,0,.38),
+            inset 0 0 80px rgba(250,204,21,.06);
+          overflow: hidden;
+        }
+
+        .patroai-hero-logo-shell::after {
+          content: "";
+          position: absolute;
+          inset: -38%;
+          background: conic-gradient(from 90deg, transparent, rgba(250,204,21,.24), transparent, rgba(103,232,249,.16), transparent);
+          animation: spin 16s linear infinite;
+          opacity: .74;
+        }
+
+        .patroai-hero-logo-img {
+          position: relative;
+          z-index: 2;
+          width: 58%;
+          height: 58%;
+          object-fit: contain;
+          filter: drop-shadow(0 18px 38px rgba(0,0,0,.40));
+          animation: patroaiLogoFloat 5.5s ease-in-out infinite;
+        }
+
+        .patroai-hero-orb-ring {
+          position: absolute;
+          inset: 22px;
+          border-radius: 36px;
+          border: 1px solid rgba(250,204,21,.22);
+          z-index: 1;
+          pointer-events: none;
+        }
+
+        .patroai-hero-orb-ring.two {
+          inset: 44px;
+          border-color: rgba(103,232,249,.16);
+          animation: patroaiRingPulse 4.8s ease-in-out infinite;
+        }
+
+        @keyframes patroaiGlowPulse {
+          0%, 100% { transform: scale(.96); opacity: .58; }
+          50% { transform: scale(1.05); opacity: .9; }
+        }
+
+        @keyframes patroaiLogoFloat {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-8px); }
+        }
+
+        @keyframes patroaiRingPulse {
+          0%, 100% { transform: scale(.98); opacity: .42; }
+          50% { transform: scale(1.04); opacity: .86; }
         }
 
         .premium-mark {
@@ -781,15 +894,30 @@ export default function PatroaiLanding() {
           to { transform: rotate(360deg); }
         }
 
-        @media (max-width: 980px) {
+        @media (max-width: 1100px) {
+          .patroai-header-inner {
+            grid-template-columns: auto 1fr;
+          }
+
           .patroai-nav {
             display: none;
           }
 
+          .patroai-actions {
+            justify-self: end;
+          }
+        }
+
+        @media (max-width: 980px) {
           .patroai-hero,
           .orkio-section,
           .esg-section {
             grid-template-columns: 1fr;
+          }
+
+          .patroai-hero-orb {
+            min-height: 320px;
+            order: -1;
           }
 
           .process-grid,
@@ -828,6 +956,15 @@ export default function PatroaiLanding() {
           .patroai-hero h1 {
             letter-spacing: -.055em;
           }
+
+          .patroai-hero-orb {
+            min-height: 260px;
+          }
+
+          .patroai-hero-logo-shell {
+            width: min(240px, 72vw);
+            border-radius: 34px;
+          }
         }
       `}</style>
 
@@ -850,16 +987,16 @@ export default function PatroaiLanding() {
           </nav>
 
           <div className="patroai-actions">
-            <LandingLanguageSwitch value={locale} onChange={setLocale} />
+            <button className="patroai-btn primary" type="button" onClick={handleDemo}>
+              {copy.actions.demo}
+            </button>
             <button className="patroai-btn" type="button" onClick={() => navigateTo(ROUTES.admin)}>
               {copy.actions.admin}
             </button>
             <button className="patroai-btn" type="button" onClick={handleLogin}>
               {copy.actions.login}
             </button>
-            <button className="patroai-btn primary" type="button" onClick={handleDemo}>
-              {copy.actions.demo}
-            </button>
+            <LandingLanguageSwitch value={locale} onChange={setLocale} />
           </div>
         </div>
       </header>
@@ -891,6 +1028,8 @@ export default function PatroaiLanding() {
             {copy.hero.trust}
           </div>
         </div>
+
+        <PatroaiHeroLogo />
       </section>
 
       <section className="patroai-shell patroai-section" id="method" aria-label={copy.processAria}>
