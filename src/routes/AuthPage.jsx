@@ -1,3 +1,4 @@
+import usePatroaiSeo from "../lib/usePatroaiSeo.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch, createPublicCheckout } from "../ui/api.js";
@@ -484,7 +485,7 @@ function PasswordField({ labelText, placeholder, value, onChange, show, onToggle
   );
 }
 
-export default function AuthPage() {
+export default function AuthPage() { usePatroaiSeo();
   const nav = useNavigate();
   const location = useLocation();
   const [tenant] = useState("public");

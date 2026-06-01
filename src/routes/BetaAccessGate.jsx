@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import usePatroaiSeo from "../lib/usePatroaiSeo.js"; import React, { useMemo, useState } from "react";
 
 const PUBLIC_CODE = "EFATAH777";
 const STORAGE_KEY = "orkio_internal_gate_passed";
@@ -24,7 +24,7 @@ function apiUrl(path) {
   return `${cleanBase}${cleanPath}`;
 }
 
-export default function BetaAccessGate({ children = null }) {
+export default function BetaAccessGate({ children = null }) { usePatroaiSeo();
   const urlAllowsInternal = useMemo(() => {
     try {
       const params = new URLSearchParams(window.location.search || "");
