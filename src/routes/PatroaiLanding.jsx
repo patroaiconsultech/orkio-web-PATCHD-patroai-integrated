@@ -7,6 +7,7 @@ import { useLandingLocale } from "../lib/landingLocale.js";
 const ROUTES = {
   orkioOS: "/orkio",
   patroai: "/patroai",
+  arquitech: "/arquitech",
   auth: "/auth",
   app: "/app",
   admin: "/admin",
@@ -21,6 +22,7 @@ const PATROAI_PAGE_COPY = {
     brandAria: "Ir para PatroAI",
     nav: {
       solutions: "Soluções",
+      verticals: "Verticais",
       orkio: "Orkio",
       resources: "ESG & Método",
       about: "Sobre",
@@ -120,13 +122,41 @@ const PATROAI_PAGE_COPY = {
           "Criamos plataformas, automações e agentes de IA personalizados, com possibilidade de comercialização da plataforma em modelo SaaS para empresas em operação.",
         icon: "gear",
       },
-      {
-        title: "Vertical Arquitech",
-        text:
-          "A Arquitech é uma vertical PatroAI para arquitetura assistida por IA, organizada em torno da ARIA, superagente dedicada a briefing, escopo, riscos, propostas, cronogramas e decisões de projeto.",
-        icon: "architecture",
-      },
     ],
+    verticalsSection: {
+      label: "Verticais PatroAI",
+      title: "Criamos verticais sob demanda a partir de dores reais de mercado.",
+      text:
+        "As verticais PatroAI são negócios digitais setoriais criados com método próprio: diagnóstico, business plan, arquitetura de produto, agentes de IA, integrações, governança e operação assistida. A Arquitech é a primeira vertical pública desse ecossistema; outras frentes já estão em estudo e desenvolvimento.",
+      primary: "Acessar Arquitech →",
+      secondary: "Desenvolver uma vertical com a PatroAI",
+      cards: [
+        {
+          eyebrow: "Primeira vertical pública",
+          title: "Arquitech",
+          text:
+            "IA aplicada à arquitetura: briefing, escopo, riscos, propostas, cronogramas, documentação e apoio à decisão por meio da ARIA.",
+          status: "Disponível",
+          featured: true,
+        },
+        {
+          eyebrow: "Modelo sob demanda",
+          title: "Verticais para novos mercados",
+          text:
+            "Criamos verticais com parceiros, empresas e empreendedores quando existe dor clara, oportunidade validável e potencial de operação recorrente.",
+          status: "Sob demanda",
+          featured: false,
+        },
+        {
+          eyebrow: "Pipeline PatroAI",
+          title: "Novas frentes em estruturação",
+          text:
+            "Além da Arquitech, novas verticais estão sendo estudadas para setores com alta necessidade de IA, integração de dados, sucessão, governança e ESG.",
+          status: "Em andamento",
+          featured: false,
+        },
+      ],
+    },
     esgSection: {
       label: "ESG aplicado ao negócio",
       title: "ESG não como discurso: como critério de decisão, eficiência e confiança.",
@@ -167,6 +197,7 @@ const PATROAI_PAGE_COPY = {
     brandAria: "Go to PatroAI",
     nav: {
       solutions: "Solutions",
+      verticals: "Verticals",
       orkio: "Orkio",
       resources: "ESG & Method",
       about: "About",
@@ -266,13 +297,41 @@ const PATROAI_PAGE_COPY = {
           "We create platforms, automations and personalized AI agents, with the possibility of commercializing the platform as SaaS for companies already in operation.",
         icon: "gear",
       },
-      {
-        title: "Arquitech Vertical",
-        text:
-          "Arquitech is a PatroAI vertical for AI-assisted architecture, organized around ARIA, a dedicated superagent for briefings, scopes, risks, proposals, schedules and project decisions.",
-        icon: "architecture",
-      },
     ],
+    verticalsSection: {
+      label: "PatroAI Verticals",
+      title: "We create on-demand verticals from real market pains.",
+      text:
+        "PatroAI verticals are sector-specific digital businesses created with our own method: diagnosis, business plan, product architecture, AI agents, integrations, governance and assisted operations. Arquitech is the first public vertical in this ecosystem; other initiatives are already under study and development.",
+      primary: "Access Arquitech →",
+      secondary: "Build a vertical with PatroAI",
+      cards: [
+        {
+          eyebrow: "First public vertical",
+          title: "Arquitech",
+          text:
+            "AI applied to architecture: briefings, scopes, risks, proposals, schedules, documentation and decision support through ARIA.",
+          status: "Available",
+          featured: true,
+        },
+        {
+          eyebrow: "On-demand model",
+          title: "Verticals for new markets",
+          text:
+            "We create verticals with partners, companies and entrepreneurs when there is a clear pain, a validatable opportunity and recurring-operation potential.",
+          status: "On demand",
+          featured: false,
+        },
+        {
+          eyebrow: "PatroAI pipeline",
+          title: "New fronts in structuring",
+          text:
+            "Beyond Arquitech, new verticals are being studied for sectors with high demand for AI, data integration, succession, governance and ESG.",
+          status: "In progress",
+          featured: false,
+        },
+      ],
+    },
     esgSection: {
       label: "ESG applied to business",
       title: "ESG not as discourse: as a criterion for decision, efficiency and trust.",
@@ -773,6 +832,106 @@ export default function PatroaiLanding() {
           font-size: 14px;
         }
 
+        .verticals-section {
+          position: relative;
+          overflow: hidden;
+          border-radius: 34px;
+          border: 1px solid rgba(250,204,21,.18);
+          background:
+            radial-gradient(circle at 78% 8%, rgba(250,204,21,.18), transparent 34%),
+            radial-gradient(circle at 6% 18%, rgba(34,197,94,.12), transparent 32%),
+            linear-gradient(135deg, rgba(15,23,42,.90), rgba(2,6,23,.94));
+          padding: clamp(24px, 5vw, 46px);
+          box-shadow: 0 30px 90px rgba(0,0,0,.30);
+        }
+
+        .verticals-section::before {
+          content: "";
+          position: absolute;
+          inset: -52%;
+          background: conic-gradient(from 140deg, transparent, rgba(250,204,21,.16), transparent, rgba(103,232,249,.12), transparent);
+          animation: spin 24s linear infinite;
+          opacity: .5;
+          pointer-events: none;
+        }
+
+        .verticals-section > * {
+          position: relative;
+          z-index: 1;
+        }
+
+        .verticals-header {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 22px;
+          align-items: end;
+          margin-bottom: 24px;
+        }
+
+        .verticals-header .section-heading {
+          margin-bottom: 0;
+        }
+
+        .verticals-grid {
+          display: grid;
+          grid-template-columns: 1.1fr .95fr .95fr;
+          gap: 14px;
+        }
+
+        .vertical-card {
+          position: relative;
+          min-height: 250px;
+          border-radius: 26px;
+          border: 1px solid rgba(255,255,255,.10);
+          background: rgba(255,255,255,.055);
+          padding: 22px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          box-shadow: 0 18px 46px rgba(0,0,0,.20);
+        }
+
+        .vertical-card.featured {
+          border-color: rgba(250,204,21,.30);
+          background:
+            radial-gradient(circle at 72% 0%, rgba(250,204,21,.14), transparent 34%),
+            rgba(255,255,255,.07);
+        }
+
+        .vertical-eyebrow {
+          color: #86efac;
+          font-size: 12px;
+          font-weight: 950;
+          letter-spacing: .12em;
+          text-transform: uppercase;
+          margin-bottom: 12px;
+        }
+
+        .vertical-card h3 {
+          margin: 0 0 10px;
+          font-size: 24px;
+          letter-spacing: -.04em;
+        }
+
+        .vertical-card p {
+          margin: 0;
+          color: rgba(255,255,255,.68);
+          line-height: 1.6;
+          font-size: 14px;
+        }
+
+        .vertical-status {
+          align-self: flex-start;
+          margin-top: 20px;
+          border-radius: 999px;
+          border: 1px solid rgba(250,204,21,.22);
+          background: rgba(250,204,21,.10);
+          color: #fef3c7;
+          font-size: 12px;
+          font-weight: 900;
+          padding: 8px 11px;
+        }
+
         .section-heading {
           max-width: 860px;
           margin-bottom: 24px;
@@ -911,8 +1070,14 @@ export default function PatroaiLanding() {
         @media (max-width: 980px) {
           .patroai-hero,
           .orkio-section,
-          .esg-section {
+          .esg-section,
+          .verticals-header,
+          .verticals-grid {
             grid-template-columns: 1fr;
+          }
+
+          .verticals-header {
+            align-items: start;
           }
 
           .patroai-hero-orb {
@@ -949,8 +1114,13 @@ export default function PatroaiLanding() {
 
           .process-grid,
           .services-grid,
+          .verticals-grid,
           .orkio-benefits {
             grid-template-columns: 1fr;
+          }
+
+          .verticals-header .patroai-hero-cta {
+            width: 100%;
           }
 
           .patroai-hero h1 {
@@ -981,6 +1151,7 @@ export default function PatroaiLanding() {
 
           <nav className="patroai-nav" aria-label={copy.navAria}>
             <a href="#solutions">{copy.nav.solutions}</a>
+            <a href="#verticals">{copy.nav.verticals}</a>
             <a href="#orkio">{copy.nav.orkio}</a>
             <a href="#method">{copy.nav.resources}</a>
             <a href="#about">{copy.nav.about}</a>
@@ -1059,6 +1230,47 @@ export default function PatroaiLanding() {
               <p>{service.text}</p>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="patroai-shell patroai-section" id="verticals">
+        <div className="verticals-section">
+          <div className="verticals-header">
+            <div className="section-heading">
+              <span>{copy.verticalsSection.label}</span>
+              <h2>{copy.verticalsSection.title}</h2>
+              <p>{copy.verticalsSection.text}</p>
+            </div>
+
+            <div className="patroai-hero-cta">
+              <button
+                className="patroai-btn primary"
+                type="button"
+                onClick={() => navigateTo(`${ROUTES.arquitech}?lang=${locale}`)}
+              >
+                {copy.verticalsSection.primary}
+              </button>
+              <button className="patroai-btn" type="button" onClick={handleDemo}>
+                {copy.verticalsSection.secondary}
+              </button>
+            </div>
+          </div>
+
+          <div className="verticals-grid">
+            {copy.verticalsSection.cards.map((vertical) => (
+              <article
+                className={`vertical-card${vertical.featured ? " featured" : ""}`}
+                key={vertical.title}
+              >
+                <div>
+                  <div className="vertical-eyebrow">{vertical.eyebrow}</div>
+                  <h3>{vertical.title}</h3>
+                  <p>{vertical.text}</p>
+                </div>
+                <span className="vertical-status">{vertical.status}</span>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 
