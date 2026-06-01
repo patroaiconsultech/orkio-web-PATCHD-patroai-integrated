@@ -14,7 +14,6 @@ const ROUTES = {
 
 const LOGO_PRIMARY = "/patroai-assets/logo-patroai-novo.png";
 const LOGO_FALLBACK = "/patroai-assets/logo-patroai-novo.webp";
-const ORKIO_VIDEO = "/patroai-assets/orkio-mindpulse-male.mp4";
 
 const PATROAI_PAGE_COPY = {
   pt: {
@@ -538,9 +537,13 @@ export default function PatroaiLanding() {
         .patroai-hero {
           padding: clamp(58px, 8vw, 112px) 0 52px;
           display: grid;
-          grid-template-columns: minmax(0, 1.08fr) minmax(320px, .92fr);
+          grid-template-columns: 1fr;
           gap: clamp(30px, 5vw, 74px);
           align-items: center;
+        }
+
+        .patroai-hero-main {
+          max-width: 940px;
         }
 
         .patroai-kicker,
@@ -612,68 +615,6 @@ export default function PatroaiLanding() {
           flex: 0 0 auto;
         }
 
-        .orkio-card {
-          position: relative;
-          overflow: hidden;
-          border-radius: 34px;
-          padding: 28px;
-          border: 1px solid rgba(255,255,255,.12);
-          background:
-            radial-gradient(circle at 50% 24%, rgba(250,204,21,.18), transparent 34%),
-            linear-gradient(180deg, rgba(15,23,42,.92), rgba(2,6,23,.94));
-          box-shadow: 0 34px 100px rgba(0,0,0,.38);
-        }
-
-        .orkio-card::before {
-          content: "";
-          position: absolute;
-          inset: -40%;
-          background: conic-gradient(from 180deg, transparent, rgba(250,204,21,.16), transparent, rgba(34,197,94,.12), transparent);
-          animation: spin 18s linear infinite;
-          opacity: .58;
-        }
-
-        .orkio-card-inner {
-          position: relative;
-          z-index: 1;
-          display: grid;
-          gap: 0;
-          justify-items: center;
-          text-align: center;
-        }
-
-        .orkio-avatar {
-          width: min(320px, 80vw);
-          aspect-ratio: 1;
-          border-radius: 999px;
-          background: transparent;
-          border: none;
-          display: grid;
-          place-items: center;
-          overflow: hidden;
-          box-shadow: none;
-        }
-
-        .orkio-avatar video,
-        .orkio-avatar img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          object-position: center center;
-          border-radius: 999px;
-          display: block;
-          box-shadow: 0 24px 64px rgba(0,0,0,.32);
-        }
-
-        .orkio-avatar-copy {
-          max-width: 360px;
-          color: rgba(255,255,255,.92);
-          line-height: 1.4;
-          margin: 16px 0 0;
-          font-size: 24px;
-          font-weight: 600;
-          letter-spacing: -.02em;
-        }
 
         .patroai-section {
           padding: 54px 0;
@@ -924,7 +865,7 @@ export default function PatroaiLanding() {
       </header>
 
       <section className="patroai-shell patroai-hero" id="about">
-        <div>
+        <div className="patroai-hero-main">
           <div className="patroai-kicker">
             <PremiumMark icon="✦" />
             {copy.hero.kicker}
@@ -950,24 +891,6 @@ export default function PatroaiLanding() {
             {copy.hero.trust}
           </div>
         </div>
-
-        <aside className="orkio-card" aria-label={copy.orkioSection.avatarLabel}>
-          <div className="orkio-card-inner">
-            <div className="orkio-avatar">
-              <video
-                src={ORKIO_VIDEO}
-                autoPlay
-                muted
-                loop
-                playsInline
-                aria-label="Orkio"
-              />
-            </div>
-            {copy.orkioSection.avatarText ? (
-              <p className="orkio-avatar-copy">{copy.orkioSection.avatarText}</p>
-            ) : null}
-          </div>
-        </aside>
       </section>
 
       <section className="patroai-shell patroai-section" id="method" aria-label={copy.processAria}>
