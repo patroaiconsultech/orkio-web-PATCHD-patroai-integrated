@@ -14,6 +14,7 @@ const ROUTES = {
 
 const LOGO_PRIMARY = "/patroai-assets/logo-patroai-novo.png";
 const LOGO_FALLBACK = "/patroai-assets/logo-patroai-novo.webp";
+const ORKIO_VIDEO = "/patroai-assets/orkio-mindpulse-male.mp4";
 
 const PATROAI_PAGE_COPY = {
   pt: {
@@ -22,7 +23,7 @@ const PATROAI_PAGE_COPY = {
     nav: {
       solutions: "Soluções",
       orkio: "Orkio",
-      resources: "Metodologia",
+      resources: "ESG & Método",
       about: "Sobre",
     },
     actions: {
@@ -31,64 +32,112 @@ const PATROAI_PAGE_COPY = {
       demo: "Agendar demonstração →",
     },
     hero: {
-      kicker: "Startup Outsourcing • SaaS • IA • Governança",
-      titleBefore: "Criamos startups inteligentes do plano à",
-      titleHighlight: "operação.",
+      kicker: "Startups • Outsourcing • IA para empresas • ESG",
+      titleBefore: "Resolvemos as dores do seu negócio com",
+      titleHighlight: "IA e ESG.",
       subtitle:
-        "A PatroAI desenvolve startups, produtos digitais e operações inteligentes em modelo outsourcing premium, combinando business plan, estudo de viabilidade econômico-financeira, tecnologia, SaaS, IA, governança e rastreabilidade para investidores e stakeholders.",
+        "A PatroAI cria startups, produtos digitais, verticais inteligentes e agentes de IA para empresas em formação ou já consolidadas. Nosso foco é entender as dores reais do negócio, transformar processos em operação inteligente e orientar a evolução com governança, rastreabilidade e visão ESG.",
       primary: "Conhecer a PatroAI →",
       secondary: "Falar com Orkio",
       trust:
-        "Implantação e evolução acompanhadas por consultores especializados em negócios e tecnologia.",
+        "Estratégia, tecnologia, inteligência artificial e consultoria especializada para gerar clareza, eficiência e impacto responsável.",
     },
     orkioSpeech:
-      "Olá. Eu sou Orkio. Posso mostrar como a PatroAI transforma ideias, empresas e oportunidades em operações digitais estruturadas, com estratégia, tecnologia, governança e clareza para investidores.",
+      "Olá. Eu sou Orkio. Posso mostrar como a PatroAI resolve dores do negócio com inteligência artificial, estrutura startups, cria verticais como a Arquitech e organiza decisões com governança, rastreabilidade e visão ESG.",
     processAria: "Como atuamos",
     processSteps: [
-      { number: "01", title: "Estruturar", text: "Mapeamos a oportunidade, o mercado, o modelo de negócio, os riscos e os objetivos do projeto.", icon: "search" },
-      { number: "02", title: "Validar", text: "Construímos business plan, projeções e estudo de viabilidade econômico-financeira.", icon: "plan" },
-      { number: "03", title: "Construir", text: "Desenvolvemos tecnologia, automações, agentes de IA e plataformas digitais sob medida.", icon: "code" },
-      { number: "04", title: "Implantar", text: "Colocamos a operação em funcionamento com documentação, governança e rastreabilidade.", icon: "rocket" },
-      { number: "05", title: "Evoluir", text: "Acompanhamos a sequência da operação com consultores especializados em negócios e tecnologia.", icon: "growth" },
+      {
+        number: "01",
+        title: "Diagnosticar",
+        text: "Mapeamos dores, gargalos, riscos, processos, oportunidades e impacto esperado para o negócio.",
+        icon: "search",
+      },
+      {
+        number: "02",
+        title: "Priorizar",
+        text: "Separarmos sintoma de causa raiz e definimos o menor caminho entre problema, tecnologia, retorno e responsabilidade ESG.",
+        icon: "plan",
+      },
+      {
+        number: "03",
+        title: "Construir",
+        text: "Desenvolvemos plataformas, automações, agentes de IA, produtos digitais e operações sob medida.",
+        icon: "code",
+      },
+      {
+        number: "04",
+        title: "Implantar",
+        text: "Colocamos a solução em funcionamento com documentação, governança, rastreabilidade e clareza operacional.",
+        icon: "rocket",
+      },
+      {
+        number: "05",
+        title: "Evoluir",
+        text: "Acompanhamos a operação com consultores especializados, melhoria contínua, dados e visão sustentável de longo prazo.",
+        icon: "growth",
+      },
     ],
     servicesIntro: {
       label: "O que fazemos",
       title:
-        "Startup outsourcing, SaaS, IA e governança para negócios que precisam nascer ou evoluir com estrutura premium.",
+        "Criamos startups, implantamos IA em empresas consolidadas e resolvemos dores do negócio com visão ESG.",
       text:
-        "A PatroAI atua do plano à operação. Elaboramos business plans, estudos de viabilidade econômico-financeira, arquitetura de produto, desenvolvimento tecnológico, implantação, gestão assistida e acompanhamento por consultores especializados em negócios e tecnologia. Também oferecemos a plataforma PatroAI em modelo SaaS para empresas já em operação.",
+        "A PatroAI atua em duas frentes: criação de novos negócios digitais em modelo startup outsourcing e evolução de empresas já existentes com inteligência artificial aplicada. Elaboramos business plans, estudos de viabilidade econômico-financeira, arquitetura de produto, agentes personalizados, automações, SaaS, implantação, governança e acompanhamento consultivo. ESG entra como critério de decisão: eficiência com responsabilidade, rastreabilidade, impacto e clareza para stakeholders.",
     },
     services: [
       {
         title: "Startup Outsourcing Premium",
         text:
-          "Desenvolvemos startups, produtos digitais e novas operações desde a concepção estratégica até a implantação, tecnologia, governança e operação assistida.",
+          "Desenvolvemos startups, produtos digitais e novas operações desde a concepção estratégica até implantação, tecnologia, governança e operação assistida.",
         icon: "target",
+      },
+      {
+        title: "IA para Empresas Consolidadas",
+        text:
+          "Apoiamos empresas que já possuem operação, equipe, clientes e processos, levando IA para atendimento, vendas, gestão, documentação, análise e tomada de decisão.",
+        icon: "brain",
+      },
+      {
+        title: "Dores do Negócio + ESG",
+        text:
+          "Mapeamos gargalos reais e priorizamos soluções com impacto operacional, rastreabilidade, redução de desperdícios, governança e responsabilidade social e ambiental.",
+        icon: "leaf",
       },
       {
         title: "Business Plan & Viabilidade",
         text:
-          "Estruturamos modelos de negócio, projeções financeiras e estudos de viabilidade econômico-financeira para apoiar decisões mais seguras.",
+          "Estruturamos modelos de negócio, projeções financeiras e estudos de viabilidade econômico-financeira para decisões mais seguras.",
         icon: "system",
       },
       {
-        title: "Tecnologia, SaaS & IA",
+        title: "Tecnologia, SaaS & Agentes de IA",
         text:
-          "Criamos plataformas, automações e agentes de IA personalizados, com possibilidade de comercialização da plataforma em modelo SaaS para empresas já em operação.",
-        icon: "brain",
-      },
-      {
-        title: "Governança para Investidores",
-        text:
-          "Organizamos documentos, marcos, indicadores e rastreabilidade para dar clareza a investidores, empresas e stakeholders.",
+          "Criamos plataformas, automações e agentes de IA personalizados, com possibilidade de comercialização da plataforma em modelo SaaS para empresas em operação.",
         icon: "gear",
       },
+      {
+        title: "Vertical Arquitech",
+        text:
+          "A Arquitech é uma vertical PatroAI para arquitetura assistida por IA, organizada em torno da ARIA, superagente dedicada a briefing, escopo, riscos, propostas, cronogramas e decisões de projeto.",
+        icon: "architecture",
+      },
     ],
+    esgSection: {
+      label: "ESG aplicado ao negócio",
+      title: "ESG não como discurso: como critério de decisão, eficiência e confiança.",
+      text:
+        "A PatroAI usa IA e governança para ajudar empresas a resolver problemas reais sem perder responsabilidade. Isso significa melhorar processos, reduzir desperdícios, organizar documentação, dar transparência às decisões, qualificar dados e criar operações mais conscientes para clientes, equipes, investidores e parceiros.",
+      items: [
+        "Eficiência operacional com redução de retrabalho e desperdício",
+        "Governança, documentação e rastreabilidade das decisões",
+        "Tecnologia aplicada com responsabilidade e clareza para stakeholders",
+      ],
+    },
     orkioSection: {
       label: "Conheça Orkio",
       title: "Conheça Orkio, a inteligência operacional da PatroAI.",
       text:
-        "Orkio é nossa inteligência operacional para diagnóstico, clareza executiva e próximos passos. Ele apoia fundadores, empresas e consultores na leitura do contexto, na organização das decisões e na evolução da operação com IA.",
+        "Orkio é nossa inteligência operacional para diagnóstico, clareza executiva e próximos passos. Ele apoia fundadores, empresas e consultores na leitura do contexto, na organização das decisões e na evolução da operação com IA, governança e visão ESG.",
       primary: "Explorar Orkio OS →",
       secondary: "Conversar com Orkio",
       avatarLabel: "Orkio — presença místico-tecnológica da PatroAI",
@@ -97,24 +146,25 @@ const PATROAI_PAGE_COPY = {
         "Avatar místico-tecnológico preparado para voz, texto, diagnóstico guiado e continuidade contextual.",
     },
     orkioBenefits: [
-      ["search", "Entende o contexto do negócio"],
+      ["search", "Entende as dores do negócio"],
       ["voice", "Responde por voz e texto"],
       ["brain", "Gera insights e recomendações"],
-      ["gear", "Acompanha a evolução da operação"],
+      ["gear", "Acompanha evolução com governança"],
     ],
     footer: {
       text:
-        "PatroAI Consultech · Startup outsourcing premium, SaaS, IA, governança e rastreabilidade para investidores.",
+        "PatroAI Consultech · Startups, outsourcing, IA para empresas, verticais inteligentes, ESG, governança e rastreabilidade.",
       rights: "© 2026 PatroAI. Todos os direitos reservados.",
     },
   },
+
   en: {
     navAria: "Main navigation",
     brandAria: "Go to PatroAI",
     nav: {
       solutions: "Solutions",
       orkio: "Orkio",
-      resources: "Methodology",
+      resources: "ESG & Method",
       about: "About",
     },
     actions: {
@@ -123,32 +173,57 @@ const PATROAI_PAGE_COPY = {
       demo: "Schedule a demo →",
     },
     hero: {
-      kicker: "Startup Outsourcing • SaaS • AI • Governance",
-      titleBefore: "We build intelligent startups from plan to",
-      titleHighlight: "operation.",
+      kicker: "Startups • Outsourcing • AI for companies • ESG",
+      titleBefore: "We solve your business pains with",
+      titleHighlight: "AI and ESG.",
       subtitle:
-        "PatroAI develops startups, digital products and intelligent operations through a premium outsourcing model, combining business plans, financial feasibility studies, technology, SaaS, AI, governance and traceability for investors and stakeholders.",
+        "PatroAI creates startups, digital products, intelligent verticals and AI agents for companies that are being formed or already consolidated. Our focus is to understand real business pains, transform processes into intelligent operations and guide evolution with governance, traceability and an ESG perspective.",
       primary: "Discover PatroAI →",
       secondary: "Talk to Orkio",
       trust:
-        "Deployment and operational evolution supported by specialized business and technology consultants.",
+        "Strategy, technology, artificial intelligence and specialized consulting to generate clarity, efficiency and responsible impact.",
     },
     orkioSpeech:
-      "Hello. I am Orkio. I can show how PatroAI transforms ideas, companies and opportunities into structured digital operations, with strategy, technology, governance and investor-grade clarity.",
+      "Hello. I am Orkio. I can show how PatroAI solves business pains with artificial intelligence, structures startups, creates verticals such as Arquitech and organizes decisions with governance, traceability and an ESG perspective.",
     processAria: "How we work",
     processSteps: [
-      { number: "01", title: "Structure", text: "We map the opportunity, market, business model, risks and strategic goals of the project.", icon: "search" },
-      { number: "02", title: "Validate", text: "We build the business plan, projections and financial feasibility study.", icon: "plan" },
-      { number: "03", title: "Build", text: "We develop technology, automations, AI agents and tailored digital platforms.", icon: "code" },
-      { number: "04", title: "Deploy", text: "We launch the operation with documentation, governance and traceability.", icon: "rocket" },
-      { number: "05", title: "Evolve", text: "We support the ongoing operation with specialized business and technology consultants.", icon: "growth" },
+      {
+        number: "01",
+        title: "Diagnose",
+        text: "We map pains, bottlenecks, risks, processes, opportunities and expected impact for the business.",
+        icon: "search",
+      },
+      {
+        number: "02",
+        title: "Prioritize",
+        text: "We separate symptom from root cause and define the shortest path between problem, technology, return and ESG responsibility.",
+        icon: "plan",
+      },
+      {
+        number: "03",
+        title: "Build",
+        text: "We develop platforms, automations, AI agents, digital products and tailored operations.",
+        icon: "code",
+      },
+      {
+        number: "04",
+        title: "Deploy",
+        text: "We put the solution into operation with documentation, governance, traceability and operational clarity.",
+        icon: "rocket",
+      },
+      {
+        number: "05",
+        title: "Evolve",
+        text: "We support the operation with specialized consultants, continuous improvement, data and a sustainable long-term vision.",
+        icon: "growth",
+      },
     ],
     servicesIntro: {
       label: "What we do",
       title:
-        "Startup outsourcing, SaaS, AI and governance for businesses that need to launch or evolve with a premium structure.",
+        "We create startups, implement AI in established companies and solve business pains with an ESG perspective.",
       text:
-        "PatroAI works from plan to operation. We create business plans, financial feasibility studies, product architecture, technology development, deployment, assisted management and ongoing support through specialized business and technology consultants. We also offer the PatroAI platform as SaaS for companies already in operation.",
+        "PatroAI works on two fronts: creating new digital businesses through startup outsourcing and evolving existing companies with applied artificial intelligence. We build business plans, financial feasibility studies, product architecture, personalized agents, automations, SaaS, deployment, governance and consultative support. ESG works as a decision criterion: efficiency with responsibility, traceability, impact and clarity for stakeholders.",
     },
     services: [
       {
@@ -158,29 +233,52 @@ const PATROAI_PAGE_COPY = {
         icon: "target",
       },
       {
+        title: "AI for Established Companies",
+        text:
+          "We support companies that already have operations, teams, clients and processes, bringing AI into service, sales, management, documentation, analysis and decision-making.",
+        icon: "brain",
+      },
+      {
+        title: "Business Pains + ESG",
+        text:
+          "We map real bottlenecks and prioritize solutions with operational impact, traceability, waste reduction, governance and social and environmental responsibility.",
+        icon: "leaf",
+      },
+      {
         title: "Business Plan & Feasibility",
         text:
           "We structure business models, financial projections and feasibility studies to support safer decisions.",
         icon: "system",
       },
       {
-        title: "Technology, SaaS & AI",
+        title: "Technology, SaaS & AI Agents",
         text:
           "We create platforms, automations and personalized AI agents, with the possibility of commercializing the platform as SaaS for companies already in operation.",
-        icon: "brain",
-      },
-      {
-        title: "Investor-Grade Governance",
-        text:
-          "We organize documents, milestones, indicators and traceability to provide clarity for investors, companies and stakeholders.",
         icon: "gear",
       },
+      {
+        title: "Arquitech Vertical",
+        text:
+          "Arquitech is a PatroAI vertical for AI-assisted architecture, organized around ARIA, a dedicated superagent for briefings, scopes, risks, proposals, schedules and project decisions.",
+        icon: "architecture",
+      },
     ],
+    esgSection: {
+      label: "ESG applied to business",
+      title: "ESG not as discourse: as a criterion for decision, efficiency and trust.",
+      text:
+        "PatroAI uses AI and governance to help companies solve real problems without losing responsibility. This means improving processes, reducing waste, organizing documentation, bringing transparency to decisions, qualifying data and creating more conscious operations for clients, teams, investors and partners.",
+      items: [
+        "Operational efficiency with reduced rework and waste",
+        "Governance, documentation and traceability of decisions",
+        "Responsible technology with stakeholder clarity",
+      ],
+    },
     orkioSection: {
       label: "Meet Orkio",
       title: "Meet Orkio, PatroAI's operational intelligence.",
       text:
-        "Orkio is our operational intelligence for diagnosis, executive clarity and next steps. It supports founders, companies and consultants in understanding context, organizing decisions and evolving operations with AI.",
+        "Orkio is our operational intelligence for diagnosis, executive clarity and next steps. It supports founders, companies and consultants in understanding context, organizing decisions and evolving operations with AI, governance and an ESG perspective.",
       primary: "Explore Orkio OS →",
       secondary: "Talk to Orkio",
       avatarLabel: "Orkio — PatroAI's mystic-technological presence",
@@ -189,14 +287,14 @@ const PATROAI_PAGE_COPY = {
         "Mystic-technological avatar prepared for voice, text, guided diagnosis and contextual continuity.",
     },
     orkioBenefits: [
-      ["search", "Understands business context"],
+      ["search", "Understands business pains"],
       ["voice", "Responds by voice and text"],
       ["brain", "Generates insights and recommendations"],
-      ["gear", "Follows operational evolution"],
+      ["gear", "Follows evolution with governance"],
     ],
     footer: {
       text:
-        "PatroAI Consultech · Premium startup outsourcing, SaaS, AI, governance and investor-grade traceability.",
+        "PatroAI Consultech · Startups, outsourcing, AI for companies, intelligent verticals, ESG, governance and traceability.",
       rights: "© 2026 PatroAI. All rights reserved.",
     },
   },
@@ -206,7 +304,9 @@ function rememberAppRedirect() {
   try {
     window.localStorage?.setItem("post_auth_redirect", ROUTES.app);
     window.sessionStorage?.setItem("post_auth_redirect", ROUTES.app);
-  } catch {}
+  } catch {
+    // Navegação deve continuar mesmo se storage estiver indisponível.
+  }
 }
 
 function safeNavigateToAuth(params = {}) {
@@ -229,7 +329,7 @@ function PatroaiLogo({ compact = false }) {
   const [src, setSrc] = useState(LOGO_PRIMARY);
 
   return (
-    <div className="patroai-logo-wrap">
+    <div className="patroai-logo-wrap-inner">
       <img
         src={src}
         alt="PatroAI Consultech"
@@ -249,7 +349,11 @@ function PatroaiLogo({ compact = false }) {
 }
 
 function PremiumMark({ icon = "✦" }) {
-  return <span className="premium-mark" aria-hidden="true">{icon}</span>;
+  return (
+    <span className="premium-mark" aria-hidden="true">
+      {icon}
+    </span>
+  );
 }
 
 export default function PatroaiLanding() {
@@ -257,8 +361,8 @@ export default function PatroaiLanding() {
 
   const [prechatOpen, setPrechatOpen] = useState(false);
   const { locale, setLocale, ttsLocale } = useLandingLocale();
-
   const copy = PATROAI_PAGE_COPY[locale] || PATROAI_PAGE_COPY.pt;
+
   const heroSubtitle = useMemo(() => copy.hero.subtitle, [copy.hero.subtitle]);
   const orkioSpeech = useMemo(() => copy.orkioSpeech, [copy.orkioSpeech]);
 
@@ -292,8 +396,9 @@ export default function PatroaiLanding() {
         .patroai-page {
           min-height: 100vh;
           background:
-            radial-gradient(circle at 8% 0%, rgba(34,197,94,.10), transparent 26%),
-            radial-gradient(circle at 78% 8%, rgba(245,158,11,.16), transparent 28%),
+            radial-gradient(circle at 8% 0%, rgba(34,197,94,.12), transparent 28%),
+            radial-gradient(circle at 78% 8%, rgba(245,158,11,.16), transparent 30%),
+            radial-gradient(circle at 50% 54%, rgba(14,165,233,.08), transparent 34%),
             linear-gradient(180deg, #030711 0%, #071019 52%, #04070d 100%);
           color: #f8fafc;
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -322,14 +427,19 @@ export default function PatroaiLanding() {
           gap: 18px;
         }
 
+        .patroai-logo-button,
         .patroai-logo-wrap {
-          display: inline-flex;
-          align-items: center;
-          gap: 12px;
           border: 0;
           background: transparent;
           color: inherit;
           cursor: pointer;
+          padding: 0;
+        }
+
+        .patroai-logo-wrap-inner {
+          display: inline-flex;
+          align-items: center;
+          gap: 12px;
         }
 
         .patroai-logo-img {
@@ -344,6 +454,7 @@ export default function PatroaiLanding() {
           display: grid;
           gap: 2px;
           line-height: 1;
+          text-align: left;
         }
 
         .patroai-logo-text strong {
@@ -370,7 +481,11 @@ export default function PatroaiLanding() {
         .patroai-nav a {
           color: inherit;
           text-decoration: none;
-          font-weight: 700;
+          font-weight: 750;
+        }
+
+        .patroai-nav a:hover {
+          color: #facc15;
         }
 
         .patroai-actions {
@@ -394,6 +509,7 @@ export default function PatroaiLanding() {
           text-decoration: none;
           cursor: pointer;
           transition: transform .18s ease, border-color .18s ease, background .18s ease;
+          white-space: nowrap;
         }
 
         .patroai-btn:hover {
@@ -417,7 +533,8 @@ export default function PatroaiLanding() {
           align-items: center;
         }
 
-        .patroai-kicker {
+        .patroai-kicker,
+        .esg-pill {
           display: inline-flex;
           align-items: center;
           gap: 10px;
@@ -437,10 +554,11 @@ export default function PatroaiLanding() {
           font-size: clamp(44px, 8vw, 86px);
           line-height: .92;
           letter-spacing: -.075em;
-          max-width: 820px;
+          max-width: 860px;
         }
 
-        .patroai-hero h1 span {
+        .patroai-hero h1 span,
+        .section-heading h2 span {
           background: linear-gradient(135deg, #fef3c7 0%, #facc15 38%, #67e8f9 86%);
           -webkit-background-clip: text;
           background-clip: text;
@@ -448,8 +566,8 @@ export default function PatroaiLanding() {
         }
 
         .patroai-subtitle {
-          max-width: 720px;
-          color: rgba(255,255,255,.76);
+          max-width: 760px;
+          color: rgba(255,255,255,.78);
           font-size: clamp(17px, 2vw, 21px);
           line-height: 1.66;
         }
@@ -532,10 +650,17 @@ export default function PatroaiLanding() {
           width: 82%;
           height: 82%;
           object-fit: cover;
-          object-position: 78% center;
+          object-position: center center;
           border-radius: 999px;
           display: block;
           box-shadow: 0 24px 64px rgba(0,0,0,.32);
+        }
+
+        .orkio-avatar-copy {
+          max-width: 360px;
+          color: rgba(255,255,255,.72);
+          line-height: 1.55;
+          margin: 0;
         }
 
         .patroai-section {
@@ -550,7 +675,8 @@ export default function PatroaiLanding() {
 
         .process-card,
         .service-card,
-        .orkio-benefit {
+        .orkio-benefit,
+        .esg-card {
           border-radius: 24px;
           border: 1px solid rgba(255,255,255,.10);
           background: rgba(255,255,255,.055);
@@ -565,14 +691,16 @@ export default function PatroaiLanding() {
         }
 
         .process-card h3,
-        .service-card h3 {
+        .service-card h3,
+        .esg-card h3 {
           margin: 12px 0 8px;
           font-size: 18px;
           letter-spacing: -.025em;
         }
 
         .process-card p,
-        .service-card p {
+        .service-card p,
+        .esg-card p {
           margin: 0;
           color: rgba(255,255,255,.68);
           line-height: 1.55;
@@ -580,11 +708,11 @@ export default function PatroaiLanding() {
         }
 
         .section-heading {
-          max-width: 780px;
+          max-width: 860px;
           margin-bottom: 24px;
         }
 
-        .section-heading span {
+        .section-heading > span {
           color: #facc15;
           font-size: 12px;
           font-weight: 950;
@@ -607,7 +735,7 @@ export default function PatroaiLanding() {
 
         .services-grid {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 16px;
         }
 
@@ -621,6 +749,37 @@ export default function PatroaiLanding() {
           background: rgba(250,204,21,.10);
           border: 1px solid rgba(250,204,21,.18);
           margin-bottom: 16px;
+        }
+
+        .esg-section {
+          display: grid;
+          grid-template-columns: minmax(0, .9fr) minmax(320px, 1.1fr);
+          gap: 28px;
+          align-items: stretch;
+          border-radius: 34px;
+          border: 1px solid rgba(34,197,94,.20);
+          background:
+            radial-gradient(circle at 0% 0%, rgba(34,197,94,.16), transparent 32%),
+            linear-gradient(135deg, rgba(6,78,59,.34), rgba(2,6,23,.92));
+          padding: clamp(24px, 5vw, 46px);
+          box-shadow: 0 28px 78px rgba(0,0,0,.26);
+        }
+
+        .esg-panel {
+          display: grid;
+          gap: 14px;
+        }
+
+        .esg-card {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          background: rgba(255,255,255,.07);
+        }
+
+        .esg-card .premium-mark {
+          width: 30px;
+          height: 30px;
         }
 
         .orkio-section {
@@ -675,7 +834,8 @@ export default function PatroaiLanding() {
           }
 
           .patroai-hero,
-          .orkio-section {
+          .orkio-section,
+          .esg-section {
             grid-template-columns: 1fr;
           }
 
@@ -711,6 +871,10 @@ export default function PatroaiLanding() {
           .orkio-benefits {
             grid-template-columns: 1fr;
           }
+
+          .patroai-hero h1 {
+            letter-spacing: -.055em;
+          }
         }
       `}</style>
 
@@ -718,7 +882,7 @@ export default function PatroaiLanding() {
         <div className="patroai-shell patroai-header-inner">
           <button
             type="button"
-            className="patroai-logo-wrap"
+            className="patroai-logo-button"
             onClick={() => navigateTo(`${ROUTES.patroai}?lang=${locale}`)}
             aria-label={copy.brandAria}
           >
@@ -779,7 +943,7 @@ export default function PatroaiLanding() {
           <div className="orkio-card-inner">
             <div className="orkio-avatar">
               <video
-                src="/patroai-assets/orkio-mindpulse-male.mp4"
+                src={ORKIO_VIDEO}
                 autoPlay
                 muted
                 loop
@@ -787,6 +951,7 @@ export default function PatroaiLanding() {
                 aria-label="Orkio"
               />
             </div>
+            <p className="orkio-avatar-copy">{copy.orkioSection.avatarText}</p>
           </div>
         </aside>
       </section>
@@ -818,6 +983,25 @@ export default function PatroaiLanding() {
               <p>{service.text}</p>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="patroai-shell patroai-section" aria-label={copy.esgSection.label}>
+        <div className="esg-section">
+          <div className="section-heading">
+            <span>{copy.esgSection.label}</span>
+            <h2>{copy.esgSection.title}</h2>
+            <p>{copy.esgSection.text}</p>
+          </div>
+
+          <div className="esg-panel">
+            {copy.esgSection.items.map((item) => (
+              <article className="esg-card" key={item}>
+                <PremiumMark icon="✓" />
+                <p>{item}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -874,3 +1058,4 @@ export default function PatroaiLanding() {
     </main>
   );
 }
+
