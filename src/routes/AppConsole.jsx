@@ -134,6 +134,159 @@ function sanitizeExecutionTraceStep(step) {
 }
 
 
+// ORKIO_WHATSAPP_CTA_PREMIUM
+// Transforma links WhatsApp enviados pelo backend em um CTA visual premium,
+// sem alterar o conteúdo semântico da resposta do agente.
+function normalizeExternalHref(rawUrl = "") {
+  let url = String(rawUrl || "").trim();
+  let trailing = "";
+
+  while (/[),.;!?]+$/.test(url)) {
+    trailing = `${url.slice(-1)}${trailing}`;
+    url = url.slice(0, -1);
+  }
+
+  const href = url.toLowerCase().startsWith("www.") ? `https://${url}` : url;
+  return { href, displayUrl: url, trailing };
+}
+
+function isWhatsappUrl(rawUrl = "") {
+  const url = String(rawUrl || "").trim().toLowerCase();
+  return (
+    url.includes("wa.me/") ||
+    url.includes("api.whatsapp.com/send") ||
+    url.includes("whatsapp.com/send")
+  );
+}
+
+function renderWhatsappCtaCard(href, key) {
+  const safeHref = href || "https://wa.me/5551989697605";
+
+  return (
+    <div
+      key={key}
+      style={{
+        marginTop: 14,
+        marginBottom: 8,
+        padding: "14px",
+        borderRadius: "18px",
+        border: "1px solid rgba(52,211,153,0.34)",
+        background:
+          "linear-gradient(135deg, rgba(16,185,129,0.16), rgba(15,23,42,0.34))",
+        boxShadow: "0 18px 40px rgba(0,0,0,0.22)",
+        whiteSpace: "normal",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "13px",
+          fontWeight: 950,
+          color: "#d1fae5",
+          letterSpacing: "0.2px",
+          marginBottom: 6,
+        }}
+      >
+        Quer transformar isso em projeto real?
+      </div>
+
+      <div
+        style={{
+          fontSize: "12px",
+          lineHeight: 1.45,
+          color: "rgba(236,253,245,0.86)",
+          marginBottom: 12,
+        }}
+      >
+        Nossa equipe pode mapear sua demanda e desenhar os agentes personalizados ideais para sua empresa.
+      </div>
+
+      <a
+        href={safeHref}
+        target="_blank"
+        rel="noreferrer noopener"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          textDecoration: "none",
+          borderRadius: "999px",
+          padding: "10px 14px",
+          background: "linear-gradient(135deg, #22c55e, #14b8a6)",
+          color: "#04111d",
+          fontSize: "13px",
+          fontWeight: 950,
+          boxShadow: "0 12px 28px rgba(20,184,166,0.24)",
+        }}
+      >
+        💬 Falar com a equipe no WhatsApp
+      </a>
+
+      <div
+        style={{
+          marginTop: 9,
+          fontSize: "11px",
+          color: "rgba(209,250,229,0.62)",
+          fontWeight: 700,
+        }}
+      >
+        Atendimento humano • ORKIO/PATROAI
+      </div>
+    </div>
+  );
+}
+
+function renderMessageContentPremium(value) {
+  const text = String(value || "");
+  if (!text) return "";
+
+  const urlRegex = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi;
+  const nodes = [];
+  let lastIndex = 0;
+  let matchIndex = 0;
+  let match;
+
+  while ((match = urlRegex.exec(text)) !== null) {
+    const rawUrl = match[0];
+    const before = text.slice(lastIndex, match.index);
+    if (before) nodes.push(before);
+
+    const { href, displayUrl, trailing } = normalizeExternalHref(rawUrl);
+
+    if (isWhatsappUrl(href)) {
+      nodes.push(renderWhatsappCtaCard(href, `whatsapp-cta-${match.index}-${matchIndex}`));
+    } else {
+      nodes.push(
+        <a
+          key={`link-${match.index}-${matchIndex}`}
+          href={href}
+          target="_blank"
+          rel="noreferrer noopener"
+          style={{
+            color: "#93c5fd",
+            fontWeight: 800,
+            textDecoration: "underline",
+            textUnderlineOffset: "3px",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {displayUrl}
+        </a>
+      );
+    }
+
+    if (trailing) nodes.push(trailing);
+    lastIndex = match.index + rawUrl.length;
+    matchIndex += 1;
+  }
+
+  const after = text.slice(lastIndex);
+  if (after) nodes.push(after);
+
+  return nodes.length ? nodes : text;
+}
+
+
 
 const ORKIO_ENV = (typeof window !== "undefined" && window.__ORKIO_ENV__) ? window.__ORKIO_ENV__ : {};
 const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.VITE_SUMMIT_VOICE_MODE || "realtime").trim().toLowerCase() === "stt_tts")
@@ -6300,7 +6453,7 @@ async function stopRealtime(reason = 'client_stop') {
                           </div>
                         ) : (
                           <div style={styles.messageContent}>
-                            {visible || m.content}
+                            {renderMessageContentPremium(visible || m.content)}
                             {!isUser && !isSystem && (visible || m.content) && (
                               <button
                                 onClick={() => playTts((visible || m.content), (m.agent_id || null), { messageId: m.id || null })}
