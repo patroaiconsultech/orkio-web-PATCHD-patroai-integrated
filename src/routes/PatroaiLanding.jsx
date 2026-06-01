@@ -529,10 +529,10 @@ export default function PatroaiLanding() {
 
         .orkio-avatar video,
         .orkio-avatar img {
-          width: 78%;
-          height: 78%;
+          width: 82%;
+          height: 82%;
           object-fit: cover;
-          object-position: 64% center;
+          object-position: 58% center;
           border-radius: 999px;
           display: block;
           box-shadow: 0 24px 64px rgba(0,0,0,.32);
