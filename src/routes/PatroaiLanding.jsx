@@ -386,10 +386,6 @@ export default function PatroaiLanding() {
   const heroSubtitle = useMemo(() => copy.hero.subtitle, [copy.hero.subtitle]);
   const orkioSpeech = useMemo(() => copy.orkioSpeech, [copy.orkioSpeech]);
 
-  function handleLogin() {
-    safeNavigateToAuth({ mode: "login", source: "patroai_landing", lang: locale });
-  }
-
   function handleDemo() {
     safeNavigateToAuth({ mode: "register", source: "patroai_demo", lang: locale });
   }
@@ -978,12 +974,6 @@ export default function PatroaiLanding() {
           </nav>
 
           <div className="patroai-actions">
-            <button className="patroai-btn" type="button" onClick={() => navigateTo(ROUTES.admin)}>
-              {copy.actions.admin}
-            </button>
-            <button className="patroai-btn" type="button" onClick={handleLogin}>
-              {copy.actions.login}
-            </button>
             <LandingLanguageSwitch value={locale} onChange={setLocale} />
           </div>
         </div>

@@ -1169,6 +1169,33 @@ export default function Landing() { usePatroaiSeo();
           to { transform: rotate(360deg); }
         }
 
+        
+        .orkio-access-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 12px;
+        }
+
+        .orkio-access-btn {
+          min-height: 38px;
+          padding: 0 16px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,.14);
+          background: rgba(255,255,255,.055);
+          color: rgba(255,255,255,.86);
+          font-weight: 850;
+          cursor: pointer;
+          transition: transform .18s ease, border-color .18s ease, background .18s ease;
+        }
+
+        .orkio-access-btn:hover {
+          transform: translateY(-1px);
+          border-color: rgba(250,204,21,.42);
+          background: rgba(255,255,255,.10);
+        }
+
         @media (max-width: 1280px) {
           .orkio-hero {
             grid-template-columns: 1fr;
@@ -1373,6 +1400,26 @@ export default function Landing() { usePatroaiSeo();
                   <button type="button" className="orkio-button" onClick={() => goToAuth({ entry: "diagnosis", mode: "register", lang: locale })}>
                     {copy.assistant.diagnosis}
                   </button>
+                <div className="orkio-access-row" aria-label={locale === "en" ? "Operational access" : "Acesso operacional"}>
+                  <button
+                    type="button"
+                    className="orkio-access-btn"
+                    onClick={() => {
+                      window.location.href = "/admin";
+                    }}
+                  >
+                    Admin
+                  </button>
+                  <button
+                    type="button"
+                    className="orkio-access-btn"
+                    onClick={() => {
+                      window.location.href = `/auth?mode=login&source=orkio_landing&lang=${locale}`;
+                    }}
+                  >
+                    Login
+                  </button>
+                </div>
                 </div>
 
                 <div className="orkio-status-row">
