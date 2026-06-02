@@ -1,6 +1,6 @@
 import usePatroaiSeo from "../lib/usePatroaiSeo.js"; import React, { useMemo, useState } from "react";
 
-const PUBLIC_CODE = "EFATAH777";
+const PUBLIC_CODE = "EFATAH777,AMCHAMRSORKIO";
 const STORAGE_KEY = "orkio_internal_gate_passed";
 
 function normalize(value) {
