@@ -37,8 +37,8 @@ const PATROAI_PAGE_COPY = {
       titleHighlight: "IA e ESG.",
       subtitle:
         "A PatroAI cria startups, produtos digitais, verticais inteligentes e agentes de IA para empresas em formação ou já consolidadas. Nosso foco é entender as dores reais do negócio, integrar sistemas e informações já existentes, transformar processos em operação inteligente com execução rápida, segura e eficiente e orientar um futuro sustentável com governança, rastreabilidade, visão ESG e continuidade para o negócio.",
-      primary: "Conhecer a PatroAI →",
-      secondary: "Falar com Orkio",
+      primary: "Agendar demonstração →",
+      secondary: "Conhecer soluções",
       trust:
         "Estratégia, tecnologia, integrações, inteligência artificial e consultoria especializada para gerar clareza, eficiência, continuidade e impacto responsável.",
     },
@@ -178,8 +178,8 @@ const PATROAI_PAGE_COPY = {
       titleHighlight: "AI and ESG.",
       subtitle:
         "PatroAI creates startups, digital products, intelligent verticals and AI agents for companies that are being formed or already consolidated. Our focus is to understand real business pains, integrate existing systems and information, transform processes into intelligent operations with fast, secure and efficient execution and guide a sustainable future with governance, traceability, an ESG perspective and business continuity.",
-      primary: "Discover PatroAI →",
-      secondary: "Talk to Orkio",
+      primary: "Schedule a demo →",
+      secondary: "Explore solutions",
       trust:
         "Strategy, technology, integrations, artificial intelligence and specialized consulting to generate clarity, efficiency, continuity and responsible impact.",
     },
@@ -978,9 +978,6 @@ export default function PatroaiLanding() {
           </nav>
 
           <div className="patroai-actions">
-            <button className="patroai-btn primary" type="button" onClick={handleDemo}>
-              {copy.actions.demo}
-            </button>
             <button className="patroai-btn" type="button" onClick={() => navigateTo(ROUTES.admin)}>
               {copy.actions.admin}
             </button>
@@ -1009,7 +1006,7 @@ export default function PatroaiLanding() {
             <button className="patroai-btn primary" type="button" onClick={handleDemo}>
               {copy.hero.primary}
             </button>
-            <button className="patroai-btn" type="button" onClick={handleStartAvatarJourney}>
+            <button className="patroai-btn" type="button" onClick={() => document.getElementById("solutions")?.scrollIntoView({ behavior: "smooth" })}>
               {copy.hero.secondary}
             </button>
           </div>
