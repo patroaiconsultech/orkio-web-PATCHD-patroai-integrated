@@ -1958,8 +1958,9 @@ useEffect(() => {
 
         if (!mergedUser?.onboarding_completed) {
           setOnboardingForm(sanitizeOnboardingForm(mergedUser));
-          // PATCH27_2_CLEAN: onboarding is fluid/non-blocking. Keep data available but do not force modal open.
-          setOnboardingOpen(false);
+          // ORKIO_AO59B_MANDATORY_ONBOARDING_GATE
+          // Onboarding is now a mandatory pre-chat activation step.
+          setOnboardingOpen(true);
         }
 
         if (!mergedUser?.terms_accepted_at) {
@@ -5899,6 +5900,62 @@ async function stopRealtime(reason = 'client_stop') {
     hint: { fontSize: "12px", color: "rgba(255,255,255,0.6)", marginTop: "6px" },
   };
 
+  function handleOnboardingComplete(nextUser) {
+    const refreshedToken = nextUser?.access_token || token;
+    const mergedUser = {
+      ...(user || {}),
+      ...(nextUser || {}),
+      org_slug: nextUser?.org_slug || user?.org_slug || tenant,
+      role: nextUser?.role || user?.role || "user",
+      approved_at: nextUser?.approved_at ?? user?.approved_at ?? null,
+      usage_tier: nextUser?.usage_tier ?? user?.usage_tier ?? null,
+      signup_source: nextUser?.signup_source ?? user?.signup_source ?? null,
+      signup_code_label: nextUser?.signup_code_label ?? user?.signup_code_label ?? null,
+      product_scope: nextUser?.product_scope ?? user?.product_scope ?? null,
+      onboarding_completed: true,
+    };
+
+    mergedUser.is_admin = hasAdminAccess(mergedUser);
+    mergedUser.admin = mergedUser.is_admin === true;
+
+    setUser(mergedUser);
+
+    try {
+      setSession({
+        token: refreshedToken,
+        user: mergedUser,
+        tenant: mergedUser?.org_slug || tenant,
+      });
+      setToken(refreshedToken);
+    } catch {}
+
+    setOnboardingOpen(false);
+    setOnboardingStatus("");
+    setUploadStatus("✅ Onboarding concluído.");
+    setTimeout(() => setUploadStatus(""), 1800);
+  }
+
+  const onboardingGateRequired = Boolean(
+    token &&
+    onboardingChecked &&
+    onboardingOpen &&
+    !showTermsModal &&
+    user &&
+    !user?.onboarding_completed
+  );
+
+  if (onboardingGateRequired) {
+    return (
+      <>
+        <PWAInstallPrompt />
+        <OnboardingModal
+          user={user}
+          onComplete={handleOnboardingComplete}
+        />
+      </>
+    );
+  }
+
   const meName = user?.name || user?.email || "Você";
 
   // ORKIO_AO57C_PUBLIC_BETA_ORKIO_ONLY_WEB_V3
@@ -5941,13 +5998,14 @@ async function stopRealtime(reason = 'client_stop') {
           const nextUser = { ...u, terms_accepted_at: acceptedAt, terms_version: resolvedTermsVersion };
           localStorage.setItem("orkio_user", JSON.stringify(nextUser));
           setUser(nextUser);
+          if (!nextUser?.onboarding_completed) setOnboardingOpen(true);
         } else {
           setUser((prev) => (prev ? { ...prev, terms_accepted_at: acceptedAt, terms_version: resolvedTermsVersion } : prev));
         }
       }} />
     )}
 
-{onboardingOpen && (
+{onboardingOpen && !showTermsModal && (
       <OnboardingModal
         user={user}
         onComplete={(nextUser) => {
