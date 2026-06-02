@@ -20,6 +20,7 @@ export default function LandingLanguageSwitch({
   onChange,
   compact = false,
   tone = "dark",
+  inline = false,
 }) {
   const activeLocale = normalizeLandingLocale(locale || readLandingLocale());
 
@@ -45,11 +46,12 @@ export default function LandingLanguageSwitch({
   }
 
   const shellStyle = {
-    position: "fixed",
-    top: "max(14px, env(safe-area-inset-top))",
-    right: "max(14px, env(safe-area-inset-right))",
-    zIndex: 2147483647,
+    position: inline ? "relative" : "fixed",
+    top: inline ? "auto" : "max(14px, env(safe-area-inset-top))",
+    right: inline ? "auto" : "max(14px, env(safe-area-inset-right))",
+    zIndex: inline ? 1 : 2147483647,
     display: "inline-flex",
+    flexShrink: 0,
     alignItems: "center",
     gap: compact ? 4 : 6,
     padding: compact ? 4 : 6,
