@@ -101,7 +101,9 @@ export default function BetaAccessGate({ children = null }) { usePatroaiSeo();
     } catch {}
 
     setError("");
-    setWaitlistOpen(true);
+    setWaitlistOpen(false);
+    unlockInternal();
+    return;
   }
 
   async function submitWaitlist(e) {
