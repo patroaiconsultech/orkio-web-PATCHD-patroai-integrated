@@ -7,7 +7,6 @@ import { useLandingLocale } from "../lib/landingLocale.js";
 const ROUTES = {
   orkioOS: "/orkio",
   patroai: "/patroai",
-  arquitech: "/arquitech",
   auth: "/auth",
   app: "/app",
   admin: "/admin",
@@ -37,14 +36,14 @@ const PATROAI_PAGE_COPY = {
       titleBefore: "Resolvemos as dores do seu negócio com",
       titleHighlight: "IA e ESG.",
       subtitle:
-        "A PatroAI cria startups, produtos digitais, verticais inteligentes e agentes de IA para empresas em formação ou já consolidadas. Nosso foco é entender as dores reais do negócio, integrar sistemas e informações já existentes, transformar processos em operação inteligente e orientar um futuro sustentável com governança, rastreabilidade, visão ESG e continuidade para o negócio.",
+        "A PatroAI cria startups, produtos digitais, verticais inteligentes e agentes de IA para empresas em formação ou já consolidadas. Nosso foco é entender as dores reais do negócio, integrar sistemas e informações já existentes e transformar processos em operação inteligente com execução rápida, segura e eficiente, governança, rastreabilidade, visão ESG e continuidade para o negócio.",
       primary: "Conhecer a PatroAI →",
       secondary: "Falar com Orkio",
       trust:
-        "Estratégia, tecnologia, integrações, inteligência artificial e consultoria especializada para gerar clareza, eficiência, continuidade e impacto responsável.",
+        "Projetos conduzidos de forma rápida, segura e eficiente, com estratégia, tecnologia, integrações, IA e consultoria especializada.",
     },
     orkioSpeech:
-      "Olá. Eu sou Orkio. Posso mostrar como a PatroAI resolve dores do negócio com inteligência artificial, integra sistemas, aproveita informações já existentes, estrutura startups, cria verticais como a Arquitech e organiza decisões com governança, rastreabilidade, ESG e visão de continuidade para o negócio.",
+      "Olá. Eu sou Orkio. Posso mostrar como a PatroAI resolve dores do negócio com inteligência artificial, integra sistemas, aproveita informações já existentes, estrutura startups e cria verticais sob demanda com governança, rastreabilidade, ESG e visão de continuidade para o negócio.",
     processAria: "Como atuamos",
     processSteps: [
       {
@@ -62,13 +61,13 @@ const PATROAI_PAGE_COPY = {
       {
         number: "03",
         title: "Construir",
-        text: "Desenvolvemos plataformas, automações, agentes de IA, produtos digitais, integrações com sistemas existentes e operações sob medida.",
+        text: "Desenvolvemos plataformas, automações, agentes de IA, produtos digitais, integrações com sistemas existentes e operações sob medida com foco em velocidade, segurança e eficiência.",
         icon: "code",
       },
       {
         number: "04",
         title: "Implantar",
-        text: "Colocamos a solução em funcionamento com documentação, governança, rastreabilidade, integrações bem definidas e clareza operacional.",
+        text: "Colocamos a solução em funcionamento com implantação segura, documentação, governança, rastreabilidade, integrações bem definidas e clareza operacional.",
         icon: "rocket",
       },
       {
@@ -81,9 +80,9 @@ const PATROAI_PAGE_COPY = {
     servicesIntro: {
       label: "O que fazemos",
       title:
-        "Criamos startups, implantamos IA em empresas consolidadas, integramos sistemas e resolvemos dores do negócio com visão ESG.",
+        "Criamos startups, implantamos IA em empresas consolidadas, integramos sistemas e resolvemos dores do negócio com velocidade, segurança, eficiência e visão ESG.",
       text:
-        "A PatroAI atua em duas frentes: criação de novos negócios digitais em modelo startup outsourcing e evolução de empresas já existentes com inteligência artificial aplicada. Elaboramos business plans, estudos de viabilidade econômico-financeira, arquitetura de produto, agentes personalizados, automações, SaaS, integrações com sistemas existentes, implantação, governança e acompanhamento consultivo. ESG entra como critério de decisão: eficiência com responsabilidade, rastreabilidade, impacto, continuidade e clareza para stakeholders. Isso inclui aproveitar informações já existentes, apoiar processos sucessórios e planejar um futuro mais sustentável para o negócio.",
+        "A PatroAI atua em duas frentes: criação de novos negócios digitais em modelo startup outsourcing e evolução de empresas já existentes com inteligência artificial aplicada. Elaboramos business plans, estudos de viabilidade econômico-financeira, arquitetura de produto, agentes personalizados, automações, SaaS, integrações com sistemas existentes, implantação, governança e acompanhamento consultivo. Nosso método prioriza execução rápida, segura e eficiente. ESG entra como critério de decisão: eficiência com responsabilidade, rastreabilidade, impacto, continuidade e clareza para stakeholders. Isso inclui aproveitar informações já existentes, apoiar processos sucessórios e planejar um futuro mais sustentável para o negócio.",
     },
     services: [
       {
@@ -127,31 +126,31 @@ const PATROAI_PAGE_COPY = {
       label: "Verticais PatroAI",
       title: "Criamos verticais sob demanda a partir de dores reais de mercado.",
       text:
-        "As verticais PatroAI são negócios digitais setoriais criados com método próprio: diagnóstico, business plan, arquitetura de produto, agentes de IA, integrações, governança e operação assistida. A Arquitech é a primeira vertical pública desse ecossistema; outras frentes já estão em estudo e desenvolvimento.",
-      primary: "Acessar Arquitech →",
-      secondary: "Desenvolver uma vertical com a PatroAI",
+        "As verticais PatroAI são negócios digitais setoriais criados com método próprio: diagnóstico, business plan, arquitetura de produto, agentes de IA, integrações, governança e operação assistida. Desenvolvemos sob demanda quando existe dor clara, oportunidade validável e potencial de operação recorrente. Temos frentes em estudo e desenvolvimento, sempre com foco em velocidade, segurança, eficiência e sustentabilidade.",
+      primary: "Desenvolver uma vertical com a PatroAI →",
+      secondary: "Entender o método",
       cards: [
         {
-          eyebrow: "Primeira vertical pública",
-          title: "Arquitech",
+          eyebrow: "Modelo sob demanda",
+          title: "Da dor real ao produto setorial",
           text:
-            "IA aplicada à arquitetura: briefing, escopo, riscos, propostas, cronogramas, documentação e apoio à decisão por meio da ARIA.",
-          status: "Disponível",
+            "Transformamos problemas específicos de um setor em plataformas, agentes e operações digitais com tese, governança, métricas e roadmap.",
+          status: "Sob demanda",
           featured: true,
         },
         {
-          eyebrow: "Modelo sob demanda",
-          title: "Verticais para novos mercados",
+          eyebrow: "Execução assistida",
+          title: "Rápido, seguro e eficiente",
           text:
-            "Criamos verticais com parceiros, empresas e empreendedores quando existe dor clara, oportunidade validável e potencial de operação recorrente.",
-          status: "Sob demanda",
+            "Priorizamos implantação enxuta, integrações úteis, documentação clara, proteção de dados e evolução por ciclos curtos de validação.",
+          status: "Método PatroAI",
           featured: false,
         },
         {
           eyebrow: "Pipeline PatroAI",
           title: "Novas frentes em estruturação",
           text:
-            "Além da Arquitech, novas verticais estão sendo estudadas para setores com alta necessidade de IA, integração de dados, sucessão, governança e ESG.",
+            "Novas verticais estão em estudo para setores com alta necessidade de IA, integração de dados, sucessão, governança, rastreabilidade e ESG.",
           status: "Em andamento",
           featured: false,
         },
@@ -212,14 +211,14 @@ const PATROAI_PAGE_COPY = {
       titleBefore: "We solve your business pains with",
       titleHighlight: "AI and ESG.",
       subtitle:
-        "PatroAI creates startups, digital products, intelligent verticals and AI agents for companies that are being formed or already consolidated. Our focus is to understand real business pains, integrate existing systems and information, transform processes into intelligent operations and guide a sustainable future with governance, traceability, an ESG perspective and business continuity.",
+        "PatroAI creates startups, digital products, intelligent verticals and AI agents for companies that are being formed or already consolidated. Our focus is to understand real business pains, integrate existing systems and information, and transform processes into intelligent operations with fast, secure and efficient execution, governance, traceability, an ESG perspective and business continuity.",
       primary: "Discover PatroAI →",
       secondary: "Talk to Orkio",
       trust:
-        "Strategy, technology, integrations, artificial intelligence and specialized consulting to generate clarity, efficiency, continuity and responsible impact.",
+        "Projects conducted in a fast, secure and efficient way, with strategy, technology, integrations, AI and specialized consulting.",
     },
     orkioSpeech:
-      "Hello. I am Orkio. I can show how PatroAI solves business pains with artificial intelligence, integrates systems, leverages existing information, structures startups, creates verticals such as Arquitech and organizes decisions with governance, traceability, ESG and a continuity perspective for the business.",
+      "Hello. I am Orkio. I can show how PatroAI solves business pains with artificial intelligence, integrates systems, leverages existing information, structures startups and creates on-demand verticals with governance, traceability, ESG and a continuity perspective for the business.",
     processAria: "How we work",
     processSteps: [
       {
@@ -237,13 +236,13 @@ const PATROAI_PAGE_COPY = {
       {
         number: "03",
         title: "Build",
-        text: "We develop platforms, automations, AI agents, digital products, integrations with existing systems and tailored operations.",
+        text: "We develop platforms, automations, AI agents, digital products, integrations with existing systems and tailored operations with a focus on speed, security and efficiency.",
         icon: "code",
       },
       {
         number: "04",
         title: "Deploy",
-        text: "We put the solution into operation with documentation, governance, traceability, well-defined integrations and operational clarity.",
+        text: "We put the solution into operation with secure deployment, documentation, governance, traceability, well-defined integrations and operational clarity.",
         icon: "rocket",
       },
       {
@@ -256,9 +255,9 @@ const PATROAI_PAGE_COPY = {
     servicesIntro: {
       label: "What we do",
       title:
-        "We create startups, implement AI in established companies, integrate systems and solve business pains with an ESG perspective.",
+        "We create startups, implement AI in established companies, integrate systems and solve business pains with speed, security, efficiency and an ESG perspective.",
       text:
-        "PatroAI works on two fronts: creating new digital businesses through startup outsourcing and evolving existing companies with applied artificial intelligence. We build business plans, financial feasibility studies, product architecture, personalized agents, automations, SaaS, integrations with existing systems, deployment, governance and consultative support. ESG works as a decision criterion: efficiency with responsibility, traceability, impact, continuity and clarity for stakeholders. This includes leveraging existing information, supporting succession processes and planning a more sustainable future for the business.",
+        "PatroAI works on two fronts: creating new digital businesses through startup outsourcing and evolving existing companies with applied artificial intelligence. We build business plans, financial feasibility studies, product architecture, personalized agents, automations, SaaS, integrations with existing systems, deployment, governance and consultative support. Our method prioritizes fast, secure and efficient execution. ESG works as a decision criterion: efficiency with responsibility, traceability, impact, continuity and clarity for stakeholders. This includes leveraging existing information, supporting succession processes and planning a more sustainable future for the business.",
     },
     services: [
       {
@@ -302,31 +301,31 @@ const PATROAI_PAGE_COPY = {
       label: "PatroAI Verticals",
       title: "We create on-demand verticals from real market pains.",
       text:
-        "PatroAI verticals are sector-specific digital businesses created with our own method: diagnosis, business plan, product architecture, AI agents, integrations, governance and assisted operations. Arquitech is the first public vertical in this ecosystem; other initiatives are already under study and development.",
-      primary: "Access Arquitech →",
-      secondary: "Build a vertical with PatroAI",
+        "PatroAI verticals are sector-specific digital businesses created with our own method: diagnosis, business plan, product architecture, AI agents, integrations, governance and assisted operations. We develop them on demand when there is a clear pain, a validatable opportunity and recurring-operation potential. New fronts are under study and development, always focused on speed, security, efficiency and sustainability.",
+      primary: "Build a vertical with PatroAI →",
+      secondary: "Understand the method",
       cards: [
         {
-          eyebrow: "First public vertical",
-          title: "Arquitech",
+          eyebrow: "On-demand model",
+          title: "From real pain to sector product",
           text:
-            "AI applied to architecture: briefings, scopes, risks, proposals, schedules, documentation and decision support through ARIA.",
-          status: "Available",
+            "We turn sector-specific problems into platforms, agents and digital operations with thesis, governance, metrics and roadmap.",
+          status: "On demand",
           featured: true,
         },
         {
-          eyebrow: "On-demand model",
-          title: "Verticals for new markets",
+          eyebrow: "Assisted execution",
+          title: "Fast, secure and efficient",
           text:
-            "We create verticals with partners, companies and entrepreneurs when there is a clear pain, a validatable opportunity and recurring-operation potential.",
-          status: "On demand",
+            "We prioritize lean deployment, useful integrations, clear documentation, data protection and evolution through short validation cycles.",
+          status: "PatroAI method",
           featured: false,
         },
         {
           eyebrow: "PatroAI pipeline",
           title: "New fronts in structuring",
           text:
-            "Beyond Arquitech, new verticals are being studied for sectors with high demand for AI, data integration, succession, governance and ESG.",
+            "New verticals are being studied for sectors with high demand for AI, data integration, succession, governance, traceability and ESG.",
           status: "In progress",
           featured: false,
         },
@@ -648,9 +647,9 @@ export default function PatroaiLanding() {
 
         .patroai-hero h1 {
           margin: 24px 0 18px;
-          font-size: clamp(44px, 7vw, 82px);
-          line-height: .92;
-          letter-spacing: -.075em;
+          font-size: clamp(42px, 7vw, 80px);
+          line-height: .94;
+          letter-spacing: -.072em;
           max-width: 820px;
         }
 
@@ -691,7 +690,9 @@ export default function PatroaiLanding() {
           min-height: 420px;
           display: grid;
           place-items: center;
+          align-self: start;
           isolation: isolate;
+          transform: translateY(-42px);
         }
 
         .patroai-hero-orb::before {
@@ -1129,6 +1130,7 @@ export default function PatroaiLanding() {
 
           .patroai-hero-orb {
             min-height: 260px;
+            transform: translateY(0);
           }
 
           .patroai-hero-logo-shell {
@@ -1243,14 +1245,14 @@ export default function PatroaiLanding() {
             </div>
 
             <div className="patroai-hero-cta">
-              <button
-                className="patroai-btn primary"
-                type="button"
-                onClick={() => navigateTo(`${ROUTES.arquitech}?lang=${locale}`)}
-              >
+              <button className="patroai-btn primary" type="button" onClick={handleDemo}>
                 {copy.verticalsSection.primary}
               </button>
-              <button className="patroai-btn" type="button" onClick={handleDemo}>
+              <button
+                className="patroai-btn"
+                type="button"
+                onClick={() => document.getElementById("method")?.scrollIntoView({ behavior: "smooth" })}
+              >
                 {copy.verticalsSection.secondary}
               </button>
             </div>
