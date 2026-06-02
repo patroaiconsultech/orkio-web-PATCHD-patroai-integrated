@@ -21,6 +21,7 @@ const PATROAI_PAGE_COPY = {
     brandAria: "Ir para PatroAI",
     nav: {
       solutions: "Soluções",
+      verticals: "Verticais",
       orkio: "Orkio",
       resources: "ESG & Método",
       about: "Sobre",
@@ -35,14 +36,14 @@ const PATROAI_PAGE_COPY = {
       titleBefore: "Resolvemos as dores do seu negócio com",
       titleHighlight: "IA e ESG.",
       subtitle:
-        "A PatroAI cria startups, produtos digitais, verticais inteligentes e agentes de IA para empresas em formação ou já consolidadas. Nosso foco é entender as dores reais do negócio, integrar sistemas e informações já existentes, transformar processos em operação inteligente e orientar um futuro sustentável com governança, rastreabilidade, visão ESG e continuidade para o negócio.",
+        "A PatroAI cria startups, produtos digitais, verticais inteligentes e agentes de IA para empresas em formação ou já consolidadas. Nosso foco é entender as dores reais do negócio, integrar sistemas e informações já existentes, transformar processos em operação inteligente com execução rápida, segura e eficiente e orientar um futuro sustentável com governança, rastreabilidade, visão ESG e continuidade para o negócio.",
       primary: "Conhecer a PatroAI →",
       secondary: "Falar com Orkio",
       trust:
         "Estratégia, tecnologia, integrações, inteligência artificial e consultoria especializada para gerar clareza, eficiência, continuidade e impacto responsável.",
     },
     orkioSpeech:
-      "Olá. Eu sou Orkio. Posso mostrar como a PatroAI resolve dores do negócio com inteligência artificial, integra sistemas, aproveita informações já existentes, estrutura startups, cria verticais como a Arquitech e organiza decisões com governança, rastreabilidade, ESG e visão de continuidade para o negócio.",
+      "Olá. Eu sou Orkio. Posso mostrar como a PatroAI resolve dores do negócio com inteligência artificial, integra sistemas, aproveita informações já existentes, estrutura startups, cria verticais sob demanda e organiza decisões com governança, rastreabilidade, ESG e visão de continuidade para o negócio.",
     processAria: "Como atuamos",
     processSteps: [
       {
@@ -120,12 +121,6 @@ const PATROAI_PAGE_COPY = {
           "Criamos plataformas, automações e agentes de IA personalizados, com possibilidade de comercialização da plataforma em modelo SaaS para empresas em operação.",
         icon: "gear",
       },
-      {
-        title: "Vertical Arquitech",
-        text:
-          "A Arquitech é uma vertical PatroAI para arquitetura assistida por IA, organizada em torno da ARIA, superagente dedicada a briefing, escopo, riscos, propostas, cronogramas e decisões de projeto.",
-        icon: "architecture",
-      },
     ],
     esgSection: {
       label: "ESG aplicado ao negócio",
@@ -167,6 +162,7 @@ const PATROAI_PAGE_COPY = {
     brandAria: "Go to PatroAI",
     nav: {
       solutions: "Solutions",
+      verticals: "Verticals",
       orkio: "Orkio",
       resources: "ESG & Method",
       about: "About",
@@ -181,14 +177,14 @@ const PATROAI_PAGE_COPY = {
       titleBefore: "We solve your business pains with",
       titleHighlight: "AI and ESG.",
       subtitle:
-        "PatroAI creates startups, digital products, intelligent verticals and AI agents for companies that are being formed or already consolidated. Our focus is to understand real business pains, integrate existing systems and information, transform processes into intelligent operations and guide a sustainable future with governance, traceability, an ESG perspective and business continuity.",
+        "PatroAI creates startups, digital products, intelligent verticals and AI agents for companies that are being formed or already consolidated. Our focus is to understand real business pains, integrate existing systems and information, transform processes into intelligent operations with fast, secure and efficient execution and guide a sustainable future with governance, traceability, an ESG perspective and business continuity.",
       primary: "Discover PatroAI →",
       secondary: "Talk to Orkio",
       trust:
         "Strategy, technology, integrations, artificial intelligence and specialized consulting to generate clarity, efficiency, continuity and responsible impact.",
     },
     orkioSpeech:
-      "Hello. I am Orkio. I can show how PatroAI solves business pains with artificial intelligence, integrates systems, leverages existing information, structures startups, creates verticals such as Arquitech and organizes decisions with governance, traceability, ESG and a continuity perspective for the business.",
+      "Hello. I am Orkio. I can show how PatroAI solves business pains with artificial intelligence, integrates systems, leverages existing information, structures startups, creates on-demand verticals and organizes decisions with governance, traceability, ESG and a continuity perspective for the business.",
     processAria: "How we work",
     processSteps: [
       {
@@ -265,12 +261,6 @@ const PATROAI_PAGE_COPY = {
         text:
           "We create platforms, automations and personalized AI agents, with the possibility of commercializing the platform as SaaS for companies already in operation.",
         icon: "gear",
-      },
-      {
-        title: "Arquitech Vertical",
-        text:
-          "Arquitech is a PatroAI vertical for AI-assisted architecture, organized around ARIA, a dedicated superagent for briefings, scopes, risks, proposals, schedules and project decisions.",
-        icon: "architecture",
       },
     ],
     esgSection: {
@@ -562,13 +552,13 @@ export default function PatroaiLanding() {
         .patroai-hero {
           padding: clamp(62px, 8vw, 112px) 0 52px;
           display: grid;
-          grid-template-columns: minmax(0, 1.08fr) minmax(280px, .72fr);
+          grid-template-columns: minmax(0, 1.02fr) minmax(300px, .82fr);
           gap: clamp(32px, 5vw, 76px);
           align-items: center;
         }
 
         .patroai-hero-main {
-          max-width: 820px;
+          max-width: 790px;
         }
 
         .patroai-kicker,
@@ -589,10 +579,10 @@ export default function PatroaiLanding() {
 
         .patroai-hero h1 {
           margin: 24px 0 18px;
-          font-size: clamp(44px, 7vw, 82px);
+          font-size: clamp(40px, 6.4vw, 76px);
           line-height: .92;
           letter-spacing: -.075em;
-          max-width: 820px;
+          max-width: 780px;
         }
 
         .patroai-hero h1 span,
@@ -981,6 +971,7 @@ export default function PatroaiLanding() {
 
           <nav className="patroai-nav" aria-label={copy.navAria}>
             <a href="#solutions">{copy.nav.solutions}</a>
+            <a href="#verticals">{copy.nav.verticals}</a>
             <a href="#orkio">{copy.nav.orkio}</a>
             <a href="#method">{copy.nav.resources}</a>
             <a href="#about">{copy.nav.about}</a>
