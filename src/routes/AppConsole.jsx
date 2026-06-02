@@ -2757,7 +2757,7 @@ function formatAgentOptionLabel(agent) {
   }
 
   function resolveHostAgentId(modeOverride = null) {
-    const mode = String(modeOverride || destMode || "team").trim().toLowerCase();
+    const mode = publicBetaOrkioOnly ? "single" : String(modeOverride || destMode || "team").trim().toLowerCase();
     const orkio = agents.find((a) => (a?.name || "").toLowerCase() === "orkio") || agents.find((a) => a?.is_default) || agents[0] || null;
 
     if (mode === "single") {
@@ -2857,7 +2857,14 @@ function formatAgentOptionLabel(agent) {
 
   function handlePremiumPrimaryAction() { void sendMessage("Orkio, me ajuda a montar um plano de testes para liberar a plataforma para 5 usuários beta?"); }
 
-  function handlePremiumSecondaryAction() { fillPremiumPrompt("@Team mapeiem a oportunidade de maior impacto e menor risco para esta fase da plataforma."); try { setUploadStatus("Revise o pedido antes de acionar o Team. O modo multiagente está em estabilização."); setTimeout(() => setUploadStatus(""), 4200); } catch {} }
+  function handlePremiumSecondaryAction() {
+    if (publicBetaOrkioOnly) {
+      fillPremiumPrompt("Orkio, mapeie a oportunidade de maior impacto e menor risco para esta fase do meu negócio.");
+      return;
+    }
+    fillPremiumPrompt("@Team mapeiem a oportunidade de maior impacto e menor risco para esta fase da plataforma.");
+    try { setUploadStatus("Revise o pedido antes de acionar o Team. O modo multiagente está em estabilização."); setTimeout(() => setUploadStatus(""), 4200); } catch {}
+  }
 
   function handlePremiumTertiaryAction() { fillPremiumPrompt("Orkio, organize um plano prático para eu testar a plataforma hoje com foco em impacto real e baixo risco."); }
 
@@ -3156,7 +3163,9 @@ async function sendMessage(presetMsg = null, opts = {}) {
         {
           kind: "system",
           label: "Solicitação recebida",
-          detail: destMode === "team"
+          detail: publicBetaOrkioOnly
+            ? "Orkio preparado para o beta público."
+            : destMode === "team"
             ? "Modo Team acionado."
             : destMode === "multi"
             ? "Execução multiagente preparada."
@@ -5491,6 +5500,13 @@ async function stopRealtime(reason = 'client_stop') {
         setUploadStatus("Arquivo anexado à conversa ✅");
         try { await loadMessages(effectiveThreadId, { force: true, expectedEpoch: activeThreadEpochRef.current }); } catch {}
       } else if (uploadScope === "agents") {
+        if (!canAccessAdmin) {
+          setUploadStatus("No beta público, arquivos são anexados à conversa com Orkio.");
+          await uploadFile(f, { token, org: tenant, threadId: effectiveThreadId, intent: "chat" });
+          setUploadStatus("Arquivo anexado à conversa ✅");
+          try { await loadMessages(effectiveThreadId, { force: true, expectedEpoch: activeThreadEpochRef.current }); } catch {}
+          return;
+        }
         console.info("[Upload] start", { scope: "agents", filename: f?.name, agentIds: uploadAgentIds, size: f?.size || null });
         if (!uploadAgentIds.length) {
           alert("Selecione ao menos um agente.");
@@ -5885,6 +5901,21 @@ async function stopRealtime(reason = 'client_stop') {
 
   const meName = user?.name || user?.email || "Você";
 
+  // ORKIO_AO57C_PUBLIC_BETA_ORKIO_ONLY_WEB_V3
+  // UX layer only. Backend AO57B remains the authority for actual access control.
+  const publicBetaOrkioOnly = !canAccessAdmin;
+  const isOrkioAgent = (agent) => {
+    const raw = [
+      agent?.name,
+      agent?.slug,
+      agent?.id,
+      agent?.label,
+    ].filter(Boolean).join(" ").toLowerCase();
+    return raw.includes("orkio");
+  };
+  const visibleAgents = publicBetaOrkioOnly ? agents.filter(isOrkioAgent) : agents;
+  const effectiveDestMode = publicBetaOrkioOnly ? "single" : destMode;
+
   const pendingApprovedPatchExecution = findPendingApprovedPatchExecution(messages);
 
   if (!onboardingChecked && !bootstrapFailOpen) {
@@ -6061,7 +6092,11 @@ async function stopRealtime(reason = 'client_stop') {
         <div style={{ ...styles.topbar, padding: isMobile ? "12px 14px" : styles.topbar.padding }}>
           <div>
             <div style={{ ...styles.title, display: isMobile ? "none" : undefined }}>{threads.find((t) => t.id === threadId)?.title || "Conversa"}</div>
-            <div style={{ ...styles.health, display: isMobile ? "none" : undefined }}>Destino: {destMode === "team" ? "Team" : destMode === "single" ? "Agente" : "Multi"} • @Team / @Orkio / @Chris / @Orion</div>
+            <div style={{ ...styles.health, display: isMobile ? "none" : undefined }}>
+              {publicBetaOrkioOnly
+                ? "Destino: Orkio • beta público"
+                : `Destino: ${destMode === "team" ? "Team" : destMode === "single" ? "Agente" : "Multi"} • @Team / @Orkio / @Chris / @Orion`}
+            </div>
             {isMobile ? (
               <div
                 style={{
@@ -6186,36 +6221,54 @@ async function stopRealtime(reason = 'client_stop') {
                 Sair
               </button>
             ) : null}
-            <select
-              style={styles.select}
-              value={destMode}
-              onChange={(e) => {
-                const nextMode = String(e.target.value || "team").trim().toLowerCase();
-                setDestMode(["team", "single", "multi"].includes(nextMode) ? nextMode : "team");
-              }}
-            >
-              <option value="team">Team</option>
-              <option value="single">1 agente</option>
-              <option value="multi">Multi Agentes</option>
-            </select>
+            {!publicBetaOrkioOnly ? (
+              <>
+                <select
+                  style={styles.select}
+                  value={destMode}
+                  onChange={(e) => {
+                    const nextMode = String(e.target.value || "team").trim().toLowerCase();
+                    setDestMode(["team", "single", "multi"].includes(nextMode) ? nextMode : "team");
+                  }}
+                >
+                  <option value="team">Team</option>
+                  <option value="single">1 agente</option>
+                  <option value="multi">Multi Agentes</option>
+                </select>
 
-            {destMode === "single" ? (
-              <select style={styles.select} value={destSingle} onChange={(e) => setDestSingle(e.target.value)}>
-                {agents.map(a => <option key={a.id} value={a.id}>{formatAgentOptionLabel(a)}</option>)}
-              </select>
-            ) : null}
+                {effectiveDestMode === "single" ? (
+                  <select style={styles.select} value={destSingle} onChange={(e) => setDestSingle(e.target.value)}>
+                    {visibleAgents.map(a => <option key={a.id} value={a.id}>{formatAgentOptionLabel(a)}</option>)}
+                  </select>
+                ) : null}
 
-            {destMode === "multi" && !isMobile ? (
-              <select style={styles.select} value={String(destMulti.length || 0)} onChange={() => {}}>
-                <option value={String(destMulti.length || 0)}>
-                  {destMulti.length ? `${destMulti.length} agentes selecionados` : "Selecionar no envio..."}
-                </option>
-              </select>
-            ) : null}
+                {effectiveDestMode === "multi" && !isMobile ? (
+                  <select style={styles.select} value={String(destMulti.length || 0)} onChange={() => {}}>
+                    <option value={String(destMulti.length || 0)}>
+                      {destMulti.length ? `${destMulti.length} agentes selecionados` : "Selecionar no envio..."}
+                    </option>
+                  </select>
+                ) : null}
+              </>
+            ) : (
+              <div
+                style={{
+                  ...styles.select,
+                  minHeight: 34,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  fontWeight: 900,
+                  color: "rgba(255,255,255,0.88)",
+                }}
+                title="Beta público: Orkio-only"
+              >
+                Orkio
+              </div>
+            )}
           </div>
         </div>
 
-        {(activeRuntimeAgent || runtimeHandoffLabel || agentCapabilities) ? (
+        {(!publicBetaOrkioOnly && (activeRuntimeAgent || runtimeHandoffLabel || agentCapabilities)) ? (
           <div
             style={{
               margin: isMobile ? "10px 12px 0" : "12px 16px 0",
@@ -6463,7 +6516,7 @@ async function stopRealtime(reason = 'client_stop') {
                                 🔊
                               </button>
                             )}
-                            {!isUser && !isSystem && extractPatchGovernanceMeta(visible || m.content)?.can_approve && (
+                            {canAccessAdmin && !isUser && !isSystem && extractPatchGovernanceMeta(visible || m.content)?.can_approve && (
                               <div style={{ marginTop: 12 }}>
                                 <button
                                   type="button"
@@ -6483,7 +6536,7 @@ async function stopRealtime(reason = 'client_stop') {
                                 </button>
                               </div>
                             )}
-                            {!isUser && !isSystem && extractPatchApprovalMeta(visible || m.content)?.can_execute && (
+                            {canAccessAdmin && !isUser && !isSystem && extractPatchApprovalMeta(visible || m.content)?.can_execute && (
                               <div style={{ marginTop: 12 }}>
                                 <button
                                   type="button"
@@ -6642,7 +6695,7 @@ async function stopRealtime(reason = 'client_stop') {
 
         {/* Composer */}
         <div style={{ ...styles.composerContainer, padding: isMobile ? "10px 12px calc(10px + env(safe-area-inset-bottom, 0px))" : styles.composerContainer.padding }}>
-          {showOrionSquad && (orionSquadHealth || orionSquadPreview) ? (
+          {canAccessAdmin && showOrionSquad && (orionSquadHealth || orionSquadPreview) ? (
             <div
               style={{
                 marginBottom: "8px",
@@ -7166,26 +7219,30 @@ async function stopRealtime(reason = 'client_stop') {
               <span>Somente nesta conversa (contexto do thread)</span>
             </div>
 
-            <div style={styles.radioRow}>
-              <input type="radio" checked={uploadScope === "agents"} onChange={() => setUploadScope("agents")} />
-              <span>Vincular a agente(s) específico(s)</span>
-            </div>
+            {!publicBetaOrkioOnly ? (
+              <>
+                <div style={styles.radioRow}>
+                  <input type="radio" checked={uploadScope === "agents"} onChange={() => setUploadScope("agents")} />
+                  <span>Vincular a agente(s) específico(s)</span>
+                </div>
 
-            {uploadScope === "agents" ? (
-              <div style={styles.checkGrid}>
-                {agents.map(a => (
-                  <label key={a.id} style={styles.checkItem}>
-                    <input
-                      type="checkbox"
-                      checked={uploadAgentIds.includes(a.id)}
-                      onChange={(e) => {
-                        setUploadAgentIds(prev => e.target.checked ? [...prev, a.id] : prev.filter(x => x !== a.id));
-                      }}
-                    />
-                    <span>{a.name}</span>
-                  </label>
-                ))}
-              </div>
+                {uploadScope === "agents" ? (
+                  <div style={styles.checkGrid}>
+                    {visibleAgents.map(a => (
+                      <label key={a.id} style={styles.checkItem}>
+                        <input
+                          type="checkbox"
+                          checked={uploadAgentIds.includes(a.id)}
+                          onChange={(e) => {
+                            setUploadAgentIds(prev => e.target.checked ? [...prev, a.id] : prev.filter(x => x !== a.id));
+                          }}
+                        />
+                        <span>{a.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+              </>
             ) : null}
 
             <div style={styles.radioRow}>
