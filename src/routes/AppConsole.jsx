@@ -10,9 +10,160 @@ import { startSessionHeartbeat } from "../lib/sessionHeartbeat.js";
 import EmptyStatePremium from "../components/EmptyStatePremium.jsx";
 import ExecutionTimeline from "../components/ExecutionTimeline.jsx";
 
+// ORKIO_AO60D_REALTIME_MOBILE_HARDENING
+function buildRealtimeDiagnosticError(code, message, diagnostic = {}) {
+  const err = new Error(message || "Falha ao iniciar Realtime");
+  err.code = code || "REALTIME_DIAGNOSTIC_ERROR";
+  err.userMessage = message || "Não consegui abrir a voz em tempo real agora.";
+  err.diagnostic = diagnostic || {};
+  return err;
+}
+
+function getRealtimeBrowserPreflight() {
+  const result = {
+    ok: true,
+    online: true,
+    secureContext: true,
+    hasMediaDevices: true,
+    hasGetUserMedia: true,
+    protocol: "",
+    host: "",
+    reason: null,
+  };
+
+  try {
+    if (typeof window !== "undefined") {
+      result.secureContext = Boolean(
+        window.isSecureContext ||
+        window.location?.protocol === "https:" ||
+        /^localhost$|^127\.0\.0\.1$/.test(window.location?.hostname || "")
+      );
+      result.protocol = window.location?.protocol || "";
+      result.host = window.location?.host || "";
+    }
+  } catch {}
+
+  try {
+    if (typeof navigator !== "undefined") {
+      result.online = navigator.onLine !== false;
+      result.hasMediaDevices = Boolean(navigator.mediaDevices);
+      result.hasGetUserMedia = Boolean(navigator.mediaDevices?.getUserMedia);
+    }
+  } catch {}
+
+  if (!result.online) {
+    result.ok = false;
+    result.reason = "browser_offline";
+  } else if (!result.secureContext) {
+    result.ok = false;
+    result.reason = "insecure_context";
+  } else if (!result.hasMediaDevices || !result.hasGetUserMedia) {
+    result.ok = false;
+    result.reason = "media_devices_unavailable";
+  }
+
+  return result;
+}
+
+function realtimePreflightMessage(reason) {
+  if (reason === "browser_offline") {
+    return "Não consegui abrir a voz em tempo real porque o dispositivo parece estar sem conexão. O chat continua funcionando quando a internet voltar.";
+  }
+  if (reason === "insecure_context") {
+    return "A voz em tempo real precisa de uma conexão segura HTTPS no navegador/PWA. O chat continua disponível por texto.";
+  }
+  if (reason === "media_devices_unavailable") {
+    return "Este navegador/PWA não expôs o microfone para a voz em tempo real. Atualize o app, verifique permissões ou continue por texto.";
+  }
+  return "Não consegui abrir a voz em tempo real agora. O chat continua funcionando normalmente.";
+}
+
+
 function normalizeUserFacingRuntimeMessage(value, context = "") {
   const raw = String(value || "").trim();
   const lower = raw.toLowerCase();
+
+  // ORKIO_AO60C_PWA_REALTIME_DIAGNOSTIC_GUARD
+  if (
+    lower.includes("failed to fetch") ||
+    lower.includes("network_fetch_failed") ||
+    lower.includes("network request failed") ||
+    lower.includes("load failed") ||
+    lower.includes("networkerror") ||
+    lower.includes("cors") ||
+    lower.includes("typeerror: failed")
+  ) {
+    if (context === "voice" || context === "realtime") {
+      return (
+        "Não consegui abrir a voz em tempo real agora. O chat continua funcionando normalmente.\n\n" +
+        "Motivo provável: a conexão de voz não foi concluída entre o PWA e a API. " +
+        "Tente novamente em alguns segundos ou continue por texto."
+      );
+    }
+
+    return (
+      "Não consegui concluir a conexão agora. Verifique sua internet e tente novamente. " +
+      "O chat continua disponível por texto."
+    );
+  }
+
+  if (context === "voice" || context === "realtime") {
+    if (
+      lower.includes("browser_offline") ||
+      lower.includes("insecure_context") ||
+      lower.includes("media_devices_unavailable") ||
+      lower.includes("mic_permission_denied") ||
+      lower.includes("mic_get_user_media_failed") ||
+      lower.includes("realtime_sdp_fetch_failed")
+    ) {
+      if (lower.includes("browser_offline")) {
+        return "Não consegui abrir a voz em tempo real porque o dispositivo parece estar sem conexão. O chat continua funcionando normalmente quando a internet voltar.";
+      }
+      if (lower.includes("insecure_context")) {
+        return "A voz em tempo real precisa de uma conexão segura HTTPS no navegador/PWA. O chat continua disponível por texto.";
+      }
+      if (lower.includes("media_devices_unavailable")) {
+        return "Este navegador/PWA não liberou acesso ao microfone para a voz em tempo real. Verifique as permissões do app ou continue por texto.";
+      }
+      if (lower.includes("mic_permission_denied")) {
+        return "O microfone está bloqueado para este PWA. Libere a permissão de microfone nas configurações do navegador/app e tente novamente.";
+      }
+      if (lower.includes("mic_get_user_media_failed")) {
+        return "Não consegui capturar o áudio do microfone neste dispositivo. Tente novamente, revise as permissões ou continue por texto.";
+      }
+      if (lower.includes("realtime_sdp_fetch_failed")) {
+        return "Não consegui concluir a conexão de voz em tempo real com o provedor agora. O chat continua disponível por texto.";
+      }
+    }
+  }
+
+  if (
+    context === "voice" || context === "realtime"
+  ) {
+    if (
+      lower.includes("auth_forbidden") ||
+      lower.includes("status_403") ||
+      lower.includes("http 403") ||
+      lower.includes("forbidden")
+    ) {
+      return (
+        "A voz em tempo real não foi autorizada para esta sessão. " +
+        "Verifique se o onboarding foi concluído e tente novamente. O chat continua disponível por texto."
+      );
+    }
+
+    if (
+      lower.includes("auth_session_expired") ||
+      lower.includes("status_401") ||
+      lower.includes("unauthorized") ||
+      lower.includes("session expired")
+    ) {
+      return (
+        "Sua sessão precisa ser atualizada antes de iniciar a voz em tempo real. " +
+        "Entre novamente e tente outra vez. O chat continua disponível por texto."
+      );
+    }
+  }
 
   if (!raw) {
     return context === "voice"
@@ -4490,6 +4641,16 @@ function scheduleRealtimeIdleFollowup() {
       setV2vPhase('connecting');
       setUploadStatus('⚡ Conectando Realtime (WebRTC)...');
 
+      const realtimeBrowserPreflight = getRealtimeBrowserPreflight();
+      logRealtimeStep("start:browser_preflight", realtimeBrowserPreflight);
+      if (!realtimeBrowserPreflight.ok) {
+        throw buildRealtimeDiagnosticError(
+          String(realtimeBrowserPreflight.reason || "realtime_browser_preflight_failed").toUpperCase(),
+          realtimePreflightMessage(realtimeBrowserPreflight.reason),
+          realtimeBrowserPreflight
+        );
+      }
+
       if (rtcSessionIdRef.current) {
         await stopRealtime('restart_existing_session');
       } else if (rtcPcRef.current || rtcDcRef.current || rtcAudioElRef.current) {
@@ -4588,6 +4749,25 @@ function scheduleRealtimeIdleFollowup() {
       };
 
       // Mic input
+      let realtimeMicPermissionState = null;
+      try {
+        if (navigator?.permissions?.query) {
+          const permissionStatus = await navigator.permissions.query({ name: "microphone" });
+          realtimeMicPermissionState = permissionStatus?.state || null;
+          logRealtimeStep("start:mic_permission_state", { state: realtimeMicPermissionState });
+          if (realtimeMicPermissionState === "denied") {
+            throw buildRealtimeDiagnosticError(
+              "MIC_PERMISSION_DENIED",
+              "O microfone está bloqueado para este PWA. Libere a permissão de microfone nas configurações do navegador/app e tente novamente.",
+              { permissionState: realtimeMicPermissionState }
+            );
+          }
+        }
+      } catch (permissionErr) {
+        if (permissionErr?.code === "MIC_PERMISSION_DENIED") throw permissionErr;
+        logRealtimeStep("start:mic_permission_probe_unavailable", { message: permissionErr?.message || null });
+      }
+
       logRealtimeStep('start:request_mic');
       const micConstraints = {
         audio: {
@@ -4599,7 +4779,40 @@ function scheduleRealtimeIdleFollowup() {
         },
         video: false,
       };
-      const ms = await navigator.mediaDevices.getUserMedia(micConstraints);
+      let ms;
+      try {
+        ms = await navigator.mediaDevices.getUserMedia(micConstraints);
+      } catch (micPrimaryErr) {
+        logRealtimeStep("start:mic_primary_failed", {
+          name: micPrimaryErr?.name || null,
+          message: micPrimaryErr?.message || null,
+          permissionState: realtimeMicPermissionState,
+        });
+        try {
+          ms = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          logRealtimeStep("start:mic_fallback_ok");
+        } catch (micFallbackErr) {
+          logRealtimeStep("start:mic_fallback_failed", {
+            name: micFallbackErr?.name || null,
+            message: micFallbackErr?.message || null,
+            permissionState: realtimeMicPermissionState,
+          });
+          const denied = String(micFallbackErr?.name || micPrimaryErr?.name || "").toLowerCase().includes("notallowed");
+          throw buildRealtimeDiagnosticError(
+            denied ? "MIC_PERMISSION_DENIED" : "MIC_GET_USER_MEDIA_FAILED",
+            denied
+              ? "O microfone está bloqueado para este PWA. Libere a permissão de microfone nas configurações do navegador/app e tente novamente."
+              : "Não consegui capturar o áudio do microfone neste dispositivo. Tente novamente, revise as permissões ou continue por texto.",
+            {
+              primaryName: micPrimaryErr?.name || null,
+              primaryMessage: micPrimaryErr?.message || null,
+              fallbackName: micFallbackErr?.name || null,
+              fallbackMessage: micFallbackErr?.message || null,
+              permissionState: realtimeMicPermissionState,
+            }
+          );
+        }
+      }
       const rawTrack = ms.getAudioTracks?.()[0] || ms.getTracks?.()[0] || null;
       if (!rawTrack) throw new Error("Microfone indisponível");
 
@@ -4827,7 +5040,7 @@ function scheduleRealtimeIdleFollowup() {
             rtcResponseInFlightRef.current = false;
             console.warn('[Realtime] error', ev);
             logRealtimeStep('runtime:error_event', ev);
-            setV2vError(ev?.error?.message || 'Erro Realtime');
+            setV2vError(normalizeUserFacingRuntimeMessage(ev?.error?.message || 'Erro Realtime', 'realtime'));
             setV2vPhase('error');
             void activateSilentRealtimeFallback('realtime_error', { disarm: false });
           }
@@ -4846,14 +5059,39 @@ function scheduleRealtimeIdleFollowup() {
       await pc.setLocalDescription(offer);
       logRealtimeStep('start:local_description_set', { sdpLength: offer?.sdp?.length || 0 });
 
-      const sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
-        method: 'POST',
-        body: offer.sdp,
-        headers: {
-          Authorization: `Bearer ${EPHEMERAL_KEY}`,
-          'Content-Type': 'application/sdp',
-        },
-      });
+      const sdpAbortController = new AbortController();
+      const sdpTimeout = setTimeout(() => {
+        try { sdpAbortController.abort(); } catch {}
+      }, 20000);
+
+      let sdpResponse;
+      try {
+        sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
+          method: 'POST',
+          body: offer.sdp,
+          signal: sdpAbortController.signal,
+          headers: {
+            Authorization: `Bearer ${EPHEMERAL_KEY}`,
+            'Content-Type': 'application/sdp',
+          },
+        });
+      } catch (sdpFetchErr) {
+        logRealtimeStep("start:sdp_fetch_failed", {
+          name: sdpFetchErr?.name || null,
+          message: sdpFetchErr?.message || null,
+        });
+        throw buildRealtimeDiagnosticError(
+          "REALTIME_SDP_FETCH_FAILED",
+          "Não consegui concluir a conexão de voz em tempo real com o provedor agora. O chat continua disponível por texto.",
+          {
+            name: sdpFetchErr?.name || null,
+            message: sdpFetchErr?.message || null,
+            aborted: sdpFetchErr?.name === "AbortError",
+          }
+        );
+      } finally {
+        try { clearTimeout(sdpTimeout); } catch {}
+      }
 
       const sdpText = await sdpResponse.text().catch(() => '');
       if (!sdpResponse.ok) {
@@ -4869,15 +5107,28 @@ function scheduleRealtimeIdleFollowup() {
     } catch (e) {
       console.error('[Realtime] startRealtime error', e);
       logRealtimeStep('start:catch', {
+        code: e?.code || null,
+        status: e?.status || null,
+        url: e?.url || null,
+        userMessage: e?.userMessage || null,
         message: e?.message || 'Falha ao iniciar Realtime',
         stack: e?.stack || null,
         sessionId: rtcSessionIdRef.current || null,
         threadId: rtcThreadIdRef.current || threadId || null,
       });
       setV2vPhase('error');
-      setV2vError(e?.message || 'Falha ao iniciar Realtime');
-      setUploadStatus('❌ Realtime: ' + (e?.message || 'falha'));
-      setTimeout(() => setUploadStatus(''), 4000);
+      const friendlyRealtimeError = normalizeUserFacingRuntimeMessage(
+        [
+          e?.code,
+          e?.status ? `status_${e.status}` : "",
+          e?.userMessage,
+          e?.message,
+        ].filter(Boolean).join(" | ") || "Falha ao iniciar Realtime",
+        "realtime"
+      );
+      setV2vError(friendlyRealtimeError);
+      setUploadStatus("❌ Realtime indisponível. Você pode continuar por texto.");
+      setTimeout(() => setUploadStatus(""), 3500);
       await stopRealtime('start_error_diagnostic_cleanup');
     } finally {
       rtcConnectingRef.current = false;
