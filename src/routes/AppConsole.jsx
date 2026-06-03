@@ -1542,6 +1542,12 @@ export default function AppConsole() {
 
   const SHOW_REALTIME_AUDIT = false;
 
+  // ORKIO_AO60I_REALTIME_TIMEBOX_COOLDOWN_COUNTER
+  // ORKIO_AO60J_HF1_PREMIUM_2MIN_10MIN_WAKE_COUNTER
+  // Unified web/PWA default = 2min session + 10min cooldown; backend remains source of truth.
+  const REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS = 2 * 60;
+  const REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS = 10 * 60;
+
   const nav = useNavigate();
 
 
@@ -1940,6 +1946,11 @@ const messagesEndRef = useRef(null);
   const rtcRemoteStreamRef = useRef(null);
   const rtcAudioWatchdogRef = useRef(null);
   const rtcWakeLockRef = useRef(null);
+  // ORKIO_AO60J_REALTIME_FOREGROUND_WAKE_GUARD
+  // Best-effort screen wake lock while Realtime is active in web/PWA foreground.
+  // This keeps the display from auto-locking on supported Android/iOS/desktop browsers.
+  const rtcWakeLockGuardTimerRef = useRef(null);
+  const rtcWakeLockWantedRef = useRef(false);
   const rtcLastVisibilityHiddenAtRef = useRef(null);
   const rtcTextBufRef = useRef("");
   const rtcLastMagicRef = useRef("");
@@ -1967,6 +1978,18 @@ const rtcLastUserActivityAtRef = useRef(0);
   const rtcLivePollTimerRef = useRef(null);
   const rtcSeenBackendResponseIdsRef = useRef(new Set());
   const rtcConnectingRef = useRef(false);
+  // ORKIO_AO60I_REALTIME_TIMEBOX_COOLDOWN_COUNTER
+  const rtcTimeboxTimerRef = useRef(null);
+  const rtcCooldownTimerRef = useRef(null);
+  const rtcCooldownUntilRef = useRef(0);
+  // ORKIO_AO60I_HF2_POLICY_REF
+  // Keeps web and PWA timer/cooldown aligned with backend-returned timebox policy.
+  const rtcTimeboxPolicyRef = useRef({
+    maxSeconds: REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS,
+    cooldownSeconds: REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS,
+  });
+  const [rtcTimeboxRemaining, setRtcTimeboxRemaining] = useState(null);
+  const [rtcCooldownRemaining, setRtcCooldownRemaining] = useState(0);
   // PATCH0100_27_2B: UI log + punct status
   const [rtcAuditEvents, setRtcAuditEvents] = useState([]);
   const [rtcPunctStatus, setRtcPunctStatus] = useState(null); // null | 'pending' | 'done' | 'timeout'
@@ -4729,17 +4752,58 @@ function scheduleRealtimeIdleFollowup() {
     }, 2500);
   }
 
+  function isRealtimeDocumentVisible() {
+    try {
+      if (typeof document === "undefined") return true;
+      return document.visibilityState !== "hidden";
+    } catch {
+      return true;
+    }
+  }
+
   async function requestRealtimeWakeLock(reason = "realtime_active") {
     try {
-      if (typeof navigator === "undefined" || !navigator.wakeLock?.request) return false;
-      try { await rtcWakeLockRef.current?.release?.(); } catch {}
+      if (typeof navigator === "undefined" || !navigator.wakeLock?.request) {
+        logRealtimeStep("mobile:wake_lock_not_supported", { reason });
+        return false;
+      }
+
+      if (!isRealtimeDocumentVisible()) {
+        logRealtimeStep("mobile:wake_lock_deferred_hidden", { reason });
+        return false;
+      }
+
+      const existing = rtcWakeLockRef.current;
+      if (existing && existing.released !== true) {
+        logRealtimeStep("mobile:wake_lock_already_active", { reason });
+        return true;
+      }
+
       const lock = await navigator.wakeLock.request("screen");
       rtcWakeLockRef.current = lock;
+
       try {
         lock.addEventListener?.("release", () => {
-          logRealtimeStep("mobile:wake_lock_released", { reason });
+          logRealtimeStep("mobile:wake_lock_released", {
+            reason,
+            wanted: Boolean(rtcWakeLockWantedRef.current),
+            realtime: Boolean(realtimeModeRef.current || rtcSessionIdRef.current || rtcConnectingRef.current),
+            visibility: typeof document !== "undefined" ? document.visibilityState : null,
+          });
+
+          // Reacquire when release was caused by transient browser/OS behavior while Realtime remains foreground-active.
+          if (
+            rtcWakeLockWantedRef.current &&
+            (realtimeModeRef.current || rtcSessionIdRef.current || rtcConnectingRef.current) &&
+            isRealtimeDocumentVisible()
+          ) {
+            setTimeout(() => {
+              try { void requestRealtimeWakeLock("release_reacquire"); } catch {}
+            }, 600);
+          }
         });
       } catch {}
+
       logRealtimeStep("mobile:wake_lock_acquired", { reason });
       return true;
     } catch (err) {
@@ -4748,13 +4812,197 @@ function scheduleRealtimeIdleFollowup() {
     }
   }
 
+  function clearRealtimeWakeLockGuard(reason = "wake_guard_clear") {
+    try {
+      if (rtcWakeLockGuardTimerRef.current) {
+        clearInterval(rtcWakeLockGuardTimerRef.current);
+        rtcWakeLockGuardTimerRef.current = null;
+      }
+      logRealtimeStep("mobile:wake_lock_guard_cleared", { reason });
+    } catch {}
+  }
+
+  function startRealtimeWakeLockGuard(reason = "realtime_active") {
+    try {
+      rtcWakeLockWantedRef.current = true;
+      void requestRealtimeWakeLock(reason);
+
+      clearRealtimeWakeLockGuard("restart");
+      rtcWakeLockGuardTimerRef.current = setInterval(() => {
+        try {
+          if (!rtcWakeLockWantedRef.current) return;
+          if (!(realtimeModeRef.current || rtcSessionIdRef.current || rtcConnectingRef.current)) return;
+          if (!isRealtimeDocumentVisible()) return;
+          const lock = rtcWakeLockRef.current;
+          if (!lock || lock.released === true) {
+            void requestRealtimeWakeLock("guard_tick_reacquire");
+          }
+        } catch {}
+      }, 15000);
+
+      logRealtimeStep("mobile:wake_lock_guard_started", { reason });
+    } catch {}
+  }
+
   async function releaseRealtimeWakeLock(reason = "realtime_stop") {
     try {
+      rtcWakeLockWantedRef.current = false;
+      clearRealtimeWakeLockGuard(reason);
       const lock = rtcWakeLockRef.current;
       rtcWakeLockRef.current = null;
       if (lock) await lock.release?.();
       logRealtimeStep("mobile:wake_lock_release_requested", { reason });
     } catch {}
+  }
+
+  // ORKIO_AO60I_REALTIME_TIMEBOX_COOLDOWN_COUNTER
+  function formatRealtimeCountdown(totalSeconds) {
+    const safe = Math.max(0, Math.ceil(Number(totalSeconds || 0)));
+    const mm = String(Math.floor(safe / 60)).padStart(2, "0");
+    const ss = String(safe % 60).padStart(2, "0");
+    return `${mm}:${ss}`;
+  }
+
+  function formatRealtimeDurationLabel(totalSeconds) {
+    const safe = Math.max(1, Math.ceil(Number(totalSeconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS)));
+    if (safe < 60) return `${safe} segundo${safe === 1 ? "" : "s"}`;
+    const minutes = Math.floor(safe / 60);
+    const seconds = safe % 60;
+    if (!seconds) return `${minutes} minuto${minutes === 1 ? "" : "s"}`;
+    return `${minutes} minuto${minutes === 1 ? "" : "s"} e ${seconds} segundo${seconds === 1 ? "" : "s"}`;
+  }
+
+  function isRealtimeTimeboxLimitedUser() {
+    return !canAccessAdmin;
+  }
+
+  function clearRealtimeTimeboxTimer() {
+    try {
+      if (rtcTimeboxTimerRef.current) clearInterval(rtcTimeboxTimerRef.current);
+    } catch {}
+    rtcTimeboxTimerRef.current = null;
+    setRtcTimeboxRemaining(null);
+  }
+
+  function clearRealtimeCooldownTimer() {
+    try {
+      if (rtcCooldownTimerRef.current) clearInterval(rtcCooldownTimerRef.current);
+    } catch {}
+    rtcCooldownTimerRef.current = null;
+  }
+
+  function startRealtimeCooldown(seconds = REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS, reason = "cooldown") {
+    if (!isRealtimeTimeboxLimitedUser()) return;
+    const duration = Math.max(1, Math.ceil(Number(seconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS)));
+    const until = Date.now() + duration * 1000;
+    rtcCooldownUntilRef.current = until;
+
+    clearRealtimeCooldownTimer();
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((rtcCooldownUntilRef.current - Date.now()) / 1000));
+      setRtcCooldownRemaining(remaining);
+      if (remaining <= 0) {
+        clearRealtimeCooldownTimer();
+        rtcCooldownUntilRef.current = 0;
+      }
+    };
+
+    tick();
+    rtcCooldownTimerRef.current = setInterval(tick, 1000);
+    logRealtimeStep("timebox:cooldown_started", { reason, seconds: duration });
+  }
+
+  function extractRealtimeRetryAfterSeconds(err) {
+    const candidates = [
+      err?.retry_after_seconds,
+      err?.retryAfterSeconds,
+      err?.data?.retry_after_seconds,
+      err?.data?.detail?.retry_after_seconds,
+      err?.detail?.retry_after_seconds,
+      err?.payload?.retry_after_seconds,
+      err?.response?.data?.detail?.retry_after_seconds,
+    ];
+    for (const value of candidates) {
+      const n = Number(value);
+      if (Number.isFinite(n) && n > 0) return Math.ceil(n);
+    }
+
+    try {
+      const raw = String(err?.message || "");
+      const parsed = raw.trim().startsWith("{") ? JSON.parse(raw) : null;
+      const n = Number(parsed?.retry_after_seconds || parsed?.detail?.retry_after_seconds);
+      if (Number.isFinite(n) && n > 0) return Math.ceil(n);
+    } catch {}
+
+    return null;
+  }
+
+  function startRealtimeTimebox(seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
+    if (!isRealtimeTimeboxLimitedUser()) return;
+    clearRealtimeTimeboxTimer();
+
+    const maxSeconds = Math.max(1, Math.ceil(Number(seconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS)));
+    const startedAt = Date.now();
+    const endsAt = startedAt + maxSeconds * 1000;
+
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      setRtcTimeboxRemaining(remaining);
+
+      if (remaining === 10) {
+        setUploadStatus("⏳ A sessão de voz termina em 10 segundos. O chat por texto continuará disponível.");
+        setTimeout(() => setUploadStatus(""), 2500);
+      }
+
+      if (remaining <= 0) {
+        clearRealtimeTimeboxTimer();
+        logRealtimeStep("timebox:limit_reached", { maxSeconds });
+        setRealtimeMode(false);
+        realtimeModeRef.current = false;
+        setV2vPhase(null);
+        setV2vError(null);
+        const cooldownSeconds = Math.max(1, Math.ceil(Number(rtcTimeboxPolicyRef.current?.cooldownSeconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS)));
+        const cooldownLabel = formatRealtimeCountdown(cooldownSeconds);
+        setUploadStatus(`⏳ Sessão de voz encerrada. Nova liberação em ${cooldownLabel}. O chat por texto continua disponível.`);
+        setTimeout(() => setUploadStatus(""), 4500);
+        void stopRealtime("time_limit_frontend");
+      }
+    };
+
+    tick();
+    rtcTimeboxTimerRef.current = setInterval(tick, 1000);
+    logRealtimeStep("timebox:started", { seconds: maxSeconds });
+  }
+
+  function announceRealtimeTimeboxStart(dc, seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
+    if (!isRealtimeTimeboxLimitedUser()) return false;
+    if (!dc || dc.readyState !== "open") return false;
+
+    const maxSeconds = Math.max(1, Math.ceil(Number(seconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS)));
+    const durationLabel = formatRealtimeDurationLabel(maxSeconds);
+    const cooldownSeconds = Math.max(1, Math.ceil(Number(rtcTimeboxPolicyRef.current?.cooldownSeconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS)));
+    const cooldownLabel = formatRealtimeDurationLabel(cooldownSeconds);
+    const announcement =
+      `Efatà. Orkio em tempo real. Temos até ${durationLabel} para conversar nesta sessão de voz. ` +
+      "O contador está na tela e estou à sua disposição. " +
+      "Vou tentar manter a tela ligada enquanto o navegador permitir. " +
+      `Ao final, a voz em tempo real estará disponível novamente em ${cooldownLabel}; o chat por texto continua disponível.`;
+
+    try {
+      logRealtimeStep("timebox:start_announcement_requested", { seconds: maxSeconds, durationLabel });
+      dc.send(JSON.stringify({
+        type: "response.create",
+        response: {
+          output_modalities: ["audio", "text"],
+          instructions: announcement,
+          audio: { output: { voice: rtcVoiceRef.current } }
+        }
+      }));
+      return true;
+    } catch (err) {
+      logRealtimeStep("timebox:start_announcement_failed", { message: err?.message || null });
+      return false;
+    }
   }
 
   function markRealtimePausedForBackground(reason = "mobile_background") {
@@ -4782,6 +5030,18 @@ function scheduleRealtimeIdleFollowup() {
       return;
     }
 
+    if (isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0) {
+      const label = formatRealtimeCountdown(rtcCooldownRemaining);
+      logRealtimeStep("start:blocked_by_local_cooldown", { remaining_seconds: rtcCooldownRemaining });
+      setRealtimeMode(false);
+      realtimeModeRef.current = false;
+      setV2vPhase("error");
+      setV2vError(`A voz em tempo real estará disponível novamente em ${label}. O chat por texto continua disponível.`);
+      setUploadStatus(`⏳ Voz disponível novamente em ${label}.`);
+      setTimeout(() => setUploadStatus(""), 3500);
+      return;
+    }
+
     rtcConnectingRef.current = true;
 
     try {
@@ -4800,6 +5060,10 @@ function scheduleRealtimeIdleFollowup() {
           realtimeBrowserPreflight
         );
       }
+
+      // ORKIO_AO60J_REALTIME_FOREGROUND_WAKE_GUARD
+      // Acquire as early as possible after user gesture/preflight so the phone does not auto-lock during setup.
+      startRealtimeWakeLockGuard("start_preflight_ok");
 
       if (rtcSessionIdRef.current) {
         await stopRealtime('restart_existing_session');
@@ -4828,6 +5092,9 @@ function scheduleRealtimeIdleFollowup() {
       const ORKIO_ENV = (typeof window !== "undefined" && window.__ORKIO_ENV__) ? window.__ORKIO_ENV__ : {};
       const envVoice = (ORKIO_ENV.VITE_REALTIME_VOICE || import.meta.env.VITE_REALTIME_VOICE || "").trim();
       const rtModel = (ORKIO_ENV.VITE_REALTIME_MODEL || import.meta.env.VITE_REALTIME_MODEL || "gpt-realtime-mini").trim();
+      const effectiveRealtimeTtlSeconds = isRealtimeTimeboxLimitedUser()
+        ? REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS
+        : 600;
       const magicEnabled = (ORKIO_ENV.VITE_REALTIME_MAGICWORDS || import.meta.env.VITE_REALTIME_MAGICWORDS || "true").toString().trim().toLowerCase() !== "false";
       rtcMagicEnabledRef.current = magicEnabled;
 
@@ -4846,13 +5113,26 @@ function scheduleRealtimeIdleFollowup() {
             thread_id: threadId || null,
             voice: rtVoice,
             model: rtModel,
-            ttl_seconds: 600,
+            ttl_seconds: effectiveRealtimeTtlSeconds,
             mode: "summit",
             response_profile: "stage",
             language_profile: languageProfile,
           })
-        : await startRealtimeSession({ agent_id: agentIdToSend, thread_id: threadId || null, voice: rtVoice, model: rtModel, ttl_seconds: 600 });
+        : await startRealtimeSession({ agent_id: agentIdToSend, thread_id: threadId || null, voice: rtVoice, model: rtModel, ttl_seconds: effectiveRealtimeTtlSeconds });
       logRealtimeStep('start:session_ok', start);
+      // ORKIO_AO60I_HF2_BACKEND_POLICY_SYNC
+      // Backend is the source of truth. Frontend mirrors returned policy for web/PWA timer/cooldown UX.
+      try {
+        const timebox = start?.timebox || {};
+        const maxSeconds = Number(timebox?.max_seconds);
+        const cooldownSeconds = Number(timebox?.cooldown_seconds);
+        if (isRealtimeTimeboxLimitedUser()) {
+          rtcTimeboxPolicyRef.current = {
+            maxSeconds: Number.isFinite(maxSeconds) && maxSeconds > 0 ? Math.ceil(maxSeconds) : REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS,
+            cooldownSeconds: Number.isFinite(cooldownSeconds) && cooldownSeconds > 0 ? Math.ceil(cooldownSeconds) : REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS,
+          };
+        }
+      } catch {}
       const EPHEMERAL_KEY = start?.client_secret?.value || start?.client_secret_value || start?.value || null;
       if (!EPHEMERAL_KEY) {
         logRealtimeStep('start:ephemeral_missing', start);
@@ -5041,10 +5321,29 @@ function scheduleRealtimeIdleFollowup() {
 
             dc.addEventListener('open', () => {
         setV2vPhase('listening');
-        setUploadStatus('⚡ Realtime ativo — fale normalmente.');
-        setTimeout(() => setUploadStatus(''), 1500);
+
+        const activeTimeboxSeconds = Math.max(
+          1,
+          Math.ceil(Number(start?.timebox?.max_seconds || rtcTimeboxPolicyRef.current?.maxSeconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS))
+        );
+
+        if (isRealtimeTimeboxLimitedUser()) {
+          const durationLabel = formatRealtimeDurationLabel(activeTimeboxSeconds);
+          const cooldownSeconds = Math.max(
+            1,
+            Math.ceil(Number(rtcTimeboxPolicyRef.current?.cooldownSeconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS))
+          );
+          const cooldownLabel = formatRealtimeDurationLabel(cooldownSeconds);
+          setUploadStatus(`⚡ Orkio em tempo real — até ${durationLabel}. Depois, nova voz em ${cooldownLabel}. Texto liberado.`);
+          setTimeout(() => setUploadStatus(''), 3500);
+        } else {
+          setUploadStatus('⚡ Realtime ativo — fale normalmente.');
+          setTimeout(() => setUploadStatus(''), 1500);
+        }
+
         startRealtimeAudioWatchdog();
-        void requestRealtimeWakeLock("data_channel_open");
+        startRealtimeTimebox(activeTimeboxSeconds);
+        startRealtimeWakeLockGuard("data_channel_open");
         ensureRealtimeAudioOutput("data_channel_open");
 
         // Summit language hint is locked to English unless explicitly overridden by env.
@@ -5072,6 +5371,10 @@ function scheduleRealtimeIdleFollowup() {
             }
           }));
         } catch {}
+
+        // ORKIO_AO60I_HF2_START_ANNOUNCEMENT
+        // Same path serves desktop web and installed PWA; do not gate by isMobile.
+        announceRealtimeTimeboxStart(dc, activeTimeboxSeconds);
       });
 
       dc.addEventListener('message', (e) => {
@@ -5284,6 +5587,18 @@ function scheduleRealtimeIdleFollowup() {
         threadId: rtcThreadIdRef.current || threadId || null,
       });
       setV2vPhase('error');
+      const retryAfterSeconds = extractRealtimeRetryAfterSeconds(e);
+      if (retryAfterSeconds) {
+        startRealtimeCooldown(retryAfterSeconds, "backend_cooldown");
+        const label = formatRealtimeCountdown(retryAfterSeconds);
+        setRealtimeMode(false);
+        realtimeModeRef.current = false;
+        setV2vError(`A voz em tempo real estará disponível novamente em ${label}. O chat por texto continua disponível.`);
+        setUploadStatus(`⏳ Voz disponível novamente em ${label}.`);
+        setTimeout(() => setUploadStatus(""), 4000);
+        await stopRealtime("start_blocked_by_cooldown");
+        return;
+      }
       const friendlyRealtimeError = normalizeUserFacingRuntimeMessage(
         [
           e?.code,
@@ -5611,6 +5926,7 @@ async function stopRealtime(reason = 'client_stop') {
       clearRealtimeResponseTimeout();
       clearRealtimeIdleFollowup();
       clearRealtimeAudioWatchdog();
+      clearRealtimeTimeboxTimer();
       await releaseRealtimeWakeLock(reason);
       flushRealtimePartialTranscript(`stop_${reason}_partial_flush`);
       rtcFallbackActiveRef.current = false;
@@ -5672,6 +5988,10 @@ async function stopRealtime(reason = 'client_stop') {
         try { processing.rawStream?.getTracks?.().forEach((t) => { try { t.stop?.(); } catch {} }); } catch {}
         try { processing.ctx?.close?.(); } catch {}
       }
+
+      if (sid && isRealtimeTimeboxLimitedUser() && !String(reason || "").includes("start_error") && !String(reason || "").includes("start_blocked_by_cooldown")) {
+        startRealtimeCooldown(rtcTimeboxPolicyRef.current?.cooldownSeconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS, reason);
+      }
     } catch {}
   }
 
@@ -5690,7 +6010,7 @@ async function stopRealtime(reason = 'client_stop') {
         if (state === "visible") {
           const hiddenMs = rtcLastVisibilityHiddenAtRef.current ? Date.now() - rtcLastVisibilityHiddenAtRef.current : null;
           rtcLastVisibilityHiddenAtRef.current = null;
-          void requestRealtimeWakeLock("visibility_visible");
+          startRealtimeWakeLockGuard("visibility_visible");
           ensureRealtimeAudioOutput("visibility_visible");
           logRealtimeStep("mobile:visibility_restored", { hidden_ms: hiddenMs });
           if (hiddenMs && hiddenMs > 15000 && rtcSessionIdRef.current) {
@@ -5712,7 +6032,7 @@ async function stopRealtime(reason = 'client_stop') {
     function handleRealtimeFocus() {
       try {
         if (!realtimeModeRef.current && !rtcSessionIdRef.current) return;
-        void requestRealtimeWakeLock("window_focus");
+        startRealtimeWakeLockGuard("window_focus");
         ensureRealtimeAudioOutput("window_focus");
       } catch {}
     }
@@ -5761,6 +6081,16 @@ async function stopRealtime(reason = 'client_stop') {
   function toggleRealtimeMode() {
     if (SUMMIT_VOICE_MODE !== "realtime") return;
     const next = !realtimeMode;
+
+    if (next && isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0) {
+      const label = formatRealtimeCountdown(rtcCooldownRemaining);
+      setV2vPhase("error");
+      setV2vError(`A voz em tempo real estará disponível novamente em ${label}. O chat por texto continua disponível.`);
+      setUploadStatus(`⏳ Voz disponível novamente em ${label}.`);
+      setTimeout(() => setUploadStatus(""), 3500);
+      return;
+    }
+
     setRealtimeMode(next);
     realtimeModeRef.current = next;
 
@@ -7536,15 +7866,74 @@ async function stopRealtime(reason = 'client_stop') {
                   background: realtimeMode ? "rgba(80,160,255,0.25)" : "rgba(255,255,255,0.05)",
                   border: realtimeMode ? "1px solid rgba(80,160,255,0.5)" : "1px solid rgba(255,255,255,0.1)",
                   position: "relative",
-                  opacity: 1,
-                  cursor: "pointer",
+                  opacity: (!realtimeMode && isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0) ? 0.45 : 1,
+                  cursor: (!realtimeMode && isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0) ? "not-allowed" : "pointer",
                 }}
                 onClick={toggleRealtimeMode}
-                title={realtimeMode ? "Desativar voz em tempo real" : "Ativar voz em tempo real"}
+                disabled={!realtimeMode && isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0}
+                title={
+                  (!realtimeMode && isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0)
+                    ? `Voz disponível novamente em ${formatRealtimeCountdown(rtcCooldownRemaining)}`
+                    : realtimeMode ? "Desativar voz em tempo real" : "Ativar voz em tempo real"
+                }
               >
                 <span style={{ fontSize: "16px" }}>⚡</span>
                 {realtimeMode && <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "8px", height: "8px", borderRadius: "50%", background: "#50a0ff", animation: "pulse 1.5s infinite" }} />}
               </button>
+              {SUMMIT_VOICE_MODE === "realtime" && isRealtimeTimeboxLimitedUser() && (realtimeMode || rtcCooldownRemaining > 0) ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    height: "32px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {realtimeMode ? (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        height: "32px",
+                        padding: "0 8px",
+                        borderRadius: "999px",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(255,255,255,0.05)",
+                        fontSize: "12px",
+                        lineHeight: "1",
+                        opacity: 0.95,
+                      }}
+                      title="Tentando manter a tela ligada durante a voz"
+                    >
+                      <span aria-hidden="true">🔆</span>
+                      <span>Tela ativa</span>
+                    </span>
+                  ) : null}
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      minWidth: "64px",
+                      height: "32px",
+                      padding: "0 8px",
+                      borderRadius: "999px",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      background: "rgba(255,255,255,0.05)",
+                      fontSize: "12px",
+                      lineHeight: "1",
+                      whiteSpace: "nowrap",
+                      opacity: 0.95,
+                    }}
+                    title={realtimeMode ? "Tempo restante da sessão de voz" : "Voz disponível novamente em breve"}
+                  >
+                    <span aria-hidden="true">{realtimeMode ? "⏳" : "🕒"}</span>
+                    <span>{realtimeMode ? formatRealtimeCountdown(rtcTimeboxRemaining ?? REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) : formatRealtimeCountdown(rtcCooldownRemaining)}</span>
+                  </span>
+                </span>
+              ) : null}
             )}
 
             {!isMobile && realtimeMode && SUMMIT_VOICE_MODE === "realtime" ? (
