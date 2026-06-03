@@ -80,7 +80,22 @@ function realtimePreflightMessage(reason) {
 
 
 function normalizeUserFacingRuntimeMessage(value, context = "") {
-  const raw = String(value || "").trim();
+  let normalizedValue = value;
+  if (value && typeof value === "object") {
+    normalizedValue =
+      value.userMessage ??
+      value.message ??
+      value.detail?.message ??
+      value.detail ??
+      value.code ??
+      value.error ??
+      value.statusText ??
+      "";
+    if (typeof normalizedValue === "object") {
+      try { normalizedValue = JSON.stringify(normalizedValue); } catch { normalizedValue = ""; }
+    }
+  }
+  const raw = String(normalizedValue || "").trim();
   const lower = raw.toLowerCase();
 
   // ORKIO_AO60C_PWA_REALTIME_DIAGNOSTIC_GUARD
@@ -140,6 +155,16 @@ function normalizeUserFacingRuntimeMessage(value, context = "") {
   if (
     context === "voice" || context === "realtime"
   ) {
+    if (
+      lower.includes("rate_limited") ||
+      lower.includes("status_429") ||
+      lower.includes("http 429") ||
+      lower.includes("realtime_cooldown_active") ||
+      lower.includes("too many requests")
+    ) {
+      return "A voz em tempo real estará disponível novamente em alguns minutos. O chat por texto continua disponível.";
+    }
+
     if (
       lower.includes("auth_forbidden") ||
       lower.includes("status_403") ||
@@ -1990,6 +2015,14 @@ const rtcLastUserActivityAtRef = useRef(0);
   });
   const [rtcTimeboxRemaining, setRtcTimeboxRemaining] = useState(null);
   const [rtcCooldownRemaining, setRtcCooldownRemaining] = useState(0);
+  // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
+  // Harden 429/cooldown UX so Realtime never stays visually active after backend blocks /start.
+  // ORKIO_AO60K_HF1_RUNTIME_TIMEBOX_SYNC
+  // Backend-returned timebox policy is the source of truth. This fixes cases where
+  // the local cached user object temporarily looks like admin while the backend
+  // correctly treats the session as public beta/non-admin.
+  const rtcBackendTimeboxLimitedRef = useRef(false);
+  const [rtcBackendTimeboxLimited, setRtcBackendTimeboxLimited] = useState(false);
   // PATCH0100_27_2B: UI log + punct status
   const [rtcAuditEvents, setRtcAuditEvents] = useState([]);
   const [rtcPunctStatus, setRtcPunctStatus] = useState(null); // null | 'pending' | 'done' | 'timeout'
@@ -4873,7 +4906,7 @@ function scheduleRealtimeIdleFollowup() {
   }
 
   function isRealtimeTimeboxLimitedUser() {
-    return !canAccessAdmin;
+    return !canAccessAdmin || rtcBackendTimeboxLimitedRef.current === true || rtcBackendTimeboxLimited === true;
   }
 
   function clearRealtimeTimeboxTimer() {
@@ -4892,7 +4925,9 @@ function scheduleRealtimeIdleFollowup() {
   }
 
   function startRealtimeCooldown(seconds = REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS, reason = "cooldown") {
-    if (!isRealtimeTimeboxLimitedUser()) return;
+    // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
+    // If the backend returns 429/Retry-After, the UI must enter cooldown even when
+    // the local cached user object is stale or incorrectly looks like admin.
     const duration = Math.max(1, Math.ceil(Number(seconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS)));
     const until = Date.now() + duration * 1000;
     rtcCooldownUntilRef.current = until;
@@ -4913,14 +4948,29 @@ function scheduleRealtimeIdleFollowup() {
   }
 
   function extractRealtimeRetryAfterSeconds(err) {
+    // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
+    // Accept all common API error shapes used by apiFetch/fetch wrappers and CDNs.
     const candidates = [
       err?.retry_after_seconds,
+      err?.retryAfter,
+      err?.retry_after,
       err?.retryAfterSeconds,
       err?.data?.retry_after_seconds,
+      err?.data?.retryAfter,
+      err?.data?.retry_after,
       err?.data?.detail?.retry_after_seconds,
+      err?.data?.detail?.retryAfter,
       err?.detail?.retry_after_seconds,
+      err?.detail?.retryAfter,
       err?.payload?.retry_after_seconds,
+      err?.payload?.retryAfter,
+      err?.response?.data?.retry_after_seconds,
       err?.response?.data?.detail?.retry_after_seconds,
+      err?.response?.data?.detail?.retryAfter,
+      err?.headers?.["Retry-After"],
+      err?.headers?.["retry-after"],
+      err?.response?.headers?.["Retry-After"],
+      err?.response?.headers?.["retry-after"],
     ];
     for (const value of candidates) {
       const n = Number(value);
@@ -4928,14 +4978,96 @@ function scheduleRealtimeIdleFollowup() {
     }
 
     try {
-      const raw = String(err?.message || "");
-      const parsed = raw.trim().startsWith("{") ? JSON.parse(raw) : null;
-      const n = Number(parsed?.retry_after_seconds || parsed?.detail?.retry_after_seconds);
+      const raw = [
+        err?.message,
+        err?.userMessage,
+        typeof err?.detail === "string" ? err.detail : "",
+        typeof err?.data === "string" ? err.data : "",
+        typeof err?.payload === "string" ? err.payload : "",
+      ].filter(Boolean).join(" ");
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : (raw.trim().startsWith("{") ? JSON.parse(raw) : null);
+      const n = Number(
+        parsed?.retry_after_seconds ||
+        parsed?.retryAfter ||
+        parsed?.detail?.retry_after_seconds ||
+        parsed?.detail?.retryAfter ||
+        parsed?.data?.retry_after_seconds ||
+        parsed?.data?.retryAfter
+      );
       if (Number.isFinite(n) && n > 0) return Math.ceil(n);
     } catch {}
 
     return null;
   }
+
+  function isRealtimeCooldownOrRateLimitError(err) {
+    // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
+    const rawParts = [
+      err?.code,
+      err?.status,
+      err?.statusText,
+      err?.name,
+      err?.message,
+      err?.userMessage,
+      err?.detail,
+      err?.data,
+      err?.payload,
+      err?.error,
+    ];
+
+    let raw = "";
+    try {
+      raw = rawParts.map((part) => {
+        if (part === null || part === undefined) return "";
+        if (typeof part === "string") return part;
+        if (typeof part === "number" || typeof part === "boolean") return String(part);
+        return JSON.stringify(part);
+      }).filter(Boolean).join(" | ").toLowerCase();
+    } catch {
+      raw = String(err?.message || err || "").toLowerCase();
+    }
+
+    return Boolean(
+      extractRealtimeRetryAfterSeconds(err) ||
+      err?.status === 429 ||
+      err?.response?.status === 429 ||
+      err?.code === "RATE_LIMITED" ||
+      err?.code === "REALTIME_COOLDOWN_ACTIVE" ||
+      err?.isRateLimited === true ||
+      raw.includes("429") ||
+      raw.includes("rate_limited") ||
+      raw.includes("rate limited") ||
+      raw.includes("too many requests") ||
+      raw.includes("realtime_cooldown_active") ||
+      raw.includes("cooldown")
+    );
+  }
+
+  function applyRealtimeCooldownFromError(err, reason = "backend_cooldown_or_rate_limit") {
+    // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
+    const waitSeconds = Math.max(
+      1,
+      Math.ceil(Number(extractRealtimeRetryAfterSeconds(err) || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS))
+    );
+    rtcBackendTimeboxLimitedRef.current = true;
+    try { setRtcBackendTimeboxLimited(true); } catch {}
+    try { clearRealtimeTimeboxTimer(); } catch {}
+    try { startRealtimeCooldown(waitSeconds, reason); } catch {}
+    const label = formatRealtimeCountdown(waitSeconds);
+
+    try { setRealtimeMode(false); } catch {}
+    realtimeModeRef.current = false;
+    try { setRtcReadyToRespond(false); } catch {}
+    try { setV2vPhase("error"); } catch {}
+    try { setV2vError(`A voz em tempo real estará disponível novamente em ${label}. O chat por texto continua disponível.`); } catch {}
+    try { setUploadStatus(`⏳ Voz disponível novamente em ${label}. O chat por texto continua disponível.`); } catch {}
+    try { setTimeout(() => setUploadStatus(""), 4500); } catch {}
+    try { logRealtimeStep("timebox:cooldown_applied_from_error", { reason, waitSeconds }); } catch {}
+    return waitSeconds;
+  }
+
+
 
   function startRealtimeTimebox(seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
     if (!isRealtimeTimeboxLimitedUser()) return;
@@ -5120,17 +5252,35 @@ function scheduleRealtimeIdleFollowup() {
           })
         : await startRealtimeSession({ agent_id: agentIdToSend, thread_id: threadId || null, voice: rtVoice, model: rtModel, ttl_seconds: effectiveRealtimeTtlSeconds });
       logRealtimeStep('start:session_ok', start);
-      // ORKIO_AO60I_HF2_BACKEND_POLICY_SYNC
-      // Backend is the source of truth. Frontend mirrors returned policy for web/PWA timer/cooldown UX.
+      // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
+  // Harden 429/cooldown UX so Realtime never stays visually active after backend blocks /start.
+  // ORKIO_AO60K_HF1_RUNTIME_TIMEBOX_SYNC
+      // Backend is the source of truth. If backend says this session is limited,
+      // force frontend counter/stop/cooldown even if the cached local user object
+      // temporarily looks like admin/superadmin.
       try {
         const timebox = start?.timebox || {};
         const maxSeconds = Number(timebox?.max_seconds);
         const cooldownSeconds = Number(timebox?.cooldown_seconds);
-        if (isRealtimeTimeboxLimitedUser()) {
+        const limitedByBackend = (
+          timebox?.limited === true ||
+          String(timebox?.limited || "").trim().toLowerCase() === "true" ||
+          (Number.isFinite(maxSeconds) && maxSeconds > 0) ||
+          (Number.isFinite(cooldownSeconds) && cooldownSeconds > 0)
+        );
+        rtcBackendTimeboxLimitedRef.current = Boolean(limitedByBackend);
+        setRtcBackendTimeboxLimited(Boolean(limitedByBackend));
+        if (limitedByBackend || isRealtimeTimeboxLimitedUser()) {
           rtcTimeboxPolicyRef.current = {
             maxSeconds: Number.isFinite(maxSeconds) && maxSeconds > 0 ? Math.ceil(maxSeconds) : REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS,
             cooldownSeconds: Number.isFinite(cooldownSeconds) && cooldownSeconds > 0 ? Math.ceil(cooldownSeconds) : REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS,
           };
+          setRtcTimeboxRemaining(rtcTimeboxPolicyRef.current.maxSeconds);
+          logRealtimeStep("timebox:backend_policy_synced", {
+            limited: Boolean(limitedByBackend),
+            maxSeconds: rtcTimeboxPolicyRef.current.maxSeconds,
+            cooldownSeconds: rtcTimeboxPolicyRef.current.cooldownSeconds,
+          });
         }
       } catch {}
       const EPHEMERAL_KEY = start?.client_secret?.value || start?.client_secret_value || start?.value || null;
@@ -5587,15 +5737,9 @@ function scheduleRealtimeIdleFollowup() {
         threadId: rtcThreadIdRef.current || threadId || null,
       });
       setV2vPhase('error');
-      const retryAfterSeconds = extractRealtimeRetryAfterSeconds(e);
-      if (retryAfterSeconds) {
-        startRealtimeCooldown(retryAfterSeconds, "backend_cooldown");
-        const label = formatRealtimeCountdown(retryAfterSeconds);
-        setRealtimeMode(false);
-        realtimeModeRef.current = false;
-        setV2vError(`A voz em tempo real estará disponível novamente em ${label}. O chat por texto continua disponível.`);
-        setUploadStatus(`⏳ Voz disponível novamente em ${label}.`);
-        setTimeout(() => setUploadStatus(""), 4000);
+      if (isRealtimeCooldownOrRateLimitError(e)) {
+        // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
+        applyRealtimeCooldownFromError(e, "start_blocked_by_cooldown");
         await stopRealtime("start_blocked_by_cooldown");
         return;
       }
@@ -6102,7 +6246,30 @@ async function stopRealtime(reason = 'client_stop') {
       }
       try { stopMic(); } catch {}
       try { stopTts(); } catch {}
-      startRealtime();
+      void Promise.resolve(startRealtime()).catch((err) => {
+        // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
+        console.warn("[Realtime] startRealtime rejected outside internal catch", err);
+        if (isRealtimeCooldownOrRateLimitError(err)) {
+          applyRealtimeCooldownFromError(err, "toggle_start_rejected_cooldown");
+          void stopRealtime("toggle_start_rejected_cooldown");
+          return;
+        }
+        const friendlyRealtimeError = normalizeUserFacingRuntimeMessage(
+          [
+            err?.code,
+            err?.status ? `status_${err.status}` : "",
+            err?.userMessage,
+            err?.message,
+          ].filter(Boolean).join(" | ") || "Falha ao iniciar Realtime",
+          "realtime"
+        );
+        setRealtimeMode(false);
+        realtimeModeRef.current = false;
+        setV2vPhase("error");
+        setV2vError(friendlyRealtimeError);
+        setUploadStatus("❌ Realtime indisponível. Você pode continuar por texto.");
+        setTimeout(() => setUploadStatus(""), 3500);
+      });
     } else {
       void stopRealtime('toggle_off');
       setV2vPhase(null);
@@ -7866,13 +8033,13 @@ async function stopRealtime(reason = 'client_stop') {
                   background: realtimeMode ? "rgba(80,160,255,0.25)" : "rgba(255,255,255,0.05)",
                   border: realtimeMode ? "1px solid rgba(80,160,255,0.5)" : "1px solid rgba(255,255,255,0.1)",
                   position: "relative",
-                  opacity: (!realtimeMode && isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0) ? 0.45 : 1,
-                  cursor: (!realtimeMode && isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0) ? "not-allowed" : "pointer",
+                  opacity: (!realtimeMode && rtcCooldownRemaining > 0) ? 0.45 : 1,
+                  cursor: (!realtimeMode && rtcCooldownRemaining > 0) ? "not-allowed" : "pointer",
                 }}
                 onClick={toggleRealtimeMode}
-                disabled={!realtimeMode && isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0}
+                disabled={!realtimeMode && rtcCooldownRemaining > 0}
                 title={
-                  (!realtimeMode && isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0)
+                  (!realtimeMode && rtcCooldownRemaining > 0)
                     ? `Voz disponível novamente em ${formatRealtimeCountdown(rtcCooldownRemaining)}`
                     : realtimeMode ? "Desativar voz em tempo real" : "Ativar voz em tempo real"
                 }
@@ -7880,7 +8047,7 @@ async function stopRealtime(reason = 'client_stop') {
                 <span style={{ fontSize: "16px" }}>⚡</span>
                 {realtimeMode && <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "8px", height: "8px", borderRadius: "50%", background: "#50a0ff", animation: "pulse 1.5s infinite" }} />}
               </button>
-              {SUMMIT_VOICE_MODE === "realtime" && isRealtimeTimeboxLimitedUser() && (realtimeMode || rtcCooldownRemaining > 0) ? (
+              {SUMMIT_VOICE_MODE === "realtime" && (isRealtimeTimeboxLimitedUser() || rtcCooldownRemaining > 0) && (realtimeMode || rtcCooldownRemaining > 0) ? (
                 <span
                   style={{
                     display: "inline-flex",
