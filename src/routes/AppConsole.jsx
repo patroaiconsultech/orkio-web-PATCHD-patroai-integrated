@@ -1936,6 +1936,11 @@ const messagesEndRef = useRef(null);
   const rtcDcRef = useRef(null);
   const rtcAudioElRef = useRef(null);
   const rtcAudioProcessingRef = useRef(null);
+  // ORKIO_AO60H_REALTIME_MOBILE_AUDIO_TRANSCRIPT_LIFECYCLE
+  const rtcRemoteStreamRef = useRef(null);
+  const rtcAudioWatchdogRef = useRef(null);
+  const rtcWakeLockRef = useRef(null);
+  const rtcLastVisibilityHiddenAtRef = useRef(null);
   const rtcTextBufRef = useRef("");
   const rtcLastMagicRef = useRef("");
   const [rtcReadyToRespond, setRtcReadyToRespond] = useState(false);
@@ -4632,6 +4637,138 @@ function scheduleRealtimeIdleFollowup() {
     }
   }
 
+  // ORKIO_AO60H_REALTIME_MOBILE_AUDIO_TRANSCRIPT_LIFECYCLE
+  function clearRealtimeAudioWatchdog() {
+    if (rtcAudioWatchdogRef.current) {
+      try { clearInterval(rtcAudioWatchdogRef.current); } catch {}
+      rtcAudioWatchdogRef.current = null;
+    }
+  }
+
+  function ensureRealtimeAudioOutput(reason = "repair") {
+    try {
+      const audioEl = rtcAudioElRef.current;
+      if (!audioEl) return false;
+
+      try { audioEl.autoplay = true; } catch {}
+      try { audioEl.playsInline = true; } catch {}
+      try { audioEl.muted = false; } catch {}
+      try { audioEl.volume = 1; } catch {}
+      try { audioEl.setAttribute("playsinline", ""); } catch {}
+      try { audioEl.setAttribute("webkit-playsinline", ""); } catch {}
+
+      if (rtcRemoteStreamRef.current && audioEl.srcObject !== rtcRemoteStreamRef.current) {
+        try { audioEl.srcObject = rtcRemoteStreamRef.current; } catch {}
+      }
+
+      if (!audioEl.isConnected && typeof document !== "undefined" && document.body) {
+        try {
+          audioEl.style.display = "none";
+          document.body.appendChild(audioEl);
+        } catch {}
+      }
+
+      const shouldPlay = Boolean(audioEl.srcObject) && (audioEl.paused || Number(audioEl.volume || 0) < 0.95 || audioEl.muted);
+      if (shouldPlay) {
+        const p = audioEl.play?.();
+        if (p && typeof p.catch === "function") {
+          p.catch((err) => {
+            logRealtimeStep("audio:play_blocked", {
+              reason,
+              message: err?.message || null,
+              visibility: typeof document !== "undefined" ? document.visibilityState : null,
+            });
+          });
+        }
+      }
+
+      logRealtimeStep("audio:output_repaired", {
+        reason,
+        paused: !!audioEl.paused,
+        muted: !!audioEl.muted,
+        volume: Number(audioEl.volume || 0),
+        connected: !!audioEl.isConnected,
+        hasStream: !!audioEl.srcObject,
+      });
+      return true;
+    } catch (err) {
+      logRealtimeStep("audio:repair_failed", { reason, message: err?.message || null });
+      return false;
+    }
+  }
+
+  function flushRealtimePartialTranscript(reason = "partial_flush") {
+    try {
+      if (rtcAssistantFinalCommittedRef.current) return false;
+      const textFinal = (rtcTextBufRef.current || "").trim();
+      const audioFinal = (rtcAudioTranscriptBufRef.current || "").trim();
+      const finalText = textFinal || audioFinal;
+      if (!finalText) return false;
+      logRealtimeStep("runtime:partial_transcript_flushed", {
+        reason,
+        source: textFinal ? "text_buffer" : "audio_transcript_buffer",
+        finalText,
+      });
+      commitRealtimeAssistantFinal(finalText, { source: reason });
+      rtcTextBufRef.current = "";
+      rtcAudioTranscriptBufRef.current = "";
+      return true;
+    } catch (err) {
+      logRealtimeStep("runtime:partial_transcript_flush_failed", { reason, message: err?.message || null });
+      return false;
+    }
+  }
+
+  function startRealtimeAudioWatchdog() {
+    clearRealtimeAudioWatchdog();
+    rtcAudioWatchdogRef.current = setInterval(() => {
+      try {
+        if (!realtimeModeRef.current || !rtcSessionIdRef.current) return;
+        ensureRealtimeAudioOutput("watchdog");
+      } catch {}
+    }, 2500);
+  }
+
+  async function requestRealtimeWakeLock(reason = "realtime_active") {
+    try {
+      if (typeof navigator === "undefined" || !navigator.wakeLock?.request) return false;
+      try { await rtcWakeLockRef.current?.release?.(); } catch {}
+      const lock = await navigator.wakeLock.request("screen");
+      rtcWakeLockRef.current = lock;
+      try {
+        lock.addEventListener?.("release", () => {
+          logRealtimeStep("mobile:wake_lock_released", { reason });
+        });
+      } catch {}
+      logRealtimeStep("mobile:wake_lock_acquired", { reason });
+      return true;
+    } catch (err) {
+      logRealtimeStep("mobile:wake_lock_unavailable", { reason, message: err?.message || null });
+      return false;
+    }
+  }
+
+  async function releaseRealtimeWakeLock(reason = "realtime_stop") {
+    try {
+      const lock = rtcWakeLockRef.current;
+      rtcWakeLockRef.current = null;
+      if (lock) await lock.release?.();
+      logRealtimeStep("mobile:wake_lock_release_requested", { reason });
+    } catch {}
+  }
+
+  function markRealtimePausedForBackground(reason = "mobile_background") {
+    try {
+      setV2vPhase("error");
+      setV2vError(
+        "Realtime pausado porque o PWA foi para segundo plano ou a tela foi bloqueada. Toque no ⚡ para reconectar."
+      );
+      setUploadStatus("⚡ Realtime pausado. Toque no ⚡ para reconectar.");
+      setTimeout(() => setUploadStatus(""), 3500);
+      logRealtimeStep("mobile:background_pause", { reason });
+    } catch {}
+  }
+
   async function startRealtime() {
     if (rtcConnectingRef.current) {
       console.warn("[Realtime] start skipped: already connecting");
@@ -4747,17 +4884,21 @@ function scheduleRealtimeIdleFollowup() {
       const audioEl = document.createElement('audio');
       audioEl.autoplay = true;
       audioEl.playsInline = true;
+      audioEl.muted = false;
+      audioEl.volume = 1;
+      try { audioEl.setAttribute("playsinline", ""); } catch {}
+      try { audioEl.setAttribute("webkit-playsinline", ""); } catch {}
       rtcAudioElRef.current = audioEl;
       pc.ontrack = (e) => {
         try {
-          audioEl.srcObject = e.streams[0];
+          rtcRemoteStreamRef.current = e.streams?.[0] || null;
+          audioEl.srcObject = rtcRemoteStreamRef.current;
           // Ensure element is connected for better autoplay compatibility
           if (!audioEl.isConnected) {
             audioEl.style.display = "none";
             document.body.appendChild(audioEl);
           }
-          const p = audioEl.play?.();
-          if (p && typeof p.catch === "function") p.catch(() => {});
+          ensureRealtimeAudioOutput("ontrack");
         } catch {}
       };
 
@@ -4874,13 +5015,17 @@ function scheduleRealtimeIdleFollowup() {
         const state = pc.connectionState || "unknown";
         logRealtimeStep("pc:connection_state", { state });
         if (state === "failed" || state === "disconnected" || state === "closed") {
+          flushRealtimePartialTranscript(`pc_${state}_partial_flush`);
           setV2vError(`Realtime connection ${state}`);
           if (realtimeModeRef.current) void activateSilentRealtimeFallback(`pc_${state}`);
+        } else if (state === "connected") {
+          ensureRealtimeAudioOutput("pc_connected");
         }
       };
 
       dc.addEventListener("close", () => {
         logRealtimeStep("dc:close");
+        flushRealtimePartialTranscript("dc_close_partial_flush");
         rtcResponseInFlightRef.current = false;
         if (realtimeModeRef.current) {
           setV2vPhase("error");
@@ -4898,6 +5043,9 @@ function scheduleRealtimeIdleFollowup() {
         setV2vPhase('listening');
         setUploadStatus('⚡ Realtime ativo — fale normalmente.');
         setTimeout(() => setUploadStatus(''), 1500);
+        startRealtimeAudioWatchdog();
+        void requestRealtimeWakeLock("data_channel_open");
+        ensureRealtimeAudioOutput("data_channel_open");
 
         // Summit language hint is locked to English unless explicitly overridden by env.
         try {
@@ -5003,6 +5151,12 @@ function scheduleRealtimeIdleFollowup() {
           if (ev?.type === 'response.audio_transcript.delta' && ev?.delta) {
             clearRealtimeResponseTimeout();
             rtcAudioTranscriptBufRef.current = (rtcAudioTranscriptBufRef.current || '') + ev.delta;
+            try {
+              const preview = (rtcAudioTranscriptBufRef.current || "").trim();
+              if (preview) {
+                setUploadStatus(`🔊 Orkio: ${preview.slice(-90)}`);
+              }
+            } catch {}
           }
           if (ev?.type === 'response.audio_transcript.done' || ev?.type === 'response.audio_transcript.final') {
             clearRealtimeResponseTimeout();
@@ -5456,6 +5610,9 @@ async function stopRealtime(reason = 'client_stop') {
     try {
       clearRealtimeResponseTimeout();
       clearRealtimeIdleFollowup();
+      clearRealtimeAudioWatchdog();
+      await releaseRealtimeWakeLock(reason);
+      flushRealtimePartialTranscript(`stop_${reason}_partial_flush`);
       rtcFallbackActiveRef.current = false;
       if (rtcFlushTimerRef.current) { try { clearInterval(rtcFlushTimerRef.current); } catch {} rtcFlushTimerRef.current = null; }
       clearRealtimeLivePoll();
@@ -5494,6 +5651,7 @@ async function stopRealtime(reason = 'client_stop') {
 
       const a = rtcAudioElRef.current;
       rtcAudioElRef.current = null;
+      rtcRemoteStreamRef.current = null;
       if (a) {
         try { a.pause(); } catch {}
         try { a.srcObject = null; } catch {}
@@ -5516,6 +5674,61 @@ async function stopRealtime(reason = 'client_stop') {
       }
     } catch {}
   }
+
+  useEffect(() => {
+    function handleRealtimeVisibilityChange() {
+      try {
+        if (!realtimeModeRef.current && !rtcSessionIdRef.current) return;
+        const state = typeof document !== "undefined" ? document.visibilityState : "visible";
+        logRealtimeStep("mobile:visibility_change", { state });
+        if (state === "hidden") {
+          rtcLastVisibilityHiddenAtRef.current = Date.now();
+          setUploadStatus("⚡ Realtime ativo. Mantenha a tela ligada para preservar voz e transcrição.");
+          return;
+        }
+
+        if (state === "visible") {
+          const hiddenMs = rtcLastVisibilityHiddenAtRef.current ? Date.now() - rtcLastVisibilityHiddenAtRef.current : null;
+          rtcLastVisibilityHiddenAtRef.current = null;
+          void requestRealtimeWakeLock("visibility_visible");
+          ensureRealtimeAudioOutput("visibility_visible");
+          logRealtimeStep("mobile:visibility_restored", { hidden_ms: hiddenMs });
+          if (hiddenMs && hiddenMs > 15000 && rtcSessionIdRef.current) {
+            setUploadStatus("⚡ Realtime retomado. Se o áudio estiver baixo, toque no ⚡ para reconectar limpo.");
+            setTimeout(() => setUploadStatus(""), 3500);
+          }
+        }
+      } catch {}
+    }
+
+    function handleRealtimePageHide() {
+      try {
+        if (!realtimeModeRef.current && !rtcSessionIdRef.current) return;
+        markRealtimePausedForBackground("pagehide");
+        void stopRealtime("pagehide_mobile_background");
+      } catch {}
+    }
+
+    function handleRealtimeFocus() {
+      try {
+        if (!realtimeModeRef.current && !rtcSessionIdRef.current) return;
+        void requestRealtimeWakeLock("window_focus");
+        ensureRealtimeAudioOutput("window_focus");
+      } catch {}
+    }
+
+    try { document.addEventListener("visibilitychange", handleRealtimeVisibilityChange); } catch {}
+    try { window.addEventListener("focus", handleRealtimeFocus); } catch {}
+    try { window.addEventListener("pageshow", handleRealtimeFocus); } catch {}
+    try { window.addEventListener("pagehide", handleRealtimePageHide); } catch {}
+
+    return () => {
+      try { document.removeEventListener("visibilitychange", handleRealtimeVisibilityChange); } catch {}
+      try { window.removeEventListener("focus", handleRealtimeFocus); } catch {}
+      try { window.removeEventListener("pageshow", handleRealtimeFocus); } catch {}
+      try { window.removeEventListener("pagehide", handleRealtimePageHide); } catch {}
+    };
+  }, []);
 
 
   async function submitStageReview(clarity, naturalness, institutionalFit) {
