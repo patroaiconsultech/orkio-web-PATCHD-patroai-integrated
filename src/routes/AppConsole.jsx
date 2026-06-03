@@ -2909,22 +2909,32 @@ function formatAgentOptionLabel(agent) {
   }
 
   function resolveHostAgentId(modeOverride = null) {
-    const mode = publicBetaOrkioOnly ? "single" : String(modeOverride || destMode || "team").trim().toLowerCase();
-    const orkio = agents.find((a) => (a?.name || "").toLowerCase() === "orkio") || agents.find((a) => a?.is_default) || agents[0] || null;
+    // ORKIO_AO60F_REALTIME_ORKIO_ONLY_IDENTITY_GUARD
+    const namedOrkio =
+      agents.find((a) => (a?.name || "").toLowerCase() === "orkio") ||
+      agents.find((a) => (a?.slug || "").toLowerCase() === "orkio") ||
+      agents.find((a) => (a?.key || "").toLowerCase() === "orkio") ||
+      null;
+    const fallbackAgent = namedOrkio || agents.find((a) => a?.is_default) || agents[0] || null;
+    if (publicBetaOrkioOnly) {
+      return namedOrkio?.id || null;
+    }
+
+    const mode = String(modeOverride || destMode || "team").trim().toLowerCase();
 
     if (mode === "single") {
-      return destSingle || orkio?.id || null;
+      return destSingle || fallbackAgent?.id || null;
     }
 
     if (mode === "multi") {
       const selected = agents.filter((a) => destMulti.includes(String(a?.id || "")));
       if (selected.length === 1) {
-        return selected[0]?.id || orkio?.id || null;
+        return selected[0]?.id || fallbackAgent?.id || null;
       }
-      return orkio?.id || null;
+      return fallbackAgent?.id || null;
     }
 
-    return orkio?.id || null;
+    return fallbackAgent?.id || null;
   }
 
 
@@ -3189,6 +3199,9 @@ async function sendMessage(presetMsg = null, opts = {}) {
 
     try {
       const agentIdToSend = resolveHostAgentId(); // host agent depends on current routing mode
+      if (publicBetaOrkioOnly) {
+        logRealtimeStep("start:orkio_only_agent_guard", { agent_id: agentIdToSend || null });
+      }
       const pref = buildMessagePrefix(msg);
       const finalMsg = pref + msg;
       const destinationContract = buildDestinationContract(msg, agentIdToSend);
@@ -6211,6 +6224,9 @@ async function stopRealtime(reason = 'client_stop') {
 
   // ORKIO_AO57C_PUBLIC_BETA_ORKIO_ONLY_WEB_V3
   // UX layer only. Backend AO57B remains the authority for actual access control.
+  // ORKIO_AO60F_HF4_NON_ADMIN_REALTIME_ORKIO_ONLY
+  // During public beta, every non-admin user, including EFATAH777 and AMCHAMRSORKIO,
+  // uses Orkio-only Realtime. Admin keeps full agent access for testing/release governance.
   const publicBetaOrkioOnly = !canAccessAdmin;
   const isOrkioAgent = (agent) => {
     const raw = [
