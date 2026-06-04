@@ -1,0 +1,4 @@
+# proposal-only
+# executable artifact fallback ready
+files=src/AppConsole.jsx
+source_changes=src/routes/AppConsole.jsx
