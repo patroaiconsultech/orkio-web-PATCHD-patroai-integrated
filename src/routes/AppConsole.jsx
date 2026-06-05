@@ -1579,6 +1579,7 @@ export default function AppConsole() {
   // Build marker used only for audit/debug so we can prove the active bundle contains HF5B.
   const ORKIO_AO60K_HF5B_BUILD_MARKER = "AO60K-HF5B_FRONTEND_ENDED_AT_SECONDS_TIMEBOX_VERIFY";
 const ORKIO_AO61A_BUILD_MARKER = "AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK";
+const ORKIO_AO61A_HF3_BUILD_MARKER = "AO61A-HF3_TIMEBOX_COUNTER_AUTOSTOP_ASSISTANT_TRANSCRIPT";
 
   const nav = useNavigate();
 
@@ -2026,6 +2027,7 @@ const rtcLastUserActivityAtRef = useRef(0);
   const rtcTimeboxPolicyRef = useRef({
     maxSeconds: REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS,
     cooldownSeconds: REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS,
+    remainingSeconds: null,
   });
   const [rtcTimeboxRemaining, setRtcTimeboxRemaining] = useState(null);
   const [rtcCooldownRemaining, setRtcCooldownRemaining] = useState(0);
@@ -4921,6 +4923,48 @@ function scheduleRealtimeIdleFollowup() {
     return `${minutes} minuto${minutes === 1 ? "" : "s"} e ${seconds} segundo${seconds === 1 ? "" : "s"}`;
   }
 
+  function resolveRealtimeStartTimeboxSeconds(startPayload = null) {
+    // AO61A-HF3: backend remaining_seconds is the runtime source of truth for resumed sessions.
+    try {
+      const timebox = startPayload?.timebox || {};
+      const remainingSeconds = Number(timebox?.remaining_seconds);
+      const maxSeconds = Number(timebox?.max_seconds);
+      const policyRemaining = Number(rtcTimeboxPolicyRef.current?.remainingSeconds);
+      const policyMax = Number(rtcTimeboxPolicyRef.current?.maxSeconds);
+
+      const candidates = [remainingSeconds, policyRemaining, maxSeconds, policyMax, REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS];
+      for (const candidate of candidates) {
+        if (Number.isFinite(candidate) && candidate > 0) return Math.max(1, Math.ceil(candidate));
+      }
+    } catch {}
+    return REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS;
+  }
+
+  function shouldShowRealtimeCounter() {
+    return Boolean(
+      SUMMIT_VOICE_MODE === "realtime"
+      && (
+        rtcTimeboxRemaining !== null
+        || rtcCooldownRemaining > 0
+        || realtimeMode
+        || rtcPremiumStatus
+      )
+    );
+  }
+
+  function getRealtimeCounterLabel() {
+    if (rtcCooldownRemaining > 0 && !realtimeMode) {
+      return `🕒 ${formatRealtimeCountdown(rtcCooldownRemaining)}`;
+    }
+    if (rtcTimeboxRemaining !== null) {
+      return `⏳ ${formatRealtimeCountdown(rtcTimeboxRemaining)}`;
+    }
+    if (realtimeMode) {
+      return `⏳ ${formatRealtimeCountdown(rtcTimeboxPolicyRef.current?.maxSeconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS)}`;
+    }
+    return "";
+  }
+
   function updateRealtimePremiumStatus(status = null, detail = "") {
     // AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK
     try { setRtcPremiumStatus(status || null); } catch {}
@@ -5222,11 +5266,14 @@ function scheduleRealtimeIdleFollowup() {
 
 
 
-  function startRealtimeTimebox(seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
-    if (!isRealtimeTimeboxLimitedUser() && rtcBackendTimeboxLimitedRef.current !== true) return;
+  function startRealtimeTimebox(seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS, options = {}) {
+    const force = Boolean(options?.force);
+    const source = String(options?.source || "unknown");
+    if (!force && !isRealtimeTimeboxLimitedUser() && rtcBackendTimeboxLimitedRef.current !== true) return;
     clearRealtimeTimeboxTimer();
 
     const maxSeconds = Math.max(1, Math.ceil(Number(seconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS)));
+    try { rtcTimeboxPolicyRef.current = { ...(rtcTimeboxPolicyRef.current || {}), remainingSeconds: maxSeconds }; } catch {}
     const startedAt = Date.now();
     const endsAt = startedAt + maxSeconds * 1000;
     let warned15 = false;
@@ -5270,6 +5317,8 @@ function scheduleRealtimeIdleFollowup() {
         try {
           console.log("REALTIME_TIMEBOX_AUTO_STOP", {
             marker: ORKIO_AO61A_BUILD_MARKER,
+            hf3Marker: ORKIO_AO61A_HF3_BUILD_MARKER,
+            source,
             previousMarker: ORKIO_AO60K_HF5B_BUILD_MARKER,
             remaining,
             maxSeconds,
@@ -5283,7 +5332,7 @@ function scheduleRealtimeIdleFollowup() {
 
     tick();
     rtcTimeboxTimerRef.current = setInterval(tick, 1000);
-    logRealtimeStep("timebox:started", { seconds: maxSeconds, marker: ORKIO_AO61A_BUILD_MARKER });
+    logRealtimeStep("timebox:started", { seconds: maxSeconds, marker: ORKIO_AO61A_BUILD_MARKER, hf3Marker: ORKIO_AO61A_HF3_BUILD_MARKER, source });
   }
 
   function announceRealtimeTimeboxStart(dc, seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
@@ -5352,7 +5401,7 @@ function scheduleRealtimeIdleFollowup() {
     rtcConnectingRef.current = true;
     updateRealtimePremiumStatus("connecting", "Preparando microfone e sessão de voz.");
     try { setV2vPhase("connecting"); } catch {}
-    try { console.log(ORKIO_AO61A_BUILD_MARKER, { event: "start_begin" }); } catch {}
+    try { console.log(ORKIO_AO61A_BUILD_MARKER, { event: "start_begin" }); console.log(ORKIO_AO61A_HF3_BUILD_MARKER, { event: "start_begin" }); } catch {}
     const startNonce = ++rtcStartNonceRef.current;
 
     try {
@@ -5442,10 +5491,12 @@ function scheduleRealtimeIdleFollowup() {
       try {
         const timebox = start?.timebox || {};
         const maxSeconds = Number(timebox?.max_seconds);
+        const remainingSeconds = Number(timebox?.remaining_seconds);
         const cooldownSeconds = Number(timebox?.cooldown_seconds);
         const limitedByBackend = (
           timebox?.limited === true ||
           String(timebox?.limited || "").trim().toLowerCase() === "true" ||
+          (Number.isFinite(remainingSeconds) && remainingSeconds > 0) ||
           (Number.isFinite(maxSeconds) && maxSeconds > 0) ||
           (Number.isFinite(cooldownSeconds) && cooldownSeconds > 0)
         );
@@ -5454,13 +5505,16 @@ function scheduleRealtimeIdleFollowup() {
         if (limitedByBackend || isRealtimeTimeboxLimitedUser()) {
           rtcTimeboxPolicyRef.current = {
             maxSeconds: Number.isFinite(maxSeconds) && maxSeconds > 0 ? Math.ceil(maxSeconds) : REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS,
+            remainingSeconds: Number.isFinite(remainingSeconds) && remainingSeconds > 0 ? Math.ceil(remainingSeconds) : null,
             cooldownSeconds: Number.isFinite(cooldownSeconds) && cooldownSeconds > 0 ? Math.ceil(cooldownSeconds) : REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS,
           };
-          setRtcTimeboxRemaining(rtcTimeboxPolicyRef.current.maxSeconds);
+          setRtcTimeboxRemaining(rtcTimeboxPolicyRef.current.remainingSeconds || rtcTimeboxPolicyRef.current.maxSeconds);
           logRealtimeStep("timebox:backend_policy_synced", {
             limited: Boolean(limitedByBackend),
             maxSeconds: rtcTimeboxPolicyRef.current.maxSeconds,
+            remainingSeconds: rtcTimeboxPolicyRef.current.remainingSeconds,
             cooldownSeconds: rtcTimeboxPolicyRef.current.cooldownSeconds,
+            hf3Marker: ORKIO_AO61A_HF3_BUILD_MARKER,
           });
         }
       } catch {}
@@ -5480,20 +5534,19 @@ function scheduleRealtimeIdleFollowup() {
       // Show the visual timer immediately after /start 200 + backend timebox policy.
       // Do not wait for DataChannel.open; mobile can take longer and users must see the clock.
       try {
-        const immediateTimeboxSeconds = Math.max(
-          1,
-          Math.ceil(Number(start?.timebox?.max_seconds || rtcTimeboxPolicyRef.current?.maxSeconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS))
-        );
+        const immediateTimeboxSeconds = resolveRealtimeStartTimeboxSeconds(start);
         try {
           console.log("REALTIME_TIMEBOX_STARTING", {
             marker: ORKIO_AO61A_BUILD_MARKER,
+            hf3Marker: ORKIO_AO61A_HF3_BUILD_MARKER,
             previousMarker: ORKIO_AO60K_HF5B_BUILD_MARKER,
             immediateTimeboxSeconds,
+            timebox: start?.timebox || null,
             policy: rtcTimeboxPolicyRef.current || null,
             backendTimeboxLimited: Boolean(rtcBackendTimeboxLimitedRef.current),
           });
         } catch {}
-        startRealtimeTimebox(immediateTimeboxSeconds);
+        startRealtimeTimebox(immediateTimeboxSeconds, { force: true, source: "start_200" });
         updateRealtimePremiumStatus("connecting", `Sessão aberta. Tempo disponível: ${formatRealtimeCountdown(immediateTimeboxSeconds)}.`);
         startRealtimeStartupWatchdog(rtcSessionIdRef.current, "after_start_200");
       } catch {}
@@ -5697,7 +5750,7 @@ function scheduleRealtimeIdleFollowup() {
 
         startRealtimeAudioWatchdog();
         clearRealtimeStartupWatchdog();
-        if (!rtcTimeboxTimerRef.current) startRealtimeTimebox(activeTimeboxSeconds);
+        if (!rtcTimeboxTimerRef.current) startRealtimeTimebox(resolveRealtimeStartTimeboxSeconds({ timebox: rtcTimeboxPolicyRef.current }), { force: true, source: "data_channel_open" });
         startRealtimeWakeLockGuard("data_channel_open");
         ensureRealtimeAudioOutput("data_channel_open");
 
@@ -5746,6 +5799,32 @@ function scheduleRealtimeIdleFollowup() {
       dc.addEventListener('message', (e) => {
         try {
           const ev = JSON.parse(e.data);
+
+          try {
+            const eventType = String(ev?.type || "");
+            const assistantFinalEvent = (
+              eventType === "response.output_text.done" ||
+              eventType === "response.output_audio_transcript.done" ||
+              eventType === "response.audio_transcript.done" ||
+              eventType === "response.audio_transcript.final" ||
+              eventType === "response.text.done" ||
+              eventType === "response.done"
+            );
+            if (assistantFinalEvent) {
+              const extractedAssistantText = extractRealtimeAssistantTextFromEvent(ev);
+              console.log("REALTIME_ASSISTANT_TRANSCRIPT_EVENT", {
+                marker: ORKIO_AO61A_HF3_BUILD_MARKER,
+                type: eventType,
+                hasText: Boolean(extractedAssistantText),
+                length: extractedAssistantText.length,
+              });
+              if (extractedAssistantText && !rtcAssistantFinalCommittedRef.current) {
+                clearRealtimeResponseTimeout();
+                rtcResponseInFlightRef.current = false;
+                commitRealtimeAssistantFinal(extractedAssistantText, { source: eventType });
+              }
+            }
+          } catch {}
 
                     // Turn arming + optional Magic Words (B3)
           // server_vad + create_response=true is the source of truth.
@@ -6230,6 +6309,36 @@ function scheduleRealtimeIdleFollowup() {
     }
   }
 
+  function extractRealtimeAssistantTextFromEvent(ev) {
+    try {
+      if (!ev || typeof ev !== "object") return "";
+      const candidates = [
+        ev.transcript,
+        ev.text,
+        ev.output_text,
+        ev?.response?.output_text,
+        ev?.item?.content?.[0]?.text,
+        ev?.item?.content?.[0]?.transcript,
+        ev?.content?.[0]?.text,
+        ev?.content?.[0]?.transcript,
+      ];
+      for (const c of candidates) {
+        const s = (c || "").toString().trim();
+        if (s) return s;
+      }
+
+      const output = Array.isArray(ev?.response?.output) ? ev.response.output : [];
+      for (const item of output) {
+        const content = Array.isArray(item?.content) ? item.content : [];
+        for (const part of content) {
+          const s = (part?.text || part?.transcript || part?.audio_transcript || "").toString().trim();
+          if (s) return s;
+        }
+      }
+    } catch {}
+    return "";
+  }
+
   function commitRealtimeAssistantFinal(rawText, { source = 'unknown' } = {}) {
     const finalText = (rawText || '').toString().trim();
     if (!finalText) return;
@@ -6356,13 +6465,18 @@ async function stopRealtime(reason = 'client_stop') {
       try { setRtcReadyToRespond(false); } catch {}
       try { setV2vPhase(null); } catch {}
 
+      const reasonText = String(reason || "");
       const shouldStartCooldown =
         Boolean(sid)
         && isRealtimeTimeboxLimitedUser()
-        && !String(reason || "").includes("start_error")
-        && !String(reason || "").includes("start_blocked_by_cooldown")
-        && !String(reason || "").includes("pre_start_hard_reset")
-        && !String(reason || "").includes("startup_watchdog");
+        && (
+          reasonText.includes("time_limit_frontend")
+          || reasonText.includes("backend_cooldown")
+        )
+        && !reasonText.includes("start_error")
+        && !reasonText.includes("start_blocked_by_cooldown")
+        && !reasonText.includes("pre_start_hard_reset")
+        && !reasonText.includes("startup_watchdog");
 
       if (shouldStartCooldown) {
         startRealtimeCooldown(rtcTimeboxPolicyRef.current?.cooldownSeconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS, reason);
@@ -7895,7 +8009,7 @@ async function stopRealtime(reason = 'client_stop') {
             )}
           </div>
         )}
-        {SUMMIT_VOICE_MODE === "realtime" && (realtimeMode || rtcCooldownRemaining > 0 || rtcTimeboxRemaining !== null || rtcPremiumStatus) ? (
+        {shouldShowRealtimeCounter() ? (
           <div
             style={{
               margin: "4px 0",
@@ -7914,8 +8028,8 @@ async function stopRealtime(reason = 'client_stop') {
           >
             <span>{getRealtimePremiumStatusLabel()}</span>
             {rtcPremiumStatusDetail ? <span style={{ opacity: 0.82 }}>{rtcPremiumStatusDetail}</span> : null}
-            {realtimeMode && rtcTimeboxRemaining !== null ? (
-              <span style={{ marginLeft: "auto", opacity: 0.95 }}>⏳ {formatRealtimeCountdown(rtcTimeboxRemaining)}</span>
+            {getRealtimeCounterLabel() ? (
+              <span style={{ marginLeft: "auto", opacity: 0.95 }}>{getRealtimeCounterLabel()}</span>
             ) : null}
             {realtimeMode ? <span style={{ opacity: 0.8 }}>🔆 Tela ativa</span> : null}
           </div>
