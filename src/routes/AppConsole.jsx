@@ -1572,6 +1572,9 @@ export default function AppConsole() {
   // Unified web/PWA default = 2min session + 10min cooldown; backend remains source of truth.
   const REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS = 2 * 60;
   const REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS = 10 * 60;
+  // ORKIO_AO60K_HF5B_FRONTEND_ENDED_AT_SECONDS_TIMEBOX_VERIFY
+  // Build marker used only for audit/debug so we can prove the active bundle contains HF5B.
+  const ORKIO_AO60K_HF5B_BUILD_MARKER = "AO60K-HF5B_FRONTEND_ENDED_AT_SECONDS_TIMEBOX_VERIFY";
 
   const nav = useNavigate();
 
@@ -5214,6 +5217,15 @@ function scheduleRealtimeIdleFollowup() {
         const cooldownLabel = formatRealtimeCountdown(cooldownSeconds);
         setUploadStatus(`⏳ Sessão de voz encerrada. Nova liberação em ${cooldownLabel}. O chat por texto continua disponível.`);
         setTimeout(() => setUploadStatus(""), 4500);
+        try {
+          console.log("REALTIME_TIMEBOX_AUTO_STOP", {
+            marker: ORKIO_AO60K_HF5B_BUILD_MARKER,
+            remaining,
+            maxSeconds,
+            cooldownSeconds,
+            sessionId: rtcSessionIdRef.current || null,
+          });
+        } catch {}
         void stopRealtime("time_limit_frontend");
       }
     };
@@ -5355,6 +5367,16 @@ function scheduleRealtimeIdleFollowup() {
           })
         : await startRealtimeSession({ agent_id: agentIdToSend, thread_id: threadId || null, voice: rtVoice, model: rtModel, ttl_seconds: effectiveRealtimeTtlSeconds });
       logRealtimeStep('start:session_ok', start);
+      // ORKIO_AO60K_HF5B_FRONTEND_ENDED_AT_SECONDS_TIMEBOX_VERIFY
+      // Runtime proof: confirms the active bundle received backend timebox policy.
+      try {
+        console.log("REALTIME_TIMEBOX_POLICY", {
+          marker: ORKIO_AO60K_HF5B_BUILD_MARKER,
+          timebox: start?.timebox || null,
+          canAccessAdmin: Boolean(canAccessAdmin),
+          runtimeMode: summitRuntimeModeRef.current,
+        });
+      } catch {}
       // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
   // Harden 429/cooldown UX so Realtime never stays visually active after backend blocks /start.
   // ORKIO_AO60K_HF1_RUNTIME_TIMEBOX_SYNC
@@ -5406,6 +5428,14 @@ function scheduleRealtimeIdleFollowup() {
           1,
           Math.ceil(Number(start?.timebox?.max_seconds || rtcTimeboxPolicyRef.current?.maxSeconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS))
         );
+        try {
+          console.log("REALTIME_TIMEBOX_STARTING", {
+            marker: ORKIO_AO60K_HF5B_BUILD_MARKER,
+            immediateTimeboxSeconds,
+            policy: rtcTimeboxPolicyRef.current || null,
+            backendTimeboxLimited: Boolean(rtcBackendTimeboxLimitedRef.current),
+          });
+        } catch {}
         startRealtimeTimebox(immediateTimeboxSeconds);
         startRealtimeStartupWatchdog(rtcSessionIdRef.current, "after_start_200");
       } catch {}
@@ -6090,7 +6120,7 @@ function scheduleRealtimeIdleFollowup() {
     // flush pending events
     try { await flushRealtimeEvents(); } catch {}
     // end session (best-effort)
-    try { await endRealtimeSession({ session_id: sid, ended_at: Date.now(), meta: { reason } }); } catch {}
+    try { await endRealtimeSession({ session_id: sid, ended_at: Math.floor(Date.now() / 1000), meta: { reason } }); } catch {}
 
     // poll for punct updates (best-effort, bounded)
     try {
@@ -6222,7 +6252,7 @@ async function stopRealtime(reason = 'client_stop') {
       try {
         if (sid) {
           await flushRealtimeEvents();
-          await endRealtimeSession({ session_id: sid, ended_at: Date.now(), meta: { reason, mode: summitRuntimeModeRef.current } });
+          await endRealtimeSession({ session_id: sid, ended_at: Math.floor(Date.now() / 1000), meta: { reason, mode: summitRuntimeModeRef.current } });
           try {
             const data = await getRealtimeSession({ session_id: sid, finals_only: true });
             if (data?.events) setRtcAuditEvents(data.events);
