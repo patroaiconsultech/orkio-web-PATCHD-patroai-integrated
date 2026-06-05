@@ -2003,6 +2003,13 @@ const rtcLastUserActivityAtRef = useRef(0);
   const rtcLivePollTimerRef = useRef(null);
   const rtcSeenBackendResponseIdsRef = useRef(new Set());
   const rtcConnectingRef = useRef(false);
+  // ORKIO_AO60K_HF5_FRONTEND_MOBILE_REALTIME_RESTART_TRANSCRIPT_FIX
+  // Hardens mobile/web restart lifecycle so a second Realtime attempt never inherits
+  // stale peer/datachannel/audio/poll/timer/session state from the previous attempt.
+  const rtcStartNonceRef = useRef(0);
+  const rtcStopInFlightRef = useRef(false);
+  const rtcStartupWatchdogTimerRef = useRef(null);
+  const rtcLivePollSessionIdRef = useRef(null);
   // ORKIO_AO60I_REALTIME_TIMEBOX_COOLDOWN_COUNTER
   const rtcTimeboxTimerRef = useRef(null);
   const rtcCooldownTimerRef = useRef(null);
@@ -4947,6 +4954,116 @@ function scheduleRealtimeIdleFollowup() {
     logRealtimeStep("timebox:cooldown_started", { reason, seconds: duration });
   }
 
+  // ORKIO_AO60K_HF5_FRONTEND_MOBILE_REALTIME_RESTART_TRANSCRIPT_FIX
+  function clearRealtimeStartupWatchdog() {
+    try {
+      if (rtcStartupWatchdogTimerRef.current) clearTimeout(rtcStartupWatchdogTimerRef.current);
+    } catch {}
+    rtcStartupWatchdogTimerRef.current = null;
+  }
+
+  function hardResetRealtimeClientState(reason = "hard_reset") {
+    logRealtimeStep("hf5:hard_reset_begin", { reason, sessionId: rtcSessionIdRef.current || null });
+
+    try { clearRealtimeResponseTimeout(); } catch {}
+    try { clearRealtimeIdleFollowup(); } catch {}
+    try { clearRealtimeAudioWatchdog(); } catch {}
+    try { clearRealtimeStartupWatchdog(); } catch {}
+    try { clearRealtimeTimeboxTimer(); } catch {}
+    try { clearRealtimeLivePoll(); } catch {}
+    try {
+      if (rtcFlushTimerRef.current) {
+        clearInterval(rtcFlushTimerRef.current);
+        rtcFlushTimerRef.current = null;
+      }
+    } catch {}
+
+    try {
+      const dc = rtcDcRef.current;
+      rtcDcRef.current = null;
+      if (dc) {
+        try { dc.onopen = null; } catch {}
+        try { dc.onmessage = null; } catch {}
+        try { dc.onerror = null; } catch {}
+        try { dc.onclose = null; } catch {}
+        try { dc.close?.(); } catch {}
+      }
+    } catch {}
+
+    try {
+      const pc = rtcPcRef.current;
+      rtcPcRef.current = null;
+      if (pc) {
+        try { pc.ontrack = null; } catch {}
+        try { pc.onconnectionstatechange = null; } catch {}
+        try { pc.oniceconnectionstatechange = null; } catch {}
+        try { pc.getSenders?.().forEach((sender) => { try { sender.track?.stop?.(); } catch {} }); } catch {}
+        try { pc.getReceivers?.().forEach((receiver) => { try { receiver.track?.stop?.(); } catch {} }); } catch {}
+        try { pc.close?.(); } catch {}
+      }
+    } catch {}
+
+    try {
+      const a = rtcAudioElRef.current;
+      rtcAudioElRef.current = null;
+      rtcRemoteStreamRef.current = null;
+      if (a) {
+        try { a.pause?.(); } catch {}
+        try { a.srcObject = null; } catch {}
+        try { if (a.isConnected) a.remove?.(); } catch {}
+      }
+    } catch {}
+
+    try {
+      const processing = rtcAudioProcessingRef.current;
+      rtcAudioProcessingRef.current = null;
+      if (processing) {
+        try { processing.destination?.stream?.getTracks?.().forEach((t) => { try { t.stop?.(); } catch {} }); } catch {}
+        try { processing.rawStream?.getTracks?.().forEach((t) => { try { t.stop?.(); } catch {} }); } catch {}
+        try { processing.ctx?.close?.(); } catch {}
+      }
+    } catch {}
+
+    try { rtcEventQueueRef.current = []; } catch {}
+    try { rtcSeenBackendResponseIdsRef.current = new Set(); } catch {}
+    try { rtcTextBufRef.current = ""; } catch {}
+    try { rtcAudioTranscriptBufRef.current = ""; } catch {}
+    try { rtcLastFinalTranscriptRef.current = ""; } catch {}
+    try { rtcLastAssistantFinalRef.current = ""; } catch {}
+    try { rtcAssistantFinalCommittedRef.current = false; } catch {}
+    try { rtcResponseInFlightRef.current = false; } catch {}
+    try { rtcFallbackActiveRef.current = false; } catch {}
+    try { rtcLivePollSessionIdRef.current = null; } catch {}
+    try { setRtcReadyToRespond(false); } catch {}
+    try { setRtcPunctStatus(null); } catch {}
+
+    logRealtimeStep("hf5:hard_reset_done", { reason });
+  }
+
+  function startRealtimeStartupWatchdog(sessionId, reason = "start") {
+    clearRealtimeStartupWatchdog();
+    if (!sessionId) return;
+    rtcStartupWatchdogTimerRef.current = setTimeout(() => {
+      try {
+        if (!realtimeModeRef.current) return;
+        if (rtcSessionIdRef.current !== sessionId) return;
+
+        const dcReady = rtcDcRef.current?.readyState === "open";
+        const pcState = String(rtcPcRef.current?.connectionState || rtcPcRef.current?.iceConnectionState || "").toLowerCase();
+        if (dcReady) return;
+
+        logRealtimeStep("hf5:startup_watchdog_reconnect_required", { sessionId, reason, pcState });
+        setRealtimeMode(false);
+        realtimeModeRef.current = false;
+        setV2vPhase("error");
+        setV2vError("Não consegui estabilizar a voz nesta tentativa. Toque no ⚡ novamente ou continue por texto.");
+        setUploadStatus("⚡ Voz não estabilizou. Toque novamente em alguns segundos.");
+        setTimeout(() => setUploadStatus(""), 3500);
+        void stopRealtime("startup_watchdog_no_datachannel");
+      } catch {}
+    }, 15000);
+  }
+
   function extractRealtimeRetryAfterSeconds(err) {
     // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
     // Accept all common API error shapes used by apiFetch/fetch wrappers and CDNs.
@@ -5070,7 +5187,7 @@ function scheduleRealtimeIdleFollowup() {
 
 
   function startRealtimeTimebox(seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
-    if (!isRealtimeTimeboxLimitedUser()) return;
+    if (!isRealtimeTimeboxLimitedUser() && rtcBackendTimeboxLimitedRef.current !== true) return;
     clearRealtimeTimeboxTimer();
 
     const maxSeconds = Math.max(1, Math.ceil(Number(seconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS)));
@@ -5156,12 +5273,6 @@ function scheduleRealtimeIdleFollowup() {
       return;
     }
 
-    if (rtcSessionIdRef.current && rtcPcRef.current && rtcDcRef.current) {
-      console.warn("[Realtime] start skipped: active session already present", { sessionId: rtcSessionIdRef.current });
-      logRealtimeStep("start:skip_active_session", { sessionId: rtcSessionIdRef.current });
-      return;
-    }
-
     if (isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0) {
       const label = formatRealtimeCountdown(rtcCooldownRemaining);
       logRealtimeStep("start:blocked_by_local_cooldown", { remaining_seconds: rtcCooldownRemaining });
@@ -5175,6 +5286,7 @@ function scheduleRealtimeIdleFollowup() {
     }
 
     rtcConnectingRef.current = true;
+    const startNonce = ++rtcStartNonceRef.current;
 
     try {
       try { console.log("REALTIME_START_BEGIN", { threadId, destSingle, sessionId: rtcSessionIdRef.current || null }); } catch {}
@@ -5197,23 +5309,14 @@ function scheduleRealtimeIdleFollowup() {
       // Acquire as early as possible after user gesture/preflight so the phone does not auto-lock during setup.
       startRealtimeWakeLockGuard("start_preflight_ok");
 
+      // ORKIO_AO60K_HF5_FRONTEND_MOBILE_REALTIME_RESTART_TRANSCRIPT_FIX
+      // Always hard-reset stale mobile/WebRTC state before a new session.
+      // If a backend session id exists, close it first without starting local cooldown:
+      // the new /start response remains the source of truth.
       if (rtcSessionIdRef.current) {
-        await stopRealtime('restart_existing_session');
-      } else if (rtcPcRef.current || rtcDcRef.current || rtcAudioElRef.current) {
-        try { rtcDcRef.current?.close?.(); } catch {}
-        rtcDcRef.current = null;
-        try { rtcPcRef.current?.close?.(); } catch {}
-        rtcPcRef.current = null;
-        try {
-          const staleAudio = rtcAudioElRef.current;
-          if (staleAudio) {
-            try { staleAudio.pause?.(); } catch {}
-            try { staleAudio.srcObject = null; } catch {}
-            try { staleAudio.remove?.(); } catch {}
-          }
-        } catch {}
-        rtcAudioElRef.current = null;
+        await stopRealtime('start_error_pre_start_hard_reset');
       }
+      hardResetRealtimeClientState("pre_start", { startNonce });
 
       try { setRtcAuditEvents([]); } catch {}
       try { setRtcPunctStatus(null); } catch {}
@@ -5294,6 +5397,18 @@ function scheduleRealtimeIdleFollowup() {
       try { console.log("REALTIME_SESSION_STARTED", { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null }); } catch {}
       setLastRealtimeSessionId(start?.session_id || null);
       rtcThreadIdRef.current = start?.thread_id || threadId || null;
+
+      // ORKIO_AO60K_HF5_FRONTEND_MOBILE_REALTIME_RESTART_TRANSCRIPT_FIX
+      // Show the visual timer immediately after /start 200 + backend timebox policy.
+      // Do not wait for DataChannel.open; mobile can take longer and users must see the clock.
+      try {
+        const immediateTimeboxSeconds = Math.max(
+          1,
+          Math.ceil(Number(start?.timebox?.max_seconds || rtcTimeboxPolicyRef.current?.maxSeconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS))
+        );
+        startRealtimeTimebox(immediateTimeboxSeconds);
+        startRealtimeStartupWatchdog(rtcSessionIdRef.current, "after_start_200");
+      } catch {}
       // AO01_REALTIME_THREAD_FOCUS_GUARD:
       // Realtime pode receber thread_id do backend, mas não pode roubar
       // o foco de uma conversa já ativa/escolhida pelo usuário.
@@ -5492,7 +5607,8 @@ function scheduleRealtimeIdleFollowup() {
         }
 
         startRealtimeAudioWatchdog();
-        startRealtimeTimebox(activeTimeboxSeconds);
+        clearRealtimeStartupWatchdog();
+        if (!rtcTimeboxTimerRef.current) startRealtimeTimebox(activeTimeboxSeconds);
         startRealtimeWakeLockGuard("data_channel_open");
         ensureRealtimeAudioOutput("data_channel_open");
 
@@ -5741,6 +5857,7 @@ function scheduleRealtimeIdleFollowup() {
         // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
         applyRealtimeCooldownFromError(e, "start_blocked_by_cooldown");
         await stopRealtime("start_blocked_by_cooldown");
+        hardResetRealtimeClientState("start_blocked_by_cooldown_after_stop");
         return;
       }
       const friendlyRealtimeError = normalizeUserFacingRuntimeMessage(
@@ -5756,6 +5873,7 @@ function scheduleRealtimeIdleFollowup() {
       setUploadStatus("❌ Realtime indisponível. Você pode continuar por texto.");
       setTimeout(() => setUploadStatus(""), 3500);
       await stopRealtime('start_error_diagnostic_cleanup');
+      hardResetRealtimeClientState("start_error_after_stop");
     } finally {
       rtcConnectingRef.current = false;
     }
@@ -5936,15 +6054,30 @@ function scheduleRealtimeIdleFollowup() {
     const sid = rtcSessionIdRef.current;
     if (!sid) return;
 
-    rtcLivePollTimerRef.current = setInterval(async () => {
+    rtcLivePollSessionIdRef.current = sid;
+
+    const pollOnce = async () => {
       try {
         if (!realtimeModeRef.current || !rtcSessionIdRef.current) return;
+        if (rtcSessionIdRef.current !== sid || rtcLivePollSessionIdRef.current !== sid) {
+          logRealtimeStep("hf5:live_poll_stale_session_stopped", {
+            pollSid: sid,
+            currentSid: rtcSessionIdRef.current || null,
+            livePollSid: rtcLivePollSessionIdRef.current || null,
+          });
+          clearRealtimeLivePoll();
+          return;
+        }
         const data = await getRealtimeSession({ session_id: sid, finals_only: true });
         await handleBackendRealtimeAssistantResponses(data || {});
       } catch (err) {
         console.warn("[Realtime] live poll failed", err);
       }
-    }, 1400);
+    };
+
+    void pollOnce();
+    rtcLivePollTimerRef.current = setInterval(() => { void pollOnce(); }, 1400);
+    logRealtimeStep("hf5:live_poll_started", { sessionId: sid });
   }
 
   // PATCH0100_27_2B: finalize session on server + poll punctuated finals (best-effort)
@@ -6065,17 +6198,26 @@ async function stopRealtime(reason = 'client_stop') {
     try {
       console.log("REALTIME_STOP_REASON", reason, { sessionId: sid });
     } catch {}
+
+    if (rtcStopInFlightRef.current) {
+      logRealtimeStep("hf5:stop_skip_inflight", { reason, sessionId: sid || null });
+      return;
+    }
+
+    rtcStopInFlightRef.current = true;
     rtcConnectingRef.current = false;
+
     try {
       clearRealtimeResponseTimeout();
       clearRealtimeIdleFollowup();
       clearRealtimeAudioWatchdog();
+      clearRealtimeStartupWatchdog();
       clearRealtimeTimeboxTimer();
+      clearRealtimeLivePoll();
       await releaseRealtimeWakeLock(reason);
       flushRealtimePartialTranscript(`stop_${reason}_partial_flush`);
       rtcFallbackActiveRef.current = false;
       if (rtcFlushTimerRef.current) { try { clearInterval(rtcFlushTimerRef.current); } catch {} rtcFlushTimerRef.current = null; }
-      clearRealtimeLivePoll();
 
       try {
         if (sid) {
@@ -6097,46 +6239,34 @@ async function stopRealtime(reason = 'client_stop') {
         console.warn('[Realtime] stop finalize failed', err);
       }
 
-      const dc = rtcDcRef.current;
-      rtcDcRef.current = null;
-      if (dc) { try { dc.close(); } catch {} }
+      hardResetRealtimeClientState(`stop_${reason}`);
 
-      const pc = rtcPcRef.current;
-      rtcPcRef.current = null;
-      if (pc) {
-        try { pc.getSenders?.().forEach((sender) => { try { sender.track?.stop?.(); } catch {} }); } catch {}
-        try { pc.getReceivers?.().forEach((receiver) => { try { receiver.track?.stop?.(); } catch {} }); } catch {}
-        try { pc.close(); } catch {}
-      }
+      try { rtcSessionIdRef.current = null; } catch {}
+      try { rtcThreadIdRef.current = null; } catch {}
+      try { setRtcReadyToRespond(false); } catch {}
+      try { setV2vPhase(null); } catch {}
 
-      const a = rtcAudioElRef.current;
-      rtcAudioElRef.current = null;
-      rtcRemoteStreamRef.current = null;
-      if (a) {
-        try { a.pause(); } catch {}
-        try { a.srcObject = null; } catch {}
-        try { if (a.isConnected) a.remove(); } catch {}
-      }
+      const shouldStartCooldown =
+        Boolean(sid)
+        && isRealtimeTimeboxLimitedUser()
+        && !String(reason || "").includes("start_error")
+        && !String(reason || "").includes("start_blocked_by_cooldown")
+        && !String(reason || "").includes("pre_start_hard_reset")
+        && !String(reason || "").includes("startup_watchdog");
 
-      rtcTextBufRef.current = '';
-      rtcAudioTranscriptBufRef.current = '';
-      rtcAssistantFinalCommittedRef.current = false;
-      rtcLastAssistantFinalRef.current = '';
-      rtcResponseInFlightRef.current = false;
-      rtcSeenBackendResponseIdsRef.current = new Set();
-
-      const processing = rtcAudioProcessingRef.current;
-      rtcAudioProcessingRef.current = null;
-      if (processing) {
-        try { processing.destination?.stream?.getTracks?.().forEach((t) => { try { t.stop?.(); } catch {} }); } catch {}
-        try { processing.rawStream?.getTracks?.().forEach((t) => { try { t.stop?.(); } catch {} }); } catch {}
-        try { processing.ctx?.close?.(); } catch {}
-      }
-
-      if (sid && isRealtimeTimeboxLimitedUser() && !String(reason || "").includes("start_error") && !String(reason || "").includes("start_blocked_by_cooldown")) {
+      if (shouldStartCooldown) {
         startRealtimeCooldown(rtcTimeboxPolicyRef.current?.cooldownSeconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS, reason);
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[Realtime] stopRealtime hard cleanup failed', err);
+      hardResetRealtimeClientState(`stop_exception_${reason}`);
+    } finally {
+      rtcStopInFlightRef.current = false;
+      rtcConnectingRef.current = false;
+      if (!realtimeModeRef.current) {
+        try { setRtcTimeboxRemaining(null); } catch {}
+      }
+    }
   }
 
   useEffect(() => {
@@ -8047,7 +8177,7 @@ async function stopRealtime(reason = 'client_stop') {
                 <span style={{ fontSize: "16px" }}>⚡</span>
                 {realtimeMode && <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "8px", height: "8px", borderRadius: "50%", background: "#50a0ff", animation: "pulse 1.5s infinite" }} />}
               </button>
-              {SUMMIT_VOICE_MODE === "realtime" && (isRealtimeTimeboxLimitedUser() || rtcCooldownRemaining > 0) && (realtimeMode || rtcCooldownRemaining > 0) ? (
+              {SUMMIT_VOICE_MODE === "realtime" && (isRealtimeTimeboxLimitedUser() || rtcBackendTimeboxLimited || rtcCooldownRemaining > 0) && (realtimeMode || rtcCooldownRemaining > 0) ? (
                 <span
                   style={{
                     display: "inline-flex",
