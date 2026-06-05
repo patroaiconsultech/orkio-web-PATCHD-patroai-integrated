@@ -1448,10 +1448,13 @@ function traceStepTone(kind = "status") {
 }
 
 function resolveRealtimeTranscriptionLanguage(languageProfile) {
-  const raw = (languageProfile || "").trim();
-  if (!raw) return "";
-  if (raw.toLowerCase() === "auto") return "";
-  if (raw === "pt-BR") return "pt";
+  // AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK
+  // Realtime transcription must not fall back to broad auto-detection for the public platform.
+  // Default to Portuguese Brazil, while sending the compact language hint expected by Realtime.
+  const raw = (languageProfile || "pt-BR").trim();
+  const normalized = raw.toLowerCase().replace("_", "-");
+  if (!normalized || normalized === "auto") return "pt";
+  if (normalized === "pt" || normalized === "pt-br") return "pt";
   return raw;
 }
 
@@ -1575,6 +1578,7 @@ export default function AppConsole() {
   // ORKIO_AO60K_HF5B_FRONTEND_ENDED_AT_SECONDS_TIMEBOX_VERIFY
   // Build marker used only for audit/debug so we can prove the active bundle contains HF5B.
   const ORKIO_AO60K_HF5B_BUILD_MARKER = "AO60K-HF5B_FRONTEND_ENDED_AT_SECONDS_TIMEBOX_VERIFY";
+const ORKIO_AO61A_BUILD_MARKER = "AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK";
 
   const nav = useNavigate();
 
@@ -2025,6 +2029,8 @@ const rtcLastUserActivityAtRef = useRef(0);
   });
   const [rtcTimeboxRemaining, setRtcTimeboxRemaining] = useState(null);
   const [rtcCooldownRemaining, setRtcCooldownRemaining] = useState(0);
+  const [rtcPremiumStatus, setRtcPremiumStatus] = useState(null);
+  const [rtcPremiumStatusDetail, setRtcPremiumStatusDetail] = useState("");
   // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
   // Harden 429/cooldown UX so Realtime never stays visually active after backend blocks /start.
   // ORKIO_AO60K_HF1_RUNTIME_TIMEBOX_SYNC
@@ -4915,6 +4921,28 @@ function scheduleRealtimeIdleFollowup() {
     return `${minutes} minuto${minutes === 1 ? "" : "s"} e ${seconds} segundo${seconds === 1 ? "" : "s"}`;
   }
 
+  function updateRealtimePremiumStatus(status = null, detail = "") {
+    // AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK
+    try { setRtcPremiumStatus(status || null); } catch {}
+    try { setRtcPremiumStatusDetail(String(detail || "")); } catch {}
+  }
+
+  function getRealtimePremiumStatusLabel() {
+    if (rtcCooldownRemaining > 0 && !realtimeMode) {
+      return `🕒 Voz disponível novamente em ${formatRealtimeCountdown(rtcCooldownRemaining)}`;
+    }
+    if (rtcPremiumStatus === "connecting") return "🎙️ Conectando...";
+    if (rtcPremiumStatus === "listening") return "🎙️ Ouvindo...";
+    if (rtcPremiumStatus === "transcribing") return "📝 Transcrição ativa";
+    if (rtcPremiumStatus === "responding") return "🔊 Orkio respondendo...";
+    if (rtcPremiumStatus === "ending") return "⚠️ Encerrando em breve...";
+    if (rtcPremiumStatus === "cooldown") {
+      return `🕒 Voz disponível novamente em ${formatRealtimeCountdown(rtcCooldownRemaining || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS)}`;
+    }
+    if (realtimeMode) return "🎙️ Ouvindo...";
+    return "";
+  }
+
   function isRealtimeTimeboxLimitedUser() {
     return !canAccessAdmin || rtcBackendTimeboxLimitedRef.current === true || rtcBackendTimeboxLimited === true;
   }
@@ -4946,15 +4974,19 @@ function scheduleRealtimeIdleFollowup() {
     const tick = () => {
       const remaining = Math.max(0, Math.ceil((rtcCooldownUntilRef.current - Date.now()) / 1000));
       setRtcCooldownRemaining(remaining);
+      if (remaining > 0) {
+        updateRealtimePremiumStatus("cooldown", `O chat por texto continua disponível. Liberação em ${formatRealtimeCountdown(remaining)}.`);
+      }
       if (remaining <= 0) {
         clearRealtimeCooldownTimer();
         rtcCooldownUntilRef.current = 0;
+        updateRealtimePremiumStatus(null, "");
       }
     };
 
     tick();
     rtcCooldownTimerRef.current = setInterval(tick, 1000);
-    logRealtimeStep("timebox:cooldown_started", { reason, seconds: duration });
+    logRealtimeStep("timebox:cooldown_started", { reason, seconds: duration, marker: ORKIO_AO61A_BUILD_MARKER });
   }
 
   // ORKIO_AO60K_HF5_FRONTEND_MOBILE_REALTIME_RESTART_TRANSCRIPT_FIX
@@ -5179,7 +5211,8 @@ function scheduleRealtimeIdleFollowup() {
     try { setRealtimeMode(false); } catch {}
     realtimeModeRef.current = false;
     try { setRtcReadyToRespond(false); } catch {}
-    try { setV2vPhase("error"); } catch {}
+    try { setV2vPhase("cooldown"); } catch {}
+    try { updateRealtimePremiumStatus("cooldown", `O chat por texto continua disponível. Liberação em ${label}.`); } catch {}
     try { setV2vError(`A voz em tempo real estará disponível novamente em ${label}. O chat por texto continua disponível.`); } catch {}
     try { setUploadStatus(`⏳ Voz disponível novamente em ${label}. O chat por texto continua disponível.`); } catch {}
     try { setTimeout(() => setUploadStatus(""), 4500); } catch {}
@@ -5196,30 +5229,48 @@ function scheduleRealtimeIdleFollowup() {
     const maxSeconds = Math.max(1, Math.ceil(Number(seconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS)));
     const startedAt = Date.now();
     const endsAt = startedAt + maxSeconds * 1000;
+    let warned15 = false;
+    let warned10 = false;
 
     const tick = () => {
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
       setRtcTimeboxRemaining(remaining);
 
-      if (remaining === 10) {
-        setUploadStatus("⏳ A sessão de voz termina em 10 segundos. O chat por texto continuará disponível.");
+      if (remaining > 15) {
+        updateRealtimePremiumStatus("listening", "📝 Transcrição ativa");
+      }
+
+      if (remaining <= 15 && remaining > 10 && !warned15) {
+        warned15 = true;
+        updateRealtimePremiumStatus("ending", "⚠️ Esta sessão será encerrada em 15 segundos.");
+        setUploadStatus("⚠️ Esta sessão será encerrada em 15 segundos.");
+        setTimeout(() => setUploadStatus(""), 2500);
+      }
+
+      if (remaining <= 10 && remaining > 0 && !warned10) {
+        warned10 = true;
+        updateRealtimePremiumStatus("ending", "⚠️ Encerrando em breve.");
+        setUploadStatus("⚠️ Encerrando em breve. O chat por texto continuará disponível.");
         setTimeout(() => setUploadStatus(""), 2500);
       }
 
       if (remaining <= 0) {
         clearRealtimeTimeboxTimer();
-        logRealtimeStep("timebox:limit_reached", { maxSeconds });
+        logRealtimeStep("timebox:limit_reached", { maxSeconds, marker: ORKIO_AO61A_BUILD_MARKER });
         setRealtimeMode(false);
         realtimeModeRef.current = false;
-        setV2vPhase(null);
-        setV2vError(null);
+        setV2vPhase("cooldown");
         const cooldownSeconds = Math.max(1, Math.ceil(Number(rtcTimeboxPolicyRef.current?.cooldownSeconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS)));
         const cooldownLabel = formatRealtimeCountdown(cooldownSeconds);
-        setUploadStatus(`⏳ Sessão de voz encerrada. Nova liberação em ${cooldownLabel}. O chat por texto continua disponível.`);
+        const cooldownMessage = `A sessão de voz foi encerrada. Ela estará disponível novamente em ${cooldownLabel}. O chat por texto continua disponível.`;
+        setV2vError(cooldownMessage);
+        updateRealtimePremiumStatus("cooldown", cooldownMessage);
+        setUploadStatus(`⏳ ${cooldownMessage}`);
         setTimeout(() => setUploadStatus(""), 4500);
         try {
           console.log("REALTIME_TIMEBOX_AUTO_STOP", {
-            marker: ORKIO_AO60K_HF5B_BUILD_MARKER,
+            marker: ORKIO_AO61A_BUILD_MARKER,
+            previousMarker: ORKIO_AO60K_HF5B_BUILD_MARKER,
             remaining,
             maxSeconds,
             cooldownSeconds,
@@ -5232,7 +5283,7 @@ function scheduleRealtimeIdleFollowup() {
 
     tick();
     rtcTimeboxTimerRef.current = setInterval(tick, 1000);
-    logRealtimeStep("timebox:started", { seconds: maxSeconds });
+    logRealtimeStep("timebox:started", { seconds: maxSeconds, marker: ORKIO_AO61A_BUILD_MARKER });
   }
 
   function announceRealtimeTimeboxStart(dc, seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
@@ -5290,14 +5341,18 @@ function scheduleRealtimeIdleFollowup() {
       logRealtimeStep("start:blocked_by_local_cooldown", { remaining_seconds: rtcCooldownRemaining });
       setRealtimeMode(false);
       realtimeModeRef.current = false;
-      setV2vPhase("error");
+      setV2vPhase("cooldown");
+      updateRealtimePremiumStatus("cooldown", `O chat por texto continua disponível. Liberação em ${label}.`);
       setV2vError(`A voz em tempo real estará disponível novamente em ${label}. O chat por texto continua disponível.`);
-      setUploadStatus(`⏳ Voz disponível novamente em ${label}.`);
+      setUploadStatus(`⏳ Voz disponível novamente em ${label}. O chat por texto continua disponível.`);
       setTimeout(() => setUploadStatus(""), 3500);
       return;
     }
 
     rtcConnectingRef.current = true;
+    updateRealtimePremiumStatus("connecting", "Preparando microfone e sessão de voz.");
+    try { setV2vPhase("connecting"); } catch {}
+    try { console.log(ORKIO_AO61A_BUILD_MARKER, { event: "start_begin" }); } catch {}
     const startNonce = ++rtcStartNonceRef.current;
 
     try {
@@ -5372,6 +5427,7 @@ function scheduleRealtimeIdleFollowup() {
       try {
         console.log("REALTIME_TIMEBOX_POLICY", {
           marker: ORKIO_AO60K_HF5B_BUILD_MARKER,
+          ao61aMarker: ORKIO_AO61A_BUILD_MARKER,
           timebox: start?.timebox || null,
           canAccessAdmin: Boolean(canAccessAdmin),
           runtimeMode: summitRuntimeModeRef.current,
@@ -5430,13 +5486,15 @@ function scheduleRealtimeIdleFollowup() {
         );
         try {
           console.log("REALTIME_TIMEBOX_STARTING", {
-            marker: ORKIO_AO60K_HF5B_BUILD_MARKER,
+            marker: ORKIO_AO61A_BUILD_MARKER,
+            previousMarker: ORKIO_AO60K_HF5B_BUILD_MARKER,
             immediateTimeboxSeconds,
             policy: rtcTimeboxPolicyRef.current || null,
             backendTimeboxLimited: Boolean(rtcBackendTimeboxLimitedRef.current),
           });
         } catch {}
         startRealtimeTimebox(immediateTimeboxSeconds);
+        updateRealtimePremiumStatus("connecting", `Sessão aberta. Tempo disponível: ${formatRealtimeCountdown(immediateTimeboxSeconds)}.`);
         startRealtimeStartupWatchdog(rtcSessionIdRef.current, "after_start_200");
       } catch {}
       // AO01_REALTIME_THREAD_FOCUS_GUARD:
@@ -5616,6 +5674,7 @@ function scheduleRealtimeIdleFollowup() {
 
             dc.addEventListener('open', () => {
         setV2vPhase('listening');
+        updateRealtimePremiumStatus("listening", "📝 Transcrição ativa");
 
         const activeTimeboxSeconds = Math.max(
           1,
@@ -5642,13 +5701,24 @@ function scheduleRealtimeIdleFollowup() {
         startRealtimeWakeLockGuard("data_channel_open");
         ensureRealtimeAudioOutput("data_channel_open");
 
-        // Summit language hint is locked to English unless explicitly overridden by env.
+        // AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK
+        // Lock/fallback Realtime transcription to Portuguese for platform use.
         try {
-          const envLang = (window.__ORKIO_ENV__?.VITE_REALTIME_TRANSCRIBE_LANGUAGE || import.meta.env.VITE_REALTIME_TRANSCRIBE_LANGUAGE || "").trim();
-          const preferredLang = summitRuntimeModeRef.current === "summit" ? (summitLanguageProfileRef.current || envLang || "") : envLang;
+          const envLang = (window.__ORKIO_ENV__?.VITE_REALTIME_TRANSCRIBE_LANGUAGE || import.meta.env.VITE_REALTIME_TRANSCRIBE_LANGUAGE || "pt-BR").trim();
+          const preferredLang = summitRuntimeModeRef.current === "summit"
+            ? (summitLanguageProfileRef.current || envLang || "pt-BR")
+            : (envLang || "pt-BR");
           const langHint = resolveRealtimeTranscriptionLanguage(preferredLang);
           const transcription = { model: "gpt-4o-mini-transcribe" };
           if (langHint) transcription.language = langHint;
+          try {
+            console.log("REALTIME_TRANSCRIPTION_LANGUAGE", {
+              marker: ORKIO_AO61A_BUILD_MARKER,
+              envLang,
+              preferredLang,
+              langHint,
+            });
+          } catch {}
           dc.send(JSON.stringify({
             type: "session.update",
             session: {
@@ -5684,6 +5754,7 @@ function scheduleRealtimeIdleFollowup() {
           // when explicitly requested by the user.
           if (ev?.type === 'conversation.item.input_audio_transcription.completed') {
             const raw = (ev?.transcript || ev?.text || ev?.result?.transcript || '').toString();
+            updateRealtimePremiumStatus("transcribing", "📝 Transcrição ativa");
             queueRealtimeEvent({ event_type: 'transcript.final', role: 'user', content: raw, is_final: true });
             try {} catch {}
             rtcLastFinalTranscriptRef.current = raw;
@@ -5721,6 +5792,7 @@ function scheduleRealtimeIdleFollowup() {
             clearRealtimeResponseTimeout();
             rtcResponseInFlightRef.current = true;
             setV2vPhase('responding');
+            updateRealtimePremiumStatus("responding", "Orkio está respondendo por voz.");
             rtcTextBufRef.current = '';
             rtcAudioTranscriptBufRef.current = '';
             rtcLastAssistantFinalRef.current = '';
@@ -5778,6 +5850,7 @@ function scheduleRealtimeIdleFollowup() {
           if (ev?.type === 'response.done') {
             clearRealtimeResponseTimeout();
             rtcResponseInFlightRef.current = false;
+            updateRealtimePremiumStatus("listening", "📝 Transcrição ativa");
 
             const textFinal = (rtcTextBufRef.current || '').trim();
             const audioFinal = ((rtcAudioTranscriptBufRef.current || '') + (ev?.transcript || '')).trim();
@@ -5885,9 +5958,15 @@ function scheduleRealtimeIdleFollowup() {
       setV2vPhase('error');
       if (isRealtimeCooldownOrRateLimitError(e)) {
         // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
-        applyRealtimeCooldownFromError(e, "start_blocked_by_cooldown");
+        const waitSeconds = applyRealtimeCooldownFromError(e, "start_blocked_by_cooldown");
         await stopRealtime("start_blocked_by_cooldown");
         hardResetRealtimeClientState("start_blocked_by_cooldown_after_stop");
+        // AO61A: stop/hardReset can clear visual state; re-apply cooldown as the final UX state.
+        startRealtimeCooldown(waitSeconds, "start_blocked_by_cooldown_after_cleanup");
+        const label = formatRealtimeCountdown(waitSeconds);
+        setV2vPhase("cooldown");
+        setV2vError(`A voz em tempo real estará disponível novamente em ${label}. O chat por texto continua disponível.`);
+        updateRealtimePremiumStatus("cooldown", `O chat por texto continua disponível. Liberação em ${label}.`);
         return;
       }
       const friendlyRealtimeError = normalizeUserFacingRuntimeMessage(
@@ -6225,6 +6304,7 @@ function scheduleRealtimeIdleFollowup() {
 
 async function stopRealtime(reason = 'client_stop') {
     const sid = rtcSessionIdRef.current;
+    try { updateRealtimePremiumStatus("ending", "Encerrando sessão de voz com segurança."); } catch {}
     try {
       console.log("REALTIME_STOP_REASON", reason, { sessionId: sid });
     } catch {}
@@ -6286,6 +6366,8 @@ async function stopRealtime(reason = 'client_stop') {
 
       if (shouldStartCooldown) {
         startRealtimeCooldown(rtcTimeboxPolicyRef.current?.cooldownSeconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS, reason);
+      } else {
+        updateRealtimePremiumStatus(null, "");
       }
     } catch (err) {
       console.warn('[Realtime] stopRealtime hard cleanup failed', err);
@@ -7780,6 +7862,10 @@ async function stopRealtime(reason = 'client_stop') {
               v2vPhase === 'chat'      ? "🤖 Gerando resposta..." :
               v2vPhase === 'tts'       ? "🔊 Sintetizando voz..." :
               v2vPhase === 'playing'   ? "🔈 Reproduzindo..." :
+              v2vPhase === 'connecting'? "🎙️ Conectando..." :
+              v2vPhase === 'listening' ? "🎙️ Ouvindo... 📝 Transcrição ativa" :
+              v2vPhase === 'responding'? "🔊 Orkio respondendo..." :
+              v2vPhase === 'cooldown'  ? `🕒 ${v2vError || "Voz em cooldown. O chat por texto continua disponível."}` :
               v2vPhase === 'error'     ? `❌ ${v2vError || "Erro no V2V"}` :
               "⏳ Aguardando..."
             }</span>
@@ -7809,6 +7895,31 @@ async function stopRealtime(reason = 'client_stop') {
             )}
           </div>
         )}
+        {SUMMIT_VOICE_MODE === "realtime" && (realtimeMode || rtcCooldownRemaining > 0 || rtcTimeboxRemaining !== null || rtcPremiumStatus) ? (
+          <div
+            style={{
+              margin: "4px 0",
+              padding: "8px 12px",
+              borderRadius: "12px",
+              border: "1px solid rgba(96,165,250,0.24)",
+              background: "rgba(15,23,42,0.62)",
+              color: "#dbeafe",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              flexWrap: "wrap",
+              fontSize: "12px",
+              fontWeight: 700,
+            }}
+          >
+            <span>{getRealtimePremiumStatusLabel()}</span>
+            {rtcPremiumStatusDetail ? <span style={{ opacity: 0.82 }}>{rtcPremiumStatusDetail}</span> : null}
+            {realtimeMode && rtcTimeboxRemaining !== null ? (
+              <span style={{ marginLeft: "auto", opacity: 0.95 }}>⏳ {formatRealtimeCountdown(rtcTimeboxRemaining)}</span>
+            ) : null}
+            {realtimeMode ? <span style={{ opacity: 0.8 }}>🔆 Tela ativa</span> : null}
+          </div>
+        ) : null}
         {uploadStatus ? <div style={styles.uploadStatus}>{uploadStatus}</div> : null}
 
         {patchApprovalModal && (
