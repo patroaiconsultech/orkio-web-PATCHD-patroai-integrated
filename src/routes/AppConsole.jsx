@@ -1580,6 +1580,7 @@ export default function AppConsole() {
   const ORKIO_AO60K_HF5B_BUILD_MARKER = "AO60K-HF5B_FRONTEND_ENDED_AT_SECONDS_TIMEBOX_VERIFY";
 const ORKIO_AO61A_BUILD_MARKER = "AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK";
 const ORKIO_AO61A_HF3_BUILD_MARKER = "AO61A-HF3_TIMEBOX_COUNTER_AUTOSTOP_ASSISTANT_TRANSCRIPT";
+const ORKIO_AO61A_HF4_BUILD_MARKER = "AO61A-HF4_FIXED_COUNTER_LONGEST_ASSISTANT_TRANSCRIPT";
 
   const nav = useNavigate();
 
@@ -1994,6 +1995,13 @@ const messagesEndRef = useRef(null);
   const rtcAudioTranscriptBufRef = useRef("");
   const rtcLastAssistantFinalRef = useRef("");
   const rtcAssistantFinalCommittedRef = useRef(false);
+  const rtcAssistantFinalMessageIdRef = useRef(null);
+  const rtcAssistantFinalTextRef = useRef("");
+  const rtcAssistantPendingFinalTextRef = useRef("");
+  const rtcAssistantPendingFinalSourceRef = useRef("");
+  const rtcAssistantPendingFinalTimerRef = useRef(null);
+  const rtcTimeboxHardStopTimerRef = useRef(null);
+  const rtcTimeboxDeadlineRef = useRef(0);
   const rtcResponseTimeoutRef = useRef(null);
   const rtcFallbackActiveRef = useRef(false);
   const rtcResponseInFlightRef = useRef(false);
@@ -4965,6 +4973,20 @@ function scheduleRealtimeIdleFollowup() {
     return "";
   }
 
+  function getRealtimeFixedCounterTitle() {
+    if (rtcCooldownRemaining > 0 && !realtimeMode) return "🕒 Cooldown";
+    if (rtcTimeboxRemaining !== null || realtimeMode) return "🎙️ Realtime";
+    return "Realtime";
+  }
+
+  function getRealtimeFixedCounterSubtitle() {
+    if (rtcCooldownRemaining > 0 && !realtimeMode) return "O chat por texto continua disponível.";
+    if (rtcPremiumStatusDetail) return rtcPremiumStatusDetail;
+    if (rtcPremiumStatus) return getRealtimePremiumStatusLabel();
+    if (realtimeMode) return "Ouvindo com tela ativa.";
+    return "";
+  }
+
   function updateRealtimePremiumStatus(status = null, detail = "") {
     // AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK
     try { setRtcPremiumStatus(status || null); } catch {}
@@ -4991,12 +5013,17 @@ function scheduleRealtimeIdleFollowup() {
     return !canAccessAdmin || rtcBackendTimeboxLimitedRef.current === true || rtcBackendTimeboxLimited === true;
   }
 
-  function clearRealtimeTimeboxTimer() {
+  function clearRealtimeTimeboxTimer(options = {}) {
     try {
       if (rtcTimeboxTimerRef.current) clearInterval(rtcTimeboxTimerRef.current);
     } catch {}
+    try {
+      if (rtcTimeboxHardStopTimerRef.current) clearTimeout(rtcTimeboxHardStopTimerRef.current);
+    } catch {}
     rtcTimeboxTimerRef.current = null;
-    setRtcTimeboxRemaining(null);
+    rtcTimeboxHardStopTimerRef.current = null;
+    rtcTimeboxDeadlineRef.current = 0;
+    if (!options?.preserveDisplay) setRtcTimeboxRemaining(null);
   }
 
   function clearRealtimeCooldownTimer() {
@@ -5110,6 +5137,12 @@ function scheduleRealtimeIdleFollowup() {
     try { rtcLastFinalTranscriptRef.current = ""; } catch {}
     try { rtcLastAssistantFinalRef.current = ""; } catch {}
     try { rtcAssistantFinalCommittedRef.current = false; } catch {}
+    try { rtcAssistantFinalMessageIdRef.current = null; } catch {}
+    try { rtcAssistantFinalTextRef.current = ""; } catch {}
+    try { rtcAssistantPendingFinalTextRef.current = ""; } catch {}
+    try { rtcAssistantPendingFinalSourceRef.current = ""; } catch {}
+    try { if (rtcAssistantPendingFinalTimerRef.current) clearTimeout(rtcAssistantPendingFinalTimerRef.current); rtcAssistantPendingFinalTimerRef.current = null; } catch {}
+    try { if (rtcTimeboxHardStopTimerRef.current) clearTimeout(rtcTimeboxHardStopTimerRef.current); rtcTimeboxHardStopTimerRef.current = null; rtcTimeboxDeadlineRef.current = 0; } catch {}
     try { rtcResponseInFlightRef.current = false; } catch {}
     try { rtcFallbackActiveRef.current = false; } catch {}
     try { rtcLivePollSessionIdRef.current = null; } catch {}
@@ -5276,6 +5309,22 @@ function scheduleRealtimeIdleFollowup() {
     try { rtcTimeboxPolicyRef.current = { ...(rtcTimeboxPolicyRef.current || {}), remainingSeconds: maxSeconds }; } catch {}
     const startedAt = Date.now();
     const endsAt = startedAt + maxSeconds * 1000;
+    rtcTimeboxDeadlineRef.current = endsAt;
+    try {
+      if (rtcTimeboxHardStopTimerRef.current) clearTimeout(rtcTimeboxHardStopTimerRef.current);
+      rtcTimeboxHardStopTimerRef.current = setTimeout(() => {
+        try {
+          if (!rtcSessionIdRef.current) return;
+          console.log("REALTIME_TIMEBOX_HARD_STOP", {
+            marker: ORKIO_AO61A_HF4_BUILD_MARKER,
+            sessionId: rtcSessionIdRef.current || null,
+            maxSeconds,
+            source,
+          });
+        } catch {}
+        try { void stopRealtime("time_limit_frontend_hard_stop"); } catch {}
+      }, Math.max(1, maxSeconds * 1000 + 350));
+    } catch {}
     let warned15 = false;
     let warned10 = false;
 
@@ -5318,6 +5367,7 @@ function scheduleRealtimeIdleFollowup() {
           console.log("REALTIME_TIMEBOX_AUTO_STOP", {
             marker: ORKIO_AO61A_BUILD_MARKER,
             hf3Marker: ORKIO_AO61A_HF3_BUILD_MARKER,
+            hf4Marker: ORKIO_AO61A_HF4_BUILD_MARKER,
             source,
             previousMarker: ORKIO_AO60K_HF5B_BUILD_MARKER,
             remaining,
@@ -5332,7 +5382,7 @@ function scheduleRealtimeIdleFollowup() {
 
     tick();
     rtcTimeboxTimerRef.current = setInterval(tick, 1000);
-    logRealtimeStep("timebox:started", { seconds: maxSeconds, marker: ORKIO_AO61A_BUILD_MARKER, hf3Marker: ORKIO_AO61A_HF3_BUILD_MARKER, source });
+    logRealtimeStep("timebox:started", { seconds: maxSeconds, marker: ORKIO_AO61A_BUILD_MARKER, hf3Marker: ORKIO_AO61A_HF3_BUILD_MARKER, hf4Marker: ORKIO_AO61A_HF4_BUILD_MARKER, source, deadline: rtcTimeboxDeadlineRef.current });
   }
 
   function announceRealtimeTimeboxStart(dc, seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
@@ -5401,7 +5451,7 @@ function scheduleRealtimeIdleFollowup() {
     rtcConnectingRef.current = true;
     updateRealtimePremiumStatus("connecting", "Preparando microfone e sessão de voz.");
     try { setV2vPhase("connecting"); } catch {}
-    try { console.log(ORKIO_AO61A_BUILD_MARKER, { event: "start_begin" }); console.log(ORKIO_AO61A_HF3_BUILD_MARKER, { event: "start_begin" }); } catch {}
+    try { console.log(ORKIO_AO61A_BUILD_MARKER, { event: "start_begin" }); console.log(ORKIO_AO61A_HF3_BUILD_MARKER, { event: "start_begin" }); console.log(ORKIO_AO61A_HF4_BUILD_MARKER, { event: "start_begin" }); } catch {}
     const startNonce = ++rtcStartNonceRef.current;
 
     try {
@@ -5814,14 +5864,15 @@ function scheduleRealtimeIdleFollowup() {
               const extractedAssistantText = extractRealtimeAssistantTextFromEvent(ev);
               console.log("REALTIME_ASSISTANT_TRANSCRIPT_EVENT", {
                 marker: ORKIO_AO61A_HF3_BUILD_MARKER,
+                hf4Marker: ORKIO_AO61A_HF4_BUILD_MARKER,
                 type: eventType,
                 hasText: Boolean(extractedAssistantText),
                 length: extractedAssistantText.length,
               });
-              if (extractedAssistantText && !rtcAssistantFinalCommittedRef.current) {
+              if (extractedAssistantText) {
                 clearRealtimeResponseTimeout();
-                rtcResponseInFlightRef.current = false;
-                commitRealtimeAssistantFinal(extractedAssistantText, { source: eventType });
+                if (eventType === "response.done") rtcResponseInFlightRef.current = false;
+                scheduleRealtimeAssistantFinalCommit(extractedAssistantText, { source: eventType, delayMs: eventType === "response.done" ? 150 : 1100 });
               }
             }
           } catch {}
@@ -5863,7 +5914,7 @@ function scheduleRealtimeIdleFollowup() {
             });
           }
 // Basic telemetry + optional live captions
-          if (ev?.type === 'response.text.delta' && ev?.delta) {
+          if ((ev?.type === 'response.text.delta' || ev?.type === 'response.output_text.delta') && ev?.delta) {
             clearRealtimeResponseTimeout();
             rtcTextBufRef.current += ev.delta;
           }
@@ -5876,6 +5927,11 @@ function scheduleRealtimeIdleFollowup() {
             rtcAudioTranscriptBufRef.current = '';
             rtcLastAssistantFinalRef.current = '';
             rtcAssistantFinalCommittedRef.current = false;
+            rtcAssistantFinalMessageIdRef.current = null;
+            rtcAssistantFinalTextRef.current = "";
+            rtcAssistantPendingFinalTextRef.current = "";
+            rtcAssistantPendingFinalSourceRef.current = "";
+            clearRealtimeAssistantPendingFinalTimer();
           }
           if (ev?.type === 'response.output_item.added') {
             clearRealtimeResponseTimeout();
@@ -5889,16 +5945,16 @@ function scheduleRealtimeIdleFollowup() {
             const t = (rtcTextBufRef.current || '').trim();
             rtcTextBufRef.current = '';
             rtcAudioTranscriptBufRef.current = '';
-            if (t && !rtcAssistantFinalCommittedRef.current) {
-              logRealtimeStep('runtime:response_finalized', { source: 'response.text.done', finalText: t });
-              commitRealtimeAssistantFinal(t, { source: 'response.text.done' });
+            if (t) {
+              logRealtimeStep('runtime:response_finalized_pending', { source: 'response.text.done', finalText: t, marker: ORKIO_AO61A_HF4_BUILD_MARKER });
+              scheduleRealtimeAssistantFinalCommit(t, { source: 'response.text.done', delayMs: 1100 });
             }
           }
           // Audio transcript (when model outputs audio without text)
           if (ev?.type === 'response.audio.delta') {
             clearRealtimeResponseTimeout();
           }
-          if (ev?.type === 'response.audio_transcript.delta' && ev?.delta) {
+          if ((ev?.type === 'response.audio_transcript.delta' || ev?.type === 'response.output_audio_transcript.delta') && ev?.delta) {
             clearRealtimeResponseTimeout();
             rtcAudioTranscriptBufRef.current = (rtcAudioTranscriptBufRef.current || '') + ev.delta;
             try {
@@ -5913,9 +5969,9 @@ function scheduleRealtimeIdleFollowup() {
             rtcResponseInFlightRef.current = false;
             const at = ((rtcAudioTranscriptBufRef.current || '') + (ev?.transcript || '')).trim();
             rtcAudioTranscriptBufRef.current = '';
-            if (at && !rtcAssistantFinalCommittedRef.current) {
-              logRealtimeStep('runtime:response_finalized', { source: 'response.audio_transcript', finalText: at });
-              commitRealtimeAssistantFinal(at, { source: 'response.audio_transcript' });
+            if (at) {
+              logRealtimeStep('runtime:response_finalized_pending', { source: 'response.audio_transcript', finalText: at, marker: ORKIO_AO61A_HF4_BUILD_MARKER });
+              scheduleRealtimeAssistantFinalCommit(at, { source: 'response.audio_transcript', delayMs: 1100 });
             }
           }
 
@@ -5933,22 +5989,33 @@ function scheduleRealtimeIdleFollowup() {
 
             const textFinal = (rtcTextBufRef.current || '').trim();
             const audioFinal = ((rtcAudioTranscriptBufRef.current || '') + (ev?.transcript || '')).trim();
-            const finalText = textFinal || audioFinal || '';
+            const pendingFinal = (rtcAssistantPendingFinalTextRef.current || '').trim();
+            const extractedFinal = extractRealtimeAssistantTextFromEvent(ev);
+            const finalText = pickLongerRealtimeAssistantText(textFinal, audioFinal, pendingFinal, extractedFinal);
 
             rtcTextBufRef.current = '';
             rtcAudioTranscriptBufRef.current = '';
+            rtcAssistantPendingFinalTextRef.current = '';
+            rtcAssistantPendingFinalSourceRef.current = '';
+            clearRealtimeAssistantPendingFinalTimer();
 
-            if (finalText && !rtcAssistantFinalCommittedRef.current) {
+            if (finalText) {
               logRealtimeStep('runtime:response_finalized', {
-                source: textFinal ? 'response.done:text_fallback' : 'response.done:audio_fallback',
+                source: 'response.done:longest',
                 finalText,
+                marker: ORKIO_AO61A_HF4_BUILD_MARKER,
+                textLen: textFinal.length,
+                audioLen: audioFinal.length,
+                pendingLen: pendingFinal.length,
+                extractedLen: extractedFinal.length,
               });
-              commitRealtimeAssistantFinal(finalText, { source: 'response.done' });
+              commitRealtimeAssistantFinal(finalText, { source: 'response.done:longest' });
             } else {
               logRealtimeStep('runtime:response_done_without_text', {
                 source: 'response.done',
                 textBuf: textFinal.length,
                 audioTranscriptBuf: audioFinal.length,
+                pendingBuf: pendingFinal.length,
               });
             }
           }
@@ -6309,6 +6376,44 @@ function scheduleRealtimeIdleFollowup() {
     }
   }
 
+  function normalizeRealtimeAssistantText(rawText) {
+    return (rawText || "").toString().replace(/\s+/g, " ").trim();
+  }
+
+  function pickLongerRealtimeAssistantText(...texts) {
+    let best = "";
+    for (const t of texts) {
+      const s = normalizeRealtimeAssistantText(t);
+      if (s.length > best.length) best = s;
+    }
+    return best;
+  }
+
+  function clearRealtimeAssistantPendingFinalTimer() {
+    try {
+      if (rtcAssistantPendingFinalTimerRef.current) clearTimeout(rtcAssistantPendingFinalTimerRef.current);
+    } catch {}
+    rtcAssistantPendingFinalTimerRef.current = null;
+  }
+
+  function scheduleRealtimeAssistantFinalCommit(rawText, { source = "unknown", delayMs = 900 } = {}) {
+    const candidate = normalizeRealtimeAssistantText(rawText);
+    if (!candidate) return;
+    const currentPending = normalizeRealtimeAssistantText(rtcAssistantPendingFinalTextRef.current || "");
+    if (candidate.length >= currentPending.length) {
+      rtcAssistantPendingFinalTextRef.current = candidate;
+      rtcAssistantPendingFinalSourceRef.current = source;
+    }
+    clearRealtimeAssistantPendingFinalTimer();
+    rtcAssistantPendingFinalTimerRef.current = setTimeout(() => {
+      const pending = normalizeRealtimeAssistantText(rtcAssistantPendingFinalTextRef.current || "");
+      const pendingSource = rtcAssistantPendingFinalSourceRef.current || source;
+      rtcAssistantPendingFinalTextRef.current = "";
+      rtcAssistantPendingFinalSourceRef.current = "";
+      if (pending) commitRealtimeAssistantFinal(pending, { source: pendingSource });
+    }, Math.max(150, Number(delayMs) || 900));
+  }
+
   function extractRealtimeAssistantTextFromEvent(ev) {
     try {
       if (!ev || typeof ev !== "object") return "";
@@ -6340,7 +6445,7 @@ function scheduleRealtimeIdleFollowup() {
   }
 
   function commitRealtimeAssistantFinal(rawText, { source = 'unknown' } = {}) {
-    const finalText = (rawText || '').toString().trim();
+    const finalText = normalizeRealtimeAssistantText(rawText);
     if (!finalText) return;
     const dedupeKey = finalText
       .normalize('NFD')
@@ -6348,41 +6453,74 @@ function scheduleRealtimeIdleFollowup() {
       .toLowerCase()
       .trim();
 
-    const sourceKey = String(source || '').trim().toLowerCase();
-    const canonicalSources = new Set(['response.text.done', 'response.done', 'server_guard']);
+    const previousText = normalizeRealtimeAssistantText(rtcAssistantFinalTextRef.current || "");
+    const previousDedupe = previousText
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
 
-    if (rtcLastAssistantFinalRef.current === dedupeKey) return;
+    if (rtcLastAssistantFinalRef.current === dedupeKey && finalText.length <= previousText.length) return;
 
-    if (rtcAssistantFinalCommittedRef.current) {
-      if (!canonicalSources.has(sourceKey)) return;
-      if (sourceKey === 'response.done') return;
+    // HF4: allow a later, longer assistant transcript to upgrade the previously committed partial text.
+    const existingMessageId = rtcAssistantFinalMessageIdRef.current;
+    const isMeaningfulUpgrade = Boolean(
+      rtcAssistantFinalCommittedRef.current
+      && existingMessageId
+      && finalText.length > Math.max(previousText.length + 12, Math.floor(previousText.length * 1.12))
+      && dedupeKey !== previousDedupe
+    );
+
+    if (rtcAssistantFinalCommittedRef.current && !isMeaningfulUpgrade) {
+      return;
     }
 
     rtcLastAssistantFinalRef.current = dedupeKey;
     rtcAssistantFinalCommittedRef.current = true;
+    rtcAssistantFinalTextRef.current = finalText;
 
-    queueRealtimeEvent({ event_type: 'response.final', role: 'assistant', content: finalText, is_final: true, meta: { source } });
+    queueRealtimeEvent({ event_type: 'response.final', role: 'assistant', content: finalText, is_final: true, meta: { source, hf4: true, upgraded: isMeaningfulUpgrade } });
+
     try {
       const selectedAgentObj2 = (agents || []).find(a => String(a.id) === String(destSingle || ""));
       const metaAgentName = source && String(source).includes(":") ? String(source).split(":")[1].trim() : "";
       const agentName2 = metaAgentName || selectedAgentObj2?.name || "Orkio";
       const agentId2 = selectedAgentObj2?.id || (destSingle || null);
-      const mid = `rtc_ass_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      setMessages((prev) => prev.concat([{
-        id: mid,
-        role: "assistant",
-        content: finalText,
-        agent_id: agentId2 ? String(agentId2) : null,
-        agent_name: agentName2,
-        created_at: Math.floor(Date.now()/1000),
-      }]));
+
+      if (isMeaningfulUpgrade && existingMessageId) {
+        setMessages((prev) => (prev || []).map((m) => (
+          String(m?.id) === String(existingMessageId)
+            ? { ...m, content: finalText, updated_at: Math.floor(Date.now() / 1000), meta: { ...(m?.meta || {}), realtime_transcript_upgraded: true } }
+            : m
+        )));
+      } else {
+        const mid = `rtc_ass_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        rtcAssistantFinalMessageIdRef.current = mid;
+        setMessages((prev) => prev.concat([{
+          id: mid,
+          role: "assistant",
+          content: finalText,
+          agent_id: agentId2 ? String(agentId2) : null,
+          agent_name: agentName2,
+          created_at: Math.floor(Date.now()/1000),
+          meta: { realtime_assistant_transcript: true, source },
+        }]));
+      }
+    } catch {}
+
+    try {
+      console.log("REALTIME_ASSISTANT_TRANSCRIPT_COMMIT", {
+        marker: ORKIO_AO61A_HF4_BUILD_MARKER,
+        source,
+        length: finalText.length,
+        upgraded: isMeaningfulUpgrade,
+      });
     } catch {}
 
     setUploadStatus('📝 ' + finalText.slice(0, 80) + (finalText.length > 80 ? '…' : ''));
     setTimeout(() => setUploadStatus(''), 2500);
     setTimeout(() => { try { scheduleRealtimeIdleFollowup(); } catch {} }, REALTIME_REARM_AFTER_ASSISTANT_MS);
   }
-
 
   async function downloadRealtimeAta() {
     try {
@@ -8035,6 +8173,41 @@ async function stopRealtime(reason = 'client_stop') {
           </div>
         ) : null}
         {uploadStatus ? <div style={styles.uploadStatus}>{uploadStatus}</div> : null}
+
+        {shouldShowRealtimeCounter() ? (
+          <div
+            data-orkio-realtime-counter="ao61a-hf4"
+            style={{
+              position: "fixed",
+              top: "calc(env(safe-area-inset-top, 0px) + 12px)",
+              right: 12,
+              zIndex: 2147483000,
+              minWidth: 148,
+              maxWidth: "min(320px, calc(100vw - 24px))",
+              borderRadius: 16,
+              border: "1px solid rgba(147,197,253,0.45)",
+              background: "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(30,41,59,0.94))",
+              color: "#eff6ff",
+              boxShadow: "0 18px 50px rgba(2,6,23,0.35)",
+              padding: "10px 12px",
+              pointerEvents: "none",
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              fontSize: 12,
+              lineHeight: 1.2,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <strong style={{ fontSize: 12 }}>{getRealtimeFixedCounterTitle()}</strong>
+              <span style={{ fontSize: 18, fontWeight: 900, letterSpacing: "0.02em" }}>{getRealtimeCounterLabel() || "⏳ --:--"}</span>
+            </div>
+            <div style={{ opacity: 0.84, fontSize: 11 }}>
+              {getRealtimeFixedCounterSubtitle() || "O chat por texto continua disponível."}
+            </div>
+            {realtimeMode ? <div style={{ opacity: 0.82, fontSize: 11 }}>🔆 Tela ativa</div> : null}
+          </div>
+        ) : null}
 
         {patchApprovalModal && (
           <div
