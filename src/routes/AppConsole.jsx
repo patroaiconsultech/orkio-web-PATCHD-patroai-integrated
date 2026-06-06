@@ -2053,7 +2053,9 @@ const messagesEndRef = useRef(null);
   const [voiceMode, setVoiceMode] = useState(SUMMIT_VOICE_MODE === "stt_tts");
   const voiceModeRef = useRef(SUMMIT_VOICE_MODE === "stt_tts");
   const [ttsPlaying, setTtsPlaying] = useState(false);
+  const [ttsPlayingMessageId, setTtsPlayingMessageId] = useState(null);
   const ttsAudioRef = useRef(null);
+  const ttsObjectUrlRef = useRef(null);
   const [ttsVoice, setTtsVoice] = useState(localStorage.getItem('orkio_tts_voice') || ORKIO_DEFAULT_VOICE_ID);
   const lastSpokenMsgRef = useRef('');
   const lastSpokenMessageIdRef = useRef(null);
@@ -6882,10 +6884,25 @@ async function stopRealtime(reason = 'client_stop') {
 
   function stopTts() {
     if (ttsAudioRef.current) {
-      ttsAudioRef.current.pause();
+      try {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current.currentTime = 0;
+      } catch (_) {}
       ttsAudioRef.current = null;
     }
+    if (ttsObjectUrlRef.current) {
+      try {
+        URL.revokeObjectURL(ttsObjectUrlRef.current);
+      } catch (_) {}
+      ttsObjectUrlRef.current = null;
+    }
+    lastSpokenMessageIdRef.current = null;
+    lastSpokenMsgRef.current = "";
     setTtsPlaying(false);
+    setTtsPlayingMessageId(null);
+    if (v2vPhase === "playing") {
+      setV2vPhase(null);
+    }
   }
 
   async function playTts(textToSpeak, agentId, opts = {}) {
@@ -6903,7 +6920,18 @@ async function stopRealtime(reason = 'client_stop') {
       return;
     }
 
-    // Evitar reler a mesma mensagem (idempotência)
+    // AO65A-HF2: permitir desligar o áudio clicando novamente na mesma mensagem.
+    if (ttsAudioRef.current) {
+      const sameMessagePlaying = messageId
+        ? messageId === lastSpokenMessageIdRef.current
+        : textToSpeak === lastSpokenMsgRef.current;
+      if (sameMessagePlaying) {
+        stopTts();
+        return;
+      }
+    }
+
+    // Evitar reler a mesma mensagem (idempotência), sem bloquear o stop acima.
     if (messageId && messageId === lastSpokenMessageIdRef.current) return;
     if (!messageId && textToSpeak === lastSpokenMsgRef.current) return;
     lastSpokenMessageIdRef.current = messageId || null;
@@ -6927,6 +6955,7 @@ async function stopRealtime(reason = 'client_stop') {
 
     stopTts();
     setTtsPlaying(true);
+    setTtsPlayingMessageId(messageId || "__manual__");
     setV2vPhase('playing');
 
     const effectiveTrace = traceId || v2vTraceRef.current || null;
@@ -6968,6 +6997,7 @@ async function stopRealtime(reason = 'client_stop') {
         const errText = await res.text().catch(() => '');
         console.warn('[V2V] v2v_tts_fail trace_id=%s status=%d body=%s', effectiveTrace, res.status, errText.slice(0, 200));
         setTtsPlaying(false);
+          setTtsPlayingMessageId(null);
         setV2vPhase('error');
         setV2vError(`TTS falhou (HTTP ${res.status})`);
         if (res.status === 401) {
@@ -6982,6 +7012,7 @@ async function stopRealtime(reason = 'client_stop') {
       if (!blob || blob.size < 50) {
         console.warn('[V2V] v2v_tts_fail trace_id=%s reason=empty_blob size=%d', effectiveTrace, blob?.size);
         setTtsPlaying(false);
+          setTtsPlayingMessageId(null);
         setV2vPhase('error');
         setV2vError('TTS retornou áudio vazio');
         return;
@@ -6989,6 +7020,7 @@ async function stopRealtime(reason = 'client_stop') {
 
       console.info('[V2V] v2v_tts_ok trace_id=%s bytes=%d', effectiveTrace, blob.size);
       const url = URL.createObjectURL(blob);
+      ttsObjectUrlRef.current = url;
       const audio = new Audio(url);
       ttsAudioRef.current = audio;
 
@@ -6996,8 +7028,10 @@ async function stopRealtime(reason = 'client_stop') {
         audio.onended = () => {
           console.info('[V2V] v2v_play_end trace_id=%s', effectiveTrace);
           setTtsPlaying(false);
+          setTtsPlayingMessageId(null);
           setV2vPhase(null);
           URL.revokeObjectURL(url);
+          if (ttsObjectUrlRef.current === url) ttsObjectUrlRef.current = null;
           ttsAudioRef.current = null;
           // Reiniciar microfone após fala (ciclo V2V)
           if (voiceModeRef.current && (speechSupported || mediaRecorderSupported) && !micEnabledRef.current) {
@@ -7008,9 +7042,11 @@ async function stopRealtime(reason = 'client_stop') {
         audio.onerror = (err) => {
           console.error('[V2V] audio.onerror trace_id=%s', effectiveTrace, err);
           setTtsPlaying(false);
+          setTtsPlayingMessageId(null);
           setV2vPhase('error');
           setV2vError('Erro ao reproduzir áudio');
           URL.revokeObjectURL(url);
+          if (ttsObjectUrlRef.current === url) ttsObjectUrlRef.current = null;
           ttsAudioRef.current = null;
           reject(new Error('Audio playback error'));
         };
@@ -7018,8 +7054,10 @@ async function stopRealtime(reason = 'client_stop') {
           // autoplay bloqueado pelo browser — fallback silencioso
           console.warn('[V2V] autoplay blocked trace_id=%s:', effectiveTrace, err?.message);
           setTtsPlaying(false);
+          setTtsPlayingMessageId(null);
           setV2vPhase(null);
           URL.revokeObjectURL(url);
+          if (ttsObjectUrlRef.current === url) ttsObjectUrlRef.current = null;
           ttsAudioRef.current = null;
           // BUG-01 FIX: reiniciar mic mesmo sem áudio — ciclo V2V não pode morrer aqui
           if (voiceModeRef.current && !micEnabledRef.current) {
@@ -7031,6 +7069,7 @@ async function stopRealtime(reason = 'client_stop') {
     } catch (e) {
       console.error('[V2V] v2v_tts_fail trace_id=%s error:', effectiveTrace, e);
       setTtsPlaying(false);
+          setTtsPlayingMessageId(null);
       setV2vPhase('error');
       setV2vError(e?.message || 'Erro desconhecido no TTS');
     }
@@ -8103,6 +8142,8 @@ async function stopRealtime(reason = 'client_stop') {
                 normalizeUserFacingRuntimeMessage={normalizeUserFacingRuntimeMessage}
                 renderMessageContentPremium={renderMessageContentPremium}
                 playTts={playTts}
+                ttsPlaying={ttsPlaying}
+                ttsPlayingMessageId={ttsPlayingMessageId}
                 extractPatchGovernanceMeta={extractPatchGovernanceMeta}
                 openPatchApprovalModal={openPatchApprovalModal}
                 extractPatchApprovalMeta={extractPatchApprovalMeta}
