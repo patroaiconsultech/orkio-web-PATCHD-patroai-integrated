@@ -6970,7 +6970,11 @@ async function stopRealtime(reason = 'client_stop') {
   }
 
   function resolveUnifiedClassicTtsVoice(voiceOverride = null) {
+    // AO65A-HF7: classic message TTS must mirror the Realtime voice source.
+    // Do not use message.voice_id or lastAgentInfo here: those can be stale DB values
+    // and were keeping the 🔊 button on the old voice even after Realtime used another one.
     const ORKIO_ENV = (typeof window !== "undefined" && window.__ORKIO_ENV__) ? window.__ORKIO_ENV__ : {};
+
     const envRealtimeVoice = (
       ORKIO_ENV.VITE_REALTIME_VOICE ||
       import.meta.env.VITE_REALTIME_VOICE ||
@@ -6983,23 +6987,34 @@ async function stopRealtime(reason = 'client_stop') {
       ""
     ).trim();
 
-    const currentRealtimeVoice =
-      rtcVoiceRef.current
-        ? rtcVoiceRef.current
-        : "";
+    let hostAgentVoice = "";
+    try {
+      const hostAgentId = resolveHostAgentId?.();
+      const hostAgent = (agents || []).find((agent) => String(agent?.id || "") === String(hostAgentId || ""));
+      hostAgentVoice = String(
+        hostAgent?.voice_id ||
+        hostAgent?.voice ||
+        hostAgent?.tts_voice ||
+        hostAgent?.voiceId ||
+        ""
+      ).trim();
+    } catch (_) {
+      hostAgentVoice = "";
+    }
 
-    const lastResolvedAgentVoice =
-      lastAgentInfo?.voice_id ||
-      lastAgentInfo?.voice ||
-      lastAgentInfo?.tts_voice ||
-      "";
+    const currentRealtimeVoice = String(rtcVoiceRef.current || "").trim();
+    const defaultVoice = String(ORKIO_DEFAULT_VOICE_ID || "").trim();
+    const realtimeVoiceWasExplicit =
+      Boolean(currentRealtimeVoice) &&
+      (!defaultVoice || currentRealtimeVoice !== defaultVoice || Boolean(envRealtimeVoice || hostAgentVoice));
 
     return coerceVoiceId(
       voiceOverride ||
-        currentRealtimeVoice ||
-        lastResolvedAgentVoice ||
+        (realtimeVoiceWasExplicit ? currentRealtimeVoice : "") ||
+        hostAgentVoice ||
         envRealtimeVoice ||
         envOrkioVoice ||
+        currentRealtimeVoice ||
         ORKIO_DEFAULT_VOICE_ID
     );
   }
