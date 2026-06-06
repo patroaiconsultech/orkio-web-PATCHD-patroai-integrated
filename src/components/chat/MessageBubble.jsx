@@ -108,7 +108,7 @@ export default function MessageBubble({
                     const isThisTtsPlaying = Boolean(ttsPlaying && ttsPlayingMessageId && m.id && ttsPlayingMessageId === m.id);
                     return (
                       <button
-                        onClick={() => playTts((visible || m.content), (m.agent_id || null), { messageId: m.id || null })}
+                        onClick={() => playTts((visible || m.content), (m.agent_id || null), { messageId: m.id || null, userInitiated: true })}
                         style={{
                           marginLeft: "8px",
                           background: "none",
