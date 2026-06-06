@@ -2062,6 +2062,11 @@ const messagesEndRef = useRef(null);
   // AO65A-HF4: hard-stop protection against delayed blobs/audio callbacks after user stop.
   const ttsPlaySeqRef = useRef(0);
   const ttsSuppressAutoUntilRef = useRef(0);
+  // AO65A-HF5: remember the message/text explicitly stopped by the user.
+  // This blocks delayed automatic replays while still allowing a new user click.
+  const ttsManualStopUntilRef = useRef(0);
+  const ttsStoppedMessageIdRef = useRef(null);
+  const ttsStoppedTextRef = useRef("");
   const [ttsVoice, setTtsVoice] = useState(localStorage.getItem('orkio_tts_voice') || ORKIO_DEFAULT_VOICE_ID);
   const lastSpokenMsgRef = useRef('');
   const lastSpokenMessageIdRef = useRef(null);
@@ -6889,8 +6894,11 @@ async function stopRealtime(reason = 'client_stop') {
   }
 
   function stopTts(reason = "manual_stop") {
-    // AO65A-HF4: hard stop must invalidate every pending TTS generation/playback path.
-    // This prevents a delayed /api/tts blob or a stale Audio callback from resuming after stop.
+    // AO65A-HF4/HF5: hard stop must invalidate every pending TTS generation/playback path.
+    // This prevents a delayed /api/tts blob, stale Audio callback, or automatic V2V replay from resuming after stop.
+    const stoppedMessageId = lastSpokenMessageIdRef.current || null;
+    const stoppedText = lastSpokenMsgRef.current || "";
+
     ttsStopRequestedRef.current = true;
     ttsPlaySeqRef.current += 1;
 
@@ -6900,8 +6908,13 @@ async function stopRealtime(reason = 'client_stop') {
       reason !== "tts_error";
 
     if (shouldSuppressAuto) {
-      // Short shield against auto TTS / V2V restarts triggered by stale async callbacks.
-      ttsSuppressAutoUntilRef.current = Date.now() + 2500;
+      // HF5: longer shield against auto TTS / V2V restarts triggered by stale async callbacks.
+      // Manual user clicks are explicitly allowed by playTts({ userInitiated: true }).
+      const suppressUntil = Date.now() + 15000;
+      ttsSuppressAutoUntilRef.current = suppressUntil;
+      ttsManualStopUntilRef.current = suppressUntil;
+      ttsStoppedMessageIdRef.current = stoppedMessageId;
+      ttsStoppedTextRef.current = stoppedText;
     }
 
     try {
@@ -6974,13 +6987,18 @@ async function stopRealtime(reason = 'client_stop') {
 
   async function playTts(textToSpeak, agentId, opts = {}) {
     // F-01 FIX: desestruturar opts no início da função
-    const { forceAuto = false, messageId = null, traceId = null, voiceOverride = null } = opts || {};
+    const { forceAuto = false, messageId = null, traceId = null, voiceOverride = null, userInitiated = false } = opts || {};
     if (!textToSpeak || textToSpeak.length < 2) return;
 
-    // AO65A-HF4: after a manual stop, block automatic TTS restarts briefly.
-    // Manual user clicks remain allowed.
-    if (forceAuto && Date.now() < Number(ttsSuppressAutoUntilRef.current || 0)) {
-      console.info("[V2V] auto TTS suppressed after manual stop message_id=%s agent_id=%s", messageId, agentId);
+    // AO65A-HF5: after a manual stop, block every non-user-initiated TTS restart.
+    // This is stricter than forceAuto because some delayed paths can call playTts() without forceAuto.
+    const nowMs = Date.now();
+    const suppressUntil = Number(ttsSuppressAutoUntilRef.current || 0);
+    const stoppedUntil = Number(ttsManualStopUntilRef.current || 0);
+    const sameStoppedMessage = Boolean(messageId && ttsStoppedMessageIdRef.current && String(messageId) === String(ttsStoppedMessageIdRef.current));
+    const sameStoppedText = Boolean(!messageId && ttsStoppedTextRef.current && String(textToSpeak || "") === String(ttsStoppedTextRef.current || ""));
+    if (!userInitiated && (nowMs < suppressUntil || (nowMs < stoppedUntil && (sameStoppedMessage || sameStoppedText)))) {
+      console.info("[V2V] TTS suppressed after manual stop message_id=%s agent_id=%s userInitiated=%s forceAuto=%s", messageId, agentId, userInitiated, forceAuto);
       return;
     }
 
@@ -7000,7 +7018,11 @@ async function stopRealtime(reason = 'client_stop') {
       ? messageId === lastSpokenMessageIdRef.current
       : textToSpeak === lastSpokenMsgRef.current;
     if ((ttsPlaying || ttsPlayingMessageId || ttsAudioRef.current || ttsAbortRef.current) && sameMessageRequested) {
-      stopTts("user_toggle");
+      if (userInitiated) {
+        stopTts("user_toggle");
+      } else {
+        console.info("[V2V] duplicate non-user TTS ignored while current audio is active message_id=%s agent_id=%s", messageId, agentId);
+      }
       return;
     }
 
@@ -7009,6 +7031,14 @@ async function stopRealtime(reason = 'client_stop') {
     if (!messageId && textToSpeak === lastSpokenMsgRef.current) return;
     lastSpokenMessageIdRef.current = messageId || null;
     lastSpokenMsgRef.current = textToSpeak;
+
+    if (userInitiated) {
+      // A fresh click by the user is the only thing allowed to clear the manual stop shield.
+      ttsSuppressAutoUntilRef.current = 0;
+      ttsManualStopUntilRef.current = 0;
+      ttsStoppedMessageIdRef.current = null;
+      ttsStoppedTextRef.current = "";
+    }
 
     // Limpar markdown para fala mais natural
     let clean = textToSpeak
@@ -7073,8 +7103,11 @@ async function stopRealtime(reason = 'client_stop') {
           text: clean,
           voice: unifiedVoice,
           speed: ttsSpeed,
-          agent_id: agentId || null,
-          message_id: messageId || null,
+          // AO65A-HF5: force backend to honor inp.voice.
+          // /api/tts resolves voice as message_id → agent_id → inp.voice → default,
+          // so sending message_id/agent_id here can override the Realtime voice.
+          agent_id: null,
+          message_id: null,
           // AO47B2: defesa adicional para o backend AO47B1 conseguir bloquear se este caminho for chamado.
           thread_id: threadId || null,
         }),
