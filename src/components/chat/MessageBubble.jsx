@@ -123,7 +123,8 @@ export default function MessageBubble({
                       playTts((visible || m.content), (m.agent_id || null), {
                         messageId: m.id || null,
                         userInitiated: true,
-                        voiceOverride: m.voice_id || m.voice || lastAgentInfo?.voice_id || null,
+                        // AO65A-HF7: do not pass message/agent voice as override; AppConsole resolves the same source used by Realtime.
+                        voiceOverride: null,
                       });
                     };
 
