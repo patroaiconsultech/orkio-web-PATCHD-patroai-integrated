@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, uploadFile, chat, chatStream, transcribeAudio, requestFounderHandoff, getRealtimeClientSecret, startRealtimeSession, startSummitSession, postRealtimeEventsBatch, endRealtimeSession, getRealtimeSession, getSummitSessionScore, submitSummitSessionReview, downloadRealtimeAta as downloadRealtimeAtaFile, guardRealtimeTranscript, getOrionSquadHealth, getOrionSquadPreview, getAgentCapabilities } from "../ui/api.js";
 import { clearSession, getTenant, getToken, getUser, isAdmin, isApproved, setSession, logout } from "../lib/auth.js";
-import { ORKIO_DEFAULT_TTS_SPEED, ORKIO_DEFAULT_VOICE_ID, ORKIO_VOICES, coerceTtsSpeed, coerceVoiceId } from "../lib/voices.js";
+import { ORKIO_CANONICAL_VOICE_ID, ORKIO_DEFAULT_TTS_SPEED, ORKIO_DEFAULT_VOICE_ID, ORKIO_VOICES, coerceTtsSpeed, coerceVoiceId } from "../lib/voices.js";
 import TermsModal from "../ui/TermsModal.jsx";
 import PWAInstallPrompt from "../components/PWAInstallPrompt.jsx";
 import OnboardingModal from "../components/OnboardingModal.jsx";
@@ -6970,53 +6970,45 @@ async function stopRealtime(reason = 'client_stop') {
   }
 
   function resolveUnifiedClassicTtsVoice(voiceOverride = null) {
-    // AO65A-HF7: classic message TTS must mirror the Realtime voice source.
-    // Do not use message.voice_id or lastAgentInfo here: those can be stale DB values
-    // and were keeping the 🔊 button on the old voice even after Realtime used another one.
+    // AO65V-FE8: frontend canonical voice lock for classic message TTS.
+    // Evidence from DevTools showed /api/tts receiving voice="shimmer".
+    // Backend was obeying inp.voice correctly; therefore the browser bundle must
+    // stop resolving the Orkio TTS button to the legacy local fallback.
     const ORKIO_ENV = (typeof window !== "undefined" && window.__ORKIO_ENV__) ? window.__ORKIO_ENV__ : {};
+    const ORKIO_CANONICAL = coerceVoiceId(ORKIO_CANONICAL_VOICE_ID || "cedar", "cedar");
 
-    const envRealtimeVoice = (
+    const normalizeCandidate = (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+      return coerceVoiceId(raw, ORKIO_CANONICAL);
+    };
+
+    const envRealtimeVoice = normalizeCandidate(
       ORKIO_ENV.VITE_REALTIME_VOICE ||
       import.meta.env.VITE_REALTIME_VOICE ||
       ""
-    ).trim();
+    );
 
-    const envOrkioVoice = (
+    const envOrkioVoice = normalizeCandidate(
       ORKIO_ENV.VITE_ORKIO_VOICE_ID ||
       import.meta.env.VITE_ORKIO_VOICE_ID ||
       ""
-    ).trim();
-
-    let hostAgentVoice = "";
-    try {
-      const hostAgentId = resolveHostAgentId?.();
-      const hostAgent = (agents || []).find((agent) => String(agent?.id || "") === String(hostAgentId || ""));
-      hostAgentVoice = String(
-        hostAgent?.voice_id ||
-        hostAgent?.voice ||
-        hostAgent?.tts_voice ||
-        hostAgent?.voiceId ||
-        ""
-      ).trim();
-    } catch (_) {
-      hostAgentVoice = "";
-    }
-
-    const currentRealtimeVoice = String(rtcVoiceRef.current || "").trim();
-    const defaultVoice = String(ORKIO_DEFAULT_VOICE_ID || "").trim();
-    const realtimeVoiceWasExplicit =
-      Boolean(currentRealtimeVoice) &&
-      (!defaultVoice || currentRealtimeVoice !== defaultVoice || Boolean(envRealtimeVoice || hostAgentVoice));
-
-    return coerceVoiceId(
-      voiceOverride ||
-        (realtimeVoiceWasExplicit ? currentRealtimeVoice : "") ||
-        hostAgentVoice ||
-        envRealtimeVoice ||
-        envOrkioVoice ||
-        currentRealtimeVoice ||
-        ORKIO_DEFAULT_VOICE_ID
     );
+
+    const currentRealtimeVoice = normalizeCandidate(rtcVoiceRef.current);
+    const explicitOverride = normalizeCandidate(voiceOverride);
+
+    const candidate =
+      explicitOverride ||
+      currentRealtimeVoice ||
+      envRealtimeVoice ||
+      envOrkioVoice ||
+      ORKIO_CANONICAL;
+
+    // Cedar is the official Orkio voice. If any stale bundle/runtime fallback still
+    // produces the previous local default ("shimmer"), canonical Cedar must win.
+    const resolvedVoice = candidate === "shimmer" ? ORKIO_CANONICAL : candidate;
+    return coerceVoiceId(resolvedVoice, ORKIO_CANONICAL);
   }
 
   async function playTts(textToSpeak, agentId, opts = {}) {
