@@ -1683,7 +1683,7 @@ export default function AppConsole() {
 const ORKIO_AO61A_BUILD_MARKER = "AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK";
 const ORKIO_AO61A_HF3_BUILD_MARKER = "AO61A-HF3_TIMEBOX_COUNTER_AUTOSTOP_ASSISTANT_TRANSCRIPT";
 const ORKIO_AO61A_HF4_BUILD_MARKER = "AO61A-HF4_FIXED_COUNTER_LONGEST_ASSISTANT_TRANSCRIPT";
-const ORKIO_AO66A_HF2_BUILD_MARKER = "AO66A-HF3_REALTIME_HOLD_SESSION_NO_AUTO_END";
+const ORKIO_AO66A_HF2_BUILD_MARKER = "AO66R_REALTIME_ACTIVATION_REPAIR";
 
   const nav = useNavigate();
 
@@ -2127,6 +2127,10 @@ const messagesEndRef = useRef(null);
   const rtcLastTranscriptForAutoResponseRef = useRef("");
   const rtcFallbackActiveRef = useRef(false);
   const rtcResponseInFlightRef = useRef(false);
+  // AO66R: activation repair — prove/trigger Realtime audio after the DataChannel opens.
+  const rtcLastResponseCreatedAtRef = useRef(0);
+  const rtcActivationProbeTimerRef = useRef(null);
+  const rtcActivationProbeSentRef = useRef(false);
   // AO66A-HF2: prevent premature auto-end while Realtime is still stabilizing.
   const rtcSessionStartedAtRef = useRef(0);
   const rtcPendingAutoStopTimerRef = useRef(null);
@@ -5463,6 +5467,13 @@ function scheduleRealtimeIdleFollowup() {
     rtcStartupWatchdogTimerRef.current = null;
   }
 
+  function clearRealtimeActivationProbe() {
+    try {
+      if (rtcActivationProbeTimerRef.current) clearTimeout(rtcActivationProbeTimerRef.current);
+    } catch {}
+    rtcActivationProbeTimerRef.current = null;
+  }
+
   function hardResetRealtimeClientState(reason = "hard_reset") {
     logRealtimeStep("hf5:hard_reset_begin", { reason, sessionId: rtcSessionIdRef.current || null });
 
@@ -5471,6 +5482,7 @@ function scheduleRealtimeIdleFollowup() {
     try { clearRealtimeIdleFollowup(); } catch {}
     try { clearRealtimeAudioWatchdog(); } catch {}
     try { clearRealtimeStartupWatchdog(); } catch {}
+    try { clearRealtimeActivationProbe(); } catch {}
     try { clearRealtimeTimeboxTimer(); } catch {}
     try { clearRealtimeLivePoll(); } catch {}
     try {
@@ -5543,6 +5555,8 @@ function scheduleRealtimeIdleFollowup() {
     try { rtcSessionStartedAtRef.current = 0; } catch {}
     try { rtcLastStopReasonRef.current = ""; } catch {}
     try { rtcResponseInFlightRef.current = false; } catch {}
+    try { rtcLastResponseCreatedAtRef.current = 0; } catch {}
+    try { rtcActivationProbeSentRef.current = false; } catch {}
     try { rtcFallbackActiveRef.current = false; } catch {}
     try { rtcLivePollSessionIdRef.current = null; } catch {}
     try { setRtcReadyToRespond(false); } catch {}
@@ -5789,8 +5803,146 @@ function scheduleRealtimeIdleFollowup() {
     logRealtimeStep("timebox:started", { seconds: maxSeconds, marker: ORKIO_AO61A_BUILD_MARKER, hf3Marker: ORKIO_AO61A_HF3_BUILD_MARKER, hf4Marker: ORKIO_AO61A_HF4_BUILD_MARKER, source, deadline: rtcTimeboxDeadlineRef.current });
   }
 
+  function sendRealtimeClientEvent(dc, payload, reason = "client_event") {
+    try {
+      if (!dc || dc.readyState !== "open") {
+        logRealtimeStep("ao66r:send_skip_dc_not_open", {
+          reason,
+          readyState: dc?.readyState || null,
+          type: payload?.type || null,
+          marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+        });
+        return false;
+      }
+
+      const eventId = payload?.event_id || `evt_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const finalPayload = { event_id: eventId, ...(payload || {}) };
+
+      try {
+        console.log("REALTIME_CLIENT_EVENT", {
+          reason,
+          type: finalPayload.type,
+          event_id: eventId,
+          response_modalities: finalPayload?.response?.output_modalities || null,
+          marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+        });
+      } catch {}
+
+      dc.send(JSON.stringify(finalPayload));
+      logRealtimeStep("ao66r:client_event_sent", {
+        reason,
+        type: finalPayload.type,
+        event_id: eventId,
+        marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+      });
+      return true;
+    } catch (err) {
+      logRealtimeStep("ao66r:client_event_failed", {
+        reason,
+        type: payload?.type || null,
+        message: err?.message || null,
+        marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+      });
+      return false;
+    }
+  }
+
+  function requestRealtimeSpokenResponse(dc, {
+    reason = "activation",
+    instructions = "",
+    inputText = "",
+    conversationItem = false,
+  } = {}) {
+    const cleanInstructions = String(instructions || "").trim();
+    const cleanInput = String(inputText || "").trim();
+    const voice = coerceVoiceId(rtcVoiceRef.current || ORKIO_CANONICAL_VOICE_ID || ORKIO_DEFAULT_VOICE_ID);
+
+    if (conversationItem && cleanInput) {
+      sendRealtimeClientEvent(dc, {
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: cleanInput }],
+        },
+      }, `${reason}:conversation_item`);
+    }
+
+    rtcResponseInFlightRef.current = true;
+    clearRealtimeResponseTimeout();
+    rtcResponseTimeoutRef.current = setTimeout(() => {
+      try {
+        if (!realtimeModeRef.current || !rtcSessionIdRef.current) return;
+        if (rtcLastResponseCreatedAtRef.current) return;
+        logRealtimeStep("ao66r:response_create_no_server_response_yet", {
+          reason,
+          sessionAgeMs: getRealtimeSessionAgeMs(),
+          marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+        });
+        updateRealtimePremiumStatus("listening", "Realtime conectado. Aguardando resposta de áudio.");
+      } catch {}
+    }, 6000);
+
+    const ok = sendRealtimeClientEvent(dc, {
+      type: "response.create",
+      response: {
+        output_modalities: ["audio", "text"],
+        ...(cleanInstructions ? { instructions: cleanInstructions } : {}),
+        audio: { output: { voice } },
+        metadata: {
+          source: "orkio_web",
+          reason,
+          marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+        },
+      },
+    }, `${reason}:response_create`);
+
+    if (!ok) {
+      rtcResponseInFlightRef.current = false;
+      clearRealtimeResponseTimeout();
+    }
+
+    return ok;
+  }
+
+  function scheduleRealtimeActivationProbe(dc, source = "data_channel_open") {
+    clearRealtimeActivationProbe();
+    rtcActivationProbeSentRef.current = false;
+
+    rtcActivationProbeTimerRef.current = setTimeout(() => {
+      try {
+        if (!realtimeModeRef.current || !rtcSessionIdRef.current) return;
+        const currentDc = rtcDcRef.current || dc;
+        if (!currentDc || currentDc.readyState !== "open") return;
+        if (rtcLastResponseCreatedAtRef.current) return;
+        if (rtcActivationProbeSentRef.current) return;
+
+        rtcActivationProbeSentRef.current = true;
+        logRealtimeStep("ao66r:activation_probe_trigger", {
+          source,
+          sessionAgeMs: getRealtimeSessionAgeMs(),
+          marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+        });
+
+        requestRealtimeSpokenResponse(currentDc, {
+          reason: "activation_probe",
+          conversationItem: true,
+          inputText: "Diga apenas: Olá, eu sou o Orkio em tempo real.",
+          instructions: "Responda em áudio, em português do Brasil, dizendo apenas: Olá, eu sou o Orkio em tempo real.",
+        });
+      } catch (err) {
+        logRealtimeStep("ao66r:activation_probe_failed", {
+          source,
+          message: err?.message || null,
+          marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+        });
+      } finally {
+        rtcActivationProbeTimerRef.current = null;
+      }
+    }, 2600);
+  }
+
   function announceRealtimeTimeboxStart(dc, seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
-    if (!isRealtimeTimeboxLimitedUser()) return false;
     if (!dc || dc.readyState !== "open") return false;
 
     const maxSeconds = Math.max(1, Math.ceil(Number(seconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS)));
@@ -5798,29 +5950,23 @@ function scheduleRealtimeIdleFollowup() {
     const cooldownSeconds = Math.max(1, Math.ceil(Number(rtcTimeboxPolicyRef.current?.cooldownSeconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS)));
     const cooldownLabel = formatRealtimeDurationLabel(cooldownSeconds);
     const announcement =
-      `Efatà. Orkio em tempo real. Temos até ${durationLabel} para conversar nesta sessão de voz. ` +
-      "O contador está na tela e estou à sua disposição. " +
-      "Vou tentar manter a tela ligada enquanto o navegador permitir. " +
-      `Ao final, a voz em tempo real estará disponível novamente em ${cooldownLabel}; o chat por texto continua disponível.`;
+      isRealtimeTimeboxLimitedUser()
+        ? (
+          `Efatà. Orkio em tempo real. Temos até ${durationLabel} para conversar nesta sessão de voz. ` +
+          "O contador está na tela e estou à sua disposição. " +
+          "Vou tentar manter a tela ligada enquanto o navegador permitir. " +
+          `Ao final, a voz em tempo real estará disponível novamente em ${cooldownLabel}; o chat por texto continua disponível.`
+        )
+        : "Efatà. Orkio em tempo real ativo. Pode falar comigo normalmente.";
 
-    try {
-      logRealtimeStep("timebox:start_announcement_requested", { seconds: maxSeconds, durationLabel });
-      dc.send(JSON.stringify({
-        type: "response.create",
-        response: {
-          output_modalities: ["audio", "text"],
-          instructions: announcement,
-          audio: { output: { voice: rtcVoiceRef.current } }
-        }
-      }));
-      return true;
-    } catch (err) {
-      logRealtimeStep("timebox:start_announcement_failed", { message: err?.message || null });
-      return false;
-    }
+    logRealtimeStep("ao66r:start_announcement_requested", { seconds: maxSeconds, durationLabel });
+    return requestRealtimeSpokenResponse(dc, {
+      reason: "start_announcement",
+      instructions: announcement,
+    });
   }
 
-  function markRealtimePausedForBackground(reason = "mobile_background") {
+    function markRealtimePausedForBackground(reason = "mobile_background") {
     try {
       setV2vPhase("error");
       setV2vError(
@@ -6230,10 +6376,11 @@ function scheduleRealtimeIdleFollowup() {
               langHint,
             });
           } catch {}
-          dc.send(JSON.stringify({
+          sendRealtimeClientEvent(dc, {
             type: "session.update",
             session: {
               type: "realtime",
+              output_modalities: ["audio", "text"],
               audio: {
                 input: {
                   transcription,
@@ -6241,22 +6388,39 @@ function scheduleRealtimeIdleFollowup() {
                     type: "server_vad",
                     silence_duration_ms: REALTIME_SERVER_VAD_SILENCE_MS,
                     prefix_padding_ms: REALTIME_SERVER_VAD_PREFIX_MS,
-                    create_response: true
+                    create_response: true,
+                    interrupt_response: true
                   }
+                },
+                output: {
+                  voice: rtcVoiceRef.current
                 }
-              }
+              },
+              instructions: "Você é Orkio em tempo real. Responda em pt-BR, com voz natural, de forma curta, útil e humana."
             }
-          }));
+          }, "session_update_audio_vad");
         } catch {}
 
-        // ORKIO_AO60I_HF2_START_ANNOUNCEMENT
-        // Same path serves desktop web and installed PWA; do not gate by isMobile.
+        // AO66R: send a proof-of-audio greeting and, if the provider does not emit
+        // response.created quickly, send one fallback conversation item + response.create.
+        // This separates "session/call opened" from "audio response actually activated".
         announceRealtimeTimeboxStart(dc, activeTimeboxSeconds);
+        scheduleRealtimeActivationProbe(dc, "data_channel_open");
       });
 
       dc.addEventListener('message', (e) => {
         try {
           const ev = JSON.parse(e.data);
+
+          try {
+            const eventTypeForLog = String(ev?.type || "");
+            console.log("REALTIME_SERVER_EVENT", {
+              type: eventTypeForLog,
+              response_id: ev?.response?.id || ev?.response_id || null,
+              item_id: ev?.item?.id || ev?.item_id || null,
+              marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+            });
+          } catch {}
 
           try {
             const eventType = String(ev?.type || "");
@@ -6338,7 +6502,10 @@ function scheduleRealtimeIdleFollowup() {
           }
           if (ev?.type === 'response.created') {
             clearRealtimeResponseTimeout();
+            clearRealtimeActivationProbe();
             clearRealtimeAutoResponseFallback();
+            rtcLastResponseCreatedAtRef.current = Date.now();
+            rtcActivationProbeSentRef.current = false;
             rtcResponseInFlightRef.current = true;
             setV2vPhase('responding');
             updateRealtimePremiumStatus("responding", "Orkio está respondendo por voz.");
@@ -6370,8 +6537,9 @@ function scheduleRealtimeIdleFollowup() {
             }
           }
           // Audio transcript (when model outputs audio without text)
-          if (ev?.type === 'response.audio.delta') {
+          if (ev?.type === 'response.audio.delta' || ev?.type === 'response.output_audio.delta') {
             clearRealtimeResponseTimeout();
+            try { ensureRealtimeAudioOutput("response_audio_delta"); } catch {}
           }
           if ((ev?.type === 'response.audio_transcript.delta' || ev?.type === 'response.output_audio_transcript.delta') && ev?.delta) {
             clearRealtimeResponseTimeout();
@@ -6403,6 +6571,7 @@ function scheduleRealtimeIdleFollowup() {
 
           if (ev?.type === 'response.done') {
             clearRealtimeResponseTimeout();
+            clearRealtimeActivationProbe();
             clearRealtimeAutoResponseFallback();
             rtcResponseInFlightRef.current = false;
             updateRealtimePremiumStatus("listening", "📝 Transcrição ativa");
@@ -6573,13 +6742,14 @@ function scheduleRealtimeIdleFollowup() {
       }
       rtcResponseInFlightRef.current = true;
       clearRealtimeResponseTimeout();
+      clearRealtimeActivationProbe();
       clearRealtimeAutoResponseFallback();
       clearRealtimeIdleFollowup();
       rtcResponseTimeoutRef.current = setTimeout(() => {
         setUploadStatus("⌛ Realtime ainda processando...");
         setTimeout(() => setUploadStatus(""), 1200);
       }, 7000);
-      dc.send(JSON.stringify({ type: "response.create", response: { output_modalities: ["audio", "text"], audio: { output: { voice: rtcVoiceRef.current } } } }));
+      requestRealtimeSpokenResponse(dc, { reason });
       setRtcReadyToRespond(false);
       setV2vPhase("responding");
       setUploadStatus(reason === "magic" ? "✨ Command received — responding..." : reason === "auto_vad" ? "🎙️ Speech detected — responding..." : "▶️ Responding...");
