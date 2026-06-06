@@ -1037,8 +1037,22 @@ function sanitizePublicAssistantSpeaker(messageLike, proposedName = "Orkio") {
   const resolvedKey = String(resolvedAgent || "").trim().toLowerCase();
   const finalKey = String(finalSpeaker || "").trim().toLowerCase();
   const visibleKey = String(visibleAgent || "").trim().toLowerCase();
+  const contentText = String(
+    messageLike?.answer ||
+    messageLike?.message ||
+    messageLike?.final_text ||
+    messageLike?.content ||
+    messageLike?.text ||
+    ""
+  ).toLowerCase();
 
-  if (blockedKey === "orion" || resolvedKey === "orkio") {
+  if (
+    blockedKey === "orion" ||
+    resolvedKey === "orkio" ||
+    contentText.includes("orion é um agente interno") ||
+    contentText.includes("orion faz parte da equipe interna") ||
+    contentText.includes("orion e um agente interno")
+  ) {
     return "Orkio";
   }
 
