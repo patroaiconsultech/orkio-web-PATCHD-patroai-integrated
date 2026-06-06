@@ -2158,6 +2158,9 @@ const rtcLastUserActivityAtRef = useRef(0);
   const rtcLivePollSessionIdRef = useRef(null);
   // ORKIO_AO60I_REALTIME_TIMEBOX_COOLDOWN_COUNTER
   const rtcTimeboxTimerRef = useRef(null);
+  // AO66R-HF6: timer starts only after Orkio's first spoken response completes.
+  const rtcConversationStartedRef = useRef(false);
+  const rtcPendingTimeboxSecondsRef = useRef(null);
   const rtcCooldownTimerRef = useRef(null);
   const rtcCooldownUntilRef = useRef(0);
   // ORKIO_AO60I_HF2_POLICY_REF
@@ -5504,6 +5507,8 @@ function scheduleRealtimeIdleFollowup() {
     try { clearRealtimeStartupWatchdog(); } catch {}
     try { clearRealtimeActivationProbe(); } catch {}
     try { clearRealtimeTimeboxTimer(); } catch {}
+    try { rtcConversationStartedRef.current = false; } catch {}
+    try { rtcPendingTimeboxSecondsRef.current = null; } catch {}
     try { clearRealtimeLivePoll(); } catch {}
     try {
       if (rtcFlushTimerRef.current) {
@@ -5823,6 +5828,31 @@ function scheduleRealtimeIdleFollowup() {
     logRealtimeStep("timebox:started", { seconds: maxSeconds, marker: ORKIO_AO61A_BUILD_MARKER, hf3Marker: ORKIO_AO61A_HF3_BUILD_MARKER, hf4Marker: ORKIO_AO61A_HF4_BUILD_MARKER, source, deadline: rtcTimeboxDeadlineRef.current });
   }
 
+  function startRealtimeConversationTimeboxIfNeeded(source = "assistant_response_done", secondsOverride = null) {
+    try {
+      if (rtcConversationStartedRef.current) return false;
+      if (rtcOverlayForceClosed) return false;
+      const limited = isRealtimeTimeboxLimitedUser() || rtcBackendTimeboxLimitedRef.current === true;
+      if (!limited) return false;
+      const pending = Number(secondsOverride || rtcPendingTimeboxSecondsRef.current || rtcTimeboxPolicyRef.current?.remainingSeconds || rtcTimeboxPolicyRef.current?.maxSeconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS);
+      const seconds = Math.max(1, Math.ceil(pending || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS));
+      rtcConversationStartedRef.current = true;
+      rtcPendingTimeboxSecondsRef.current = null;
+      console.log("REALTIME_TIMEBOX_STARTED_AFTER_ASSISTANT_INTRO", {
+        marker: "AO66R_HF6_TIMEBOX_AFTER_FIRST_ASSISTANT_RESPONSE",
+        source,
+        seconds,
+        sessionId: rtcSessionIdRef.current || null,
+      });
+      startRealtimeTimebox(seconds, { force: true, source });
+      updateRealtimePremiumStatus("listening", `📝 Transcrição ativa — ${formatRealtimeCountdown(seconds)} disponíveis.`);
+      return true;
+    } catch (err) {
+      try { console.warn("REALTIME_TIMEBOX_DELAYED_START_FAILED", err); } catch {}
+      return false;
+    }
+  }
+
   function sendRealtimeClientEvent(dc, payload, reason = "client_event") {
     try {
       if (!dc || dc.readyState !== "open") {
@@ -6029,6 +6059,8 @@ function scheduleRealtimeIdleFollowup() {
     }
 
     rtcConnectingRef.current = true;
+    try { rtcConversationStartedRef.current = false; } catch {}
+    try { rtcPendingTimeboxSecondsRef.current = null; } catch {}
     try { setRtcOverlayForceClosed(false); } catch {}
     updateRealtimePremiumStatus("connecting", "Preparando microfone e sessão de voz.");
     try { setV2vPhase("connecting"); } catch {}
@@ -6181,8 +6213,11 @@ function scheduleRealtimeIdleFollowup() {
             backendTimeboxLimited: Boolean(rtcBackendTimeboxLimitedRef.current),
           });
         } catch {}
-        startRealtimeTimebox(immediateTimeboxSeconds, { force: true, source: "start_200" });
-        updateRealtimePremiumStatus("connecting", `Sessão aberta. Tempo disponível: ${formatRealtimeCountdown(immediateTimeboxSeconds)}.`);
+        // AO66R-HF6: do not start the public-beta timebox at /start.
+        // The 2-minute budget starts only after Orkio completes the first spoken response.
+        rtcPendingTimeboxSecondsRef.current = immediateTimeboxSeconds;
+        setRtcTimeboxRemaining(null);
+        updateRealtimePremiumStatus("connecting", "Sessão aberta. Orkio fará a abertura por voz antes de iniciar os 2 minutos.");
         startRealtimeStartupWatchdog(rtcSessionIdRef.current, "after_start_200");
       } catch {}
       // AO01_REALTIME_THREAD_FOCUS_GUARD:
@@ -6385,7 +6420,12 @@ function scheduleRealtimeIdleFollowup() {
 
         startRealtimeAudioWatchdog();
         clearRealtimeStartupWatchdog();
-        if (!rtcTimeboxTimerRef.current) startRealtimeTimebox(resolveRealtimeStartTimeboxSeconds({ timebox: rtcTimeboxPolicyRef.current }), { force: true, source: "data_channel_open" });
+        // AO66R-HF6: channel open is not conversation start.
+        // Keep the timebox pending until Orkio's first response.done.
+        if (!rtcPendingTimeboxSecondsRef.current) {
+          rtcPendingTimeboxSecondsRef.current = resolveRealtimeStartTimeboxSeconds({ timebox: rtcTimeboxPolicyRef.current });
+        }
+        setRtcTimeboxRemaining(null);
         startRealtimeWakeLockGuard("data_channel_open");
         ensureRealtimeAudioOutput("data_channel_open");
 
@@ -6619,7 +6659,8 @@ function scheduleRealtimeIdleFollowup() {
             clearRealtimeActivationProbe();
             clearRealtimeAutoResponseFallback();
             rtcResponseInFlightRef.current = false;
-            updateRealtimePremiumStatus("listening", "📝 Transcrição ativa");
+            startRealtimeConversationTimeboxIfNeeded("response.done_first_assistant_completed");
+            if (!rtcConversationStartedRef.current) updateRealtimePremiumStatus("listening", "📝 Transcrição ativa");
 
             const textFinal = (rtcTextBufRef.current || '').trim();
             const audioFinal = ((rtcAudioTranscriptBufRef.current || '') + (ev?.transcript || '')).trim();
