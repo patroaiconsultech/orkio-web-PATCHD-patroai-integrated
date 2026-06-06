@@ -27,6 +27,8 @@ export default function MessageBubble({
   normalizeUserFacingRuntimeMessage,
   renderMessageContentPremium,
   playTts,
+  ttsPlaying,
+  ttsPlayingMessageId,
   extractPatchGovernanceMeta,
   openPatchApprovalModal,
   extractPatchApprovalMeta,
@@ -102,15 +104,27 @@ export default function MessageBubble({
               ) : (
                 <div style={styles.messageContent}>
                   {renderMessageContentPremium(visible || m.content)}
-                  {!isUser && !isSystem && (visible || m.content) && (
-                    <button
-                      onClick={() => playTts((visible || m.content), (m.agent_id || null), { messageId: m.id || null })}
-                      style={{ marginLeft: "8px", background: "none", border: "none", cursor: "pointer", opacity: 0.6, fontSize: "14px", padding: "2px" }}
-                      title="Ouvir esta mensagem"
-                    >
-                      🔊
-                    </button>
-                  )}
+                  {!isUser && !isSystem && (visible || m.content) && (() => {
+                    const isThisTtsPlaying = Boolean(ttsPlaying && ttsPlayingMessageId && m.id && ttsPlayingMessageId === m.id);
+                    return (
+                      <button
+                        onClick={() => playTts((visible || m.content), (m.agent_id || null), { messageId: m.id || null })}
+                        style={{
+                          marginLeft: "8px",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          opacity: isThisTtsPlaying ? 0.95 : 0.6,
+                          fontSize: "14px",
+                          padding: "2px",
+                        }}
+                        title={isThisTtsPlaying ? "Parar áudio" : "Ouvir esta mensagem"}
+                        aria-label={isThisTtsPlaying ? "Parar áudio" : "Ouvir esta mensagem"}
+                      >
+                        {isThisTtsPlaying ? "⏹️" : "🔊"}
+                      </button>
+                    );
+                  })()}
                   {canAccessAdmin && !isUser && !isSystem && extractPatchGovernanceMeta(visible || m.content)?.can_approve && (
                     <div style={{ marginTop: 12 }}>
                       <button
