@@ -2056,6 +2056,9 @@ const messagesEndRef = useRef(null);
   const [ttsPlayingMessageId, setTtsPlayingMessageId] = useState(null);
   const ttsAudioRef = useRef(null);
   const ttsObjectUrlRef = useRef(null);
+  // AO65A-HF3: allow stopping while /api/tts is still generating audio.
+  const ttsAbortRef = useRef(null);
+  const ttsStopRequestedRef = useRef(false);
   const [ttsVoice, setTtsVoice] = useState(localStorage.getItem('orkio_tts_voice') || ORKIO_DEFAULT_VOICE_ID);
   const lastSpokenMsgRef = useRef('');
   const lastSpokenMessageIdRef = useRef(null);
@@ -6883,6 +6886,13 @@ async function stopRealtime(reason = 'client_stop') {
   }
 
   function stopTts() {
+    // AO65A-HF3: stop must cancel both active playback and pending /api/tts generation.
+    ttsStopRequestedRef.current = true;
+    try {
+      ttsAbortRef.current?.abort?.();
+    } catch (_) {}
+    ttsAbortRef.current = null;
+
     if (ttsAudioRef.current) {
       try {
         ttsAudioRef.current.pause();
@@ -6920,15 +6930,13 @@ async function stopRealtime(reason = 'client_stop') {
       return;
     }
 
-    // AO65A-HF2: permitir desligar o áudio clicando novamente na mesma mensagem.
-    if (ttsAudioRef.current) {
-      const sameMessagePlaying = messageId
-        ? messageId === lastSpokenMessageIdRef.current
-        : textToSpeak === lastSpokenMsgRef.current;
-      if (sameMessagePlaying) {
-        stopTts();
-        return;
-      }
+    // AO65A-HF3: permitir desligar também enquanto o /api/tts ainda está gerando.
+    const sameMessageRequested = messageId
+      ? messageId === lastSpokenMessageIdRef.current
+      : textToSpeak === lastSpokenMsgRef.current;
+    if ((ttsPlaying || ttsPlayingMessageId || ttsAudioRef.current || ttsAbortRef.current) && sameMessageRequested) {
+      stopTts();
+      return;
     }
 
     // Evitar reler a mesma mensagem (idempotência), sem bloquear o stop acima.
@@ -6954,6 +6962,11 @@ async function stopRealtime(reason = 'client_stop') {
     if (clean.length < 2) return;
 
     stopTts();
+    // stopTts() marks a stop request; this new play request must clear it.
+    ttsStopRequestedRef.current = false;
+    const ttsController = new AbortController();
+    ttsAbortRef.current = ttsController;
+
     setTtsPlaying(true);
     setTtsPlayingMessageId(messageId || "__manual__");
     setV2vPhase('playing');
@@ -6980,6 +6993,7 @@ async function stopRealtime(reason = 'client_stop') {
       const res = await fetch(`${apiUrl}/api/tts`, {
         method: 'POST',
         headers: ttsHeaders,
+        signal: ttsController.signal,
         // V2V-PATCH: preferir message_id (backend resolve voz correta por agente)
         // agent_id só como fallback se message_id não disponível
         body: JSON.stringify({
@@ -7020,6 +7034,17 @@ async function stopRealtime(reason = 'client_stop') {
 
       console.info('[V2V] v2v_tts_ok trace_id=%s bytes=%d', effectiveTrace, blob.size);
       const url = URL.createObjectURL(blob);
+
+      if (ttsStopRequestedRef.current || ttsController.signal.aborted) {
+        try { URL.revokeObjectURL(url); } catch (_) {}
+        ttsObjectUrlRef.current = null;
+        ttsAudioRef.current = null;
+        setTtsPlaying(false);
+        setTtsPlayingMessageId(null);
+        setV2vPhase(null);
+        return;
+      }
+
       ttsObjectUrlRef.current = url;
       const audio = new Audio(url);
       ttsAudioRef.current = audio;
@@ -7067,11 +7092,21 @@ async function stopRealtime(reason = 'client_stop') {
         });
       });
     } catch (e) {
+      if (e?.name === "AbortError") {
+        setTtsPlaying(false);
+        setTtsPlayingMessageId(null);
+        setV2vPhase(null);
+        return;
+      }
       console.error('[V2V] v2v_tts_fail trace_id=%s error:', effectiveTrace, e);
       setTtsPlaying(false);
           setTtsPlayingMessageId(null);
       setV2vPhase('error');
       setV2vError(e?.message || 'Erro desconhecido no TTS');
+    } finally {
+      if (ttsAbortRef.current === ttsController) {
+        ttsAbortRef.current = null;
+      }
     }
   }
 
