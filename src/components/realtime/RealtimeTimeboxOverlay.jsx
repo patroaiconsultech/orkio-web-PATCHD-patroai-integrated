@@ -35,6 +35,8 @@ export default function RealtimeTimeboxOverlay({
   detail = "",
   voiceLabel = "Orkio em tempo real",
   onStop,
+  onClose,
+  onEnd,
 }) {
   if (!active) return null;
 
@@ -42,12 +44,14 @@ export default function RealtimeTimeboxOverlay({
   const remaining = clampNumber(remainingSeconds, 0, max, max);
   const elapsedPct = Math.max(0, Math.min(100, ((max - remaining) / max) * 100));
   const urgency = remaining <= 10 ? "danger" : remaining <= 20 ? "warning" : "normal";
+
   const accent =
     urgency === "danger"
       ? "rgba(248,113,113,0.98)"
       : urgency === "warning"
         ? "rgba(251,191,36,0.98)"
         : "rgba(125,211,252,0.96)";
+
   const softAccent =
     urgency === "danger"
       ? "rgba(248,113,113,0.18)"
@@ -58,6 +62,21 @@ export default function RealtimeTimeboxOverlay({
   const ringBackground = `conic-gradient(${accent} ${elapsedPct}%, rgba(255,255,255,0.12) ${elapsedPct}% 100%)`;
   const label = resolveStatusLabel(status, statusLabel);
   const cleanDetail = String(detail || "").trim();
+
+  function handleStopClick(event) {
+    try { event?.preventDefault?.(); } catch {}
+    try { event?.stopPropagation?.(); } catch {}
+
+    try {
+      console.log("REALTIME_MANUAL_END", {
+        source: "RealtimeTimeboxOverlay",
+        marker: "AO66R-HF1",
+      });
+    } catch {}
+
+    const cb = onStop || onEnd || onClose;
+    if (typeof cb === "function") cb();
+  }
 
   return (
     <div
@@ -84,8 +103,7 @@ export default function RealtimeTimeboxOverlay({
           minHeight: "min(78vh, 640px)",
           borderRadius: "38px",
           border: "1px solid rgba(255,255,255,0.14)",
-          background:
-            "linear-gradient(180deg, rgba(15,23,42,0.82), rgba(2,6,23,0.92))",
+          background: "linear-gradient(180deg, rgba(15,23,42,0.82), rgba(2,6,23,0.92))",
           boxShadow:
             "0 42px 130px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.14)",
           display: "grid",
@@ -128,7 +146,15 @@ export default function RealtimeTimeboxOverlay({
               textTransform: "uppercase",
             }}
           >
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: accent, boxShadow: `0 0 22px ${accent}` }} />
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 99,
+                background: accent,
+                boxShadow: `0 0 22px ${accent}`,
+              }}
+            />
             {voiceLabel}
           </div>
 
@@ -155,25 +181,31 @@ export default function RealtimeTimeboxOverlay({
                 borderRadius: "50%",
                 display: "grid",
                 placeItems: "center",
-                background:
-                  "radial-gradient(circle at 50% 42%, rgba(15,23,42,0.96), rgba(2,6,23,0.98))",
+                background: "radial-gradient(circle, rgba(15,23,42,0.96), rgba(2,6,23,1))",
                 border: "1px solid rgba(255,255,255,0.10)",
               }}
             >
               <div>
                 <div
                   style={{
-                    fontSize: "clamp(58px, 16vw, 118px)",
-                    lineHeight: 0.92,
+                    fontSize: "clamp(48px, 12vw, 88px)",
                     fontWeight: 950,
                     letterSpacing: "-0.08em",
-                    fontVariantNumeric: "tabular-nums",
-                    textShadow: `0 0 34px ${softAccent}`,
+                    lineHeight: 1,
                   }}
                 >
                   {formatClock(remaining)}
                 </div>
-                <div style={{ marginTop: 12, color: "rgba(255,255,255,0.66)", fontSize: 13, fontWeight: 800 }}>
+                <div
+                  style={{
+                    marginTop: 10,
+                    color: "rgba(255,255,255,0.56)",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.14em",
+                  }}
+                >
                   tempo restante
                 </div>
               </div>
@@ -181,40 +213,28 @@ export default function RealtimeTimeboxOverlay({
           </div>
 
           <div style={{ display: "grid", gap: 8, justifyItems: "center" }}>
-            <div
-              style={{
-                fontSize: "clamp(20px, 4.4vw, 34px)",
-                fontWeight: 900,
-                letterSpacing: "-0.04em",
-              }}
-            >
+            <div style={{ fontSize: "clamp(22px, 4vw, 32px)", fontWeight: 900 }}>
               {label}
             </div>
-            <div
-              style={{
-                maxWidth: 560,
-                color: "rgba(255,255,255,0.70)",
-                fontSize: "clamp(14px, 2.5vw, 16px)",
-                lineHeight: 1.5,
-              }}
-            >
-              {cleanDetail || "A conversa está sendo acompanhada para entregar a transcrição ao final da sessão."}
+            <div style={{ maxWidth: 520, color: "rgba(255,255,255,0.62)", lineHeight: 1.55 }}>
+              {cleanDetail ||
+                "A conversa está sendo acompanhada para entregar a transcrição ao final da sessão."}
             </div>
           </div>
 
           <button
             type="button"
-            onClick={onStop}
+            onClick={handleStopClick}
             style={{
               marginTop: 4,
-              border: "1px solid rgba(255,255,255,0.16)",
+              border: "1px solid rgba(248,113,113,0.34)",
+              background: "rgba(248,113,113,0.14)",
+              color: "#fecaca",
               borderRadius: 999,
-              padding: "12px 18px",
-              color: "#fff",
-              background: "rgba(255,255,255,0.08)",
-              boxShadow: "0 16px 36px rgba(0,0,0,0.28)",
+              padding: "13px 20px",
               fontWeight: 900,
               cursor: "pointer",
+              boxShadow: "0 14px 32px rgba(248,113,113,0.10)",
             }}
           >
             Encerrar voz agora
