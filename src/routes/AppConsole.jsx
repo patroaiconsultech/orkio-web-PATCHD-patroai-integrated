@@ -7246,6 +7246,16 @@ async function stopRealtime(reason = 'client_stop') {
 
       publishRealtimeTranscriptSummary(reason, { sessionId: sid, source: "stopRealtime" });
 
+      try { console.log("REALTIME_MANUAL_END", { reason, sessionId: sid }); } catch {}
+      try { console.log("REALTIME_OVERLAY_CLOSED", { reason, sessionId: sid }); } catch {}
+      try { setRealtimeMode(false); } catch {}
+      try { realtimeModeRef.current = false; } catch {}
+      try { setRtcTimeboxRemaining(null); } catch {}
+
+      try { console.log("REALTIME_SUMMARY_OPENED", { reason, sessionId: sid }); } catch {}
+      try { setRealtimeTranscriptSummaryOpen(true); } catch {}
+
+
       hardResetRealtimeClientState(`stop_${reason}`);
 
       try { rtcSessionIdRef.current = null; } catch {}
