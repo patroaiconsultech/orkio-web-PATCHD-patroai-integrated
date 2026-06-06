@@ -4844,7 +4844,22 @@ async function confirmFounderHandoff() {
       try {
         if (!realtimeModeRef.current) return;
         if (!rtcSessionIdRef.current) return;
-        if (rtcResponseInFlightRef.current) return;
+        if (rtcResponseInFlightRef.current) {
+          const hasRecentServerResponse = Boolean(
+            rtcLastResponseCreatedAtRef.current &&
+            (Date.now() - Number(rtcLastResponseCreatedAtRef.current || 0)) < 8000
+          );
+          if (hasRecentServerResponse) return;
+
+          logRealtimeStep("ao66r_hf2:clearing_stale_inflight_before_user_response", {
+            source,
+            sessionAgeMs: getRealtimeSessionAgeMs(),
+            marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+          });
+          rtcResponseInFlightRef.current = false;
+          rtcLastResponseCreatedAtRef.current = 0;
+          clearRealtimeResponseTimeout();
+        }
 
         const dc = rtcDcRef.current;
         if (!dc || dc.readyState !== "open") {
@@ -5886,7 +5901,7 @@ function scheduleRealtimeIdleFollowup() {
     const ok = sendRealtimeClientEvent(dc, {
       type: "response.create",
       response: {
-        output_modalities: ["audio", "text"],
+        modalities: ["audio", "text"],
         ...(cleanInstructions ? { instructions: cleanInstructions } : {}),
         audio: { output: { voice } },
         metadata: {
@@ -5897,7 +5912,17 @@ function scheduleRealtimeIdleFollowup() {
       },
     }, `${reason}:response_create`);
 
-    if (!ok) {
+    if (ok) {
+      try {
+        console.log("REALTIME_RESPONSE_CREATE_SENT", {
+          reason,
+          hasInstructions: Boolean(cleanInstructions),
+          hasInputText: Boolean(cleanInput),
+          conversationItem: Boolean(conversationItem),
+          marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+        });
+      } catch {}
+    } else {
       rtcResponseInFlightRef.current = false;
       clearRealtimeResponseTimeout();
     }
@@ -6366,7 +6391,7 @@ function scheduleRealtimeIdleFollowup() {
             ? (summitLanguageProfileRef.current || envLang || "pt-BR")
             : (envLang || "pt-BR");
           const langHint = resolveRealtimeTranscriptionLanguage(preferredLang);
-          const transcription = { model: "gpt-4o-mini-transcribe" };
+          const transcription = { model: "gpt-4o-transcribe" };
           if (langHint) transcription.language = langHint;
           try {
             console.log("REALTIME_TRANSCRIPTION_LANGUAGE", {
@@ -6457,6 +6482,13 @@ function scheduleRealtimeIdleFollowup() {
           // when explicitly requested by the user.
           if (ev?.type === 'conversation.item.input_audio_transcription.completed') {
             const raw = (ev?.transcript || ev?.text || ev?.result?.transcript || '').toString();
+            try {
+              console.log("REALTIME_USER_FINAL_TRANSCRIPT", {
+                transcript: raw,
+                length: raw.length,
+                marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+              });
+            } catch {}
             updateRealtimePremiumStatus("transcribing", "📝 Transcrição ativa");
             queueRealtimeEvent({ event_type: 'transcript.final', role: 'user', content: raw, is_final: true });
             try {} catch {}
@@ -6501,6 +6533,13 @@ function scheduleRealtimeIdleFollowup() {
             rtcTextBufRef.current += ev.delta;
           }
           if (ev?.type === 'response.created') {
+            try {
+              console.log("REALTIME_ASSISTANT_RESPONSE_RECEIVED", {
+                type: ev?.type,
+                response_id: ev?.response?.id || ev?.response_id || null,
+                marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+              });
+            } catch {}
             clearRealtimeResponseTimeout();
             clearRealtimeActivationProbe();
             clearRealtimeAutoResponseFallback();
@@ -6749,7 +6788,15 @@ function scheduleRealtimeIdleFollowup() {
         setUploadStatus("⌛ Realtime ainda processando...");
         setTimeout(() => setUploadStatus(""), 1200);
       }, 7000);
-      requestRealtimeSpokenResponse(dc, { reason });
+      requestRealtimeSpokenResponse(dc, {
+        reason,
+        conversationItem: true,
+        inputText: lastTranscript,
+        instructions: (
+          "Responda ao usuário em português do Brasil, por voz, de forma curta, útil e humana. " +
+          `Mensagem do usuário: ${lastTranscript}`
+        ),
+      });
       setRtcReadyToRespond(false);
       setV2vPhase("responding");
       setUploadStatus(reason === "magic" ? "✨ Command received — responding..." : reason === "auto_vad" ? "🎙️ Speech detected — responding..." : "▶️ Responding...");
@@ -7245,16 +7292,6 @@ async function stopRealtime(reason = 'client_stop') {
       }
 
       publishRealtimeTranscriptSummary(reason, { sessionId: sid, source: "stopRealtime" });
-
-      try { console.log("REALTIME_MANUAL_END", { reason, sessionId: sid }); } catch {}
-      try { console.log("REALTIME_OVERLAY_CLOSED", { reason, sessionId: sid }); } catch {}
-      try { setRealtimeMode(false); } catch {}
-      try { realtimeModeRef.current = false; } catch {}
-      try { setRtcTimeboxRemaining(null); } catch {}
-
-      try { console.log("REALTIME_SUMMARY_OPENED", { reason, sessionId: sid }); } catch {}
-      try { setRealtimeTranscriptSummaryOpen(true); } catch {}
-
 
       hardResetRealtimeClientState(`stop_${reason}`);
 
