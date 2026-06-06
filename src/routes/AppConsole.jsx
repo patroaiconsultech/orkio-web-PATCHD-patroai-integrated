@@ -2065,6 +2065,10 @@ const messagesEndRef = useRef(null);
   // AO65A-HF5: remember the message/text explicitly stopped by the user.
   // This blocks delayed automatic replays while still allowing a new user click.
   const ttsManualStopUntilRef = useRef(0);
+  // AO65A-HF6: once the user stops message TTS, block all automatic classic TTS
+  // until the next explicit user click. Timeout shields were not enough because
+  // delayed auto paths can restart after the shield expires.
+  const ttsManualStopActiveRef = useRef(false);
   const ttsStoppedMessageIdRef = useRef(null);
   const ttsStoppedTextRef = useRef("");
   const [ttsVoice, setTtsVoice] = useState(localStorage.getItem('orkio_tts_voice') || ORKIO_DEFAULT_VOICE_ID);
@@ -6908,11 +6912,12 @@ async function stopRealtime(reason = 'client_stop') {
       reason !== "tts_error";
 
     if (shouldSuppressAuto) {
-      // HF5: longer shield against auto TTS / V2V restarts triggered by stale async callbacks.
-      // Manual user clicks are explicitly allowed by playTts({ userInitiated: true }).
-      const suppressUntil = Date.now() + 15000;
+      // HF5/HF6: shield against auto TTS / V2V restarts triggered by stale async callbacks.
+      // HF6 keeps a manual-stop latch active until the next real user click.
+      const suppressUntil = Date.now() + 10 * 60 * 1000;
       ttsSuppressAutoUntilRef.current = suppressUntil;
       ttsManualStopUntilRef.current = suppressUntil;
+      ttsManualStopActiveRef.current = true;
       ttsStoppedMessageIdRef.current = stoppedMessageId;
       ttsStoppedTextRef.current = stoppedText;
     }
@@ -6972,15 +6977,29 @@ async function stopRealtime(reason = 'client_stop') {
       ""
     ).trim();
 
+    const envOrkioVoice = (
+      ORKIO_ENV.VITE_ORKIO_VOICE_ID ||
+      import.meta.env.VITE_ORKIO_VOICE_ID ||
+      ""
+    ).trim();
+
     const currentRealtimeVoice =
-      rtcVoiceRef.current && rtcVoiceRef.current !== ORKIO_DEFAULT_VOICE_ID
+      rtcVoiceRef.current
         ? rtcVoiceRef.current
         : "";
+
+    const lastResolvedAgentVoice =
+      lastAgentInfo?.voice_id ||
+      lastAgentInfo?.voice ||
+      lastAgentInfo?.tts_voice ||
+      "";
 
     return coerceVoiceId(
       voiceOverride ||
         currentRealtimeVoice ||
+        lastResolvedAgentVoice ||
         envRealtimeVoice ||
+        envOrkioVoice ||
         ORKIO_DEFAULT_VOICE_ID
     );
   }
@@ -6997,8 +7016,9 @@ async function stopRealtime(reason = 'client_stop') {
     const stoppedUntil = Number(ttsManualStopUntilRef.current || 0);
     const sameStoppedMessage = Boolean(messageId && ttsStoppedMessageIdRef.current && String(messageId) === String(ttsStoppedMessageIdRef.current));
     const sameStoppedText = Boolean(!messageId && ttsStoppedTextRef.current && String(textToSpeak || "") === String(ttsStoppedTextRef.current || ""));
-    if (!userInitiated && (nowMs < suppressUntil || (nowMs < stoppedUntil && (sameStoppedMessage || sameStoppedText)))) {
-      console.info("[V2V] TTS suppressed after manual stop message_id=%s agent_id=%s userInitiated=%s forceAuto=%s", messageId, agentId, userInitiated, forceAuto);
+    const manualStopActive = Boolean(ttsManualStopActiveRef.current);
+    if (!userInitiated && (manualStopActive || nowMs < suppressUntil || (nowMs < stoppedUntil && (sameStoppedMessage || sameStoppedText)))) {
+      console.info("[V2V] TTS suppressed after manual stop message_id=%s agent_id=%s userInitiated=%s forceAuto=%s manualStopActive=%s", messageId, agentId, userInitiated, forceAuto, manualStopActive);
       return;
     }
 
@@ -7036,6 +7056,7 @@ async function stopRealtime(reason = 'client_stop') {
       // A fresh click by the user is the only thing allowed to clear the manual stop shield.
       ttsSuppressAutoUntilRef.current = 0;
       ttsManualStopUntilRef.current = 0;
+      ttsManualStopActiveRef.current = false;
       ttsStoppedMessageIdRef.current = null;
       ttsStoppedTextRef.current = "";
     }
@@ -8309,6 +8330,7 @@ async function stopRealtime(reason = 'client_stop') {
                 normalizeUserFacingRuntimeMessage={normalizeUserFacingRuntimeMessage}
                 renderMessageContentPremium={renderMessageContentPremium}
                 playTts={playTts}
+                stopTts={stopTts}
                 ttsPlaying={ttsPlaying}
                 ttsPlayingMessageId={ttsPlayingMessageId}
                 extractPatchGovernanceMeta={extractPatchGovernanceMeta}
