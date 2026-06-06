@@ -1683,6 +1683,7 @@ export default function AppConsole() {
 const ORKIO_AO61A_BUILD_MARKER = "AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK";
 const ORKIO_AO61A_HF3_BUILD_MARKER = "AO61A-HF3_TIMEBOX_COUNTER_AUTOSTOP_ASSISTANT_TRANSCRIPT";
 const ORKIO_AO61A_HF4_BUILD_MARKER = "AO61A-HF4_FIXED_COUNTER_LONGEST_ASSISTANT_TRANSCRIPT";
+const ORKIO_AO66A_HF1_BUILD_MARKER = "AO66A-HF1_REALTIME_RESPONSE_FALLBACK_NO_EARLY_END";
 
   const nav = useNavigate();
 
@@ -2122,6 +2123,8 @@ const messagesEndRef = useRef(null);
   const rtcTimeboxHardStopTimerRef = useRef(null);
   const rtcTimeboxDeadlineRef = useRef(0);
   const rtcResponseTimeoutRef = useRef(null);
+  const rtcAutoResponseFallbackTimerRef = useRef(null);
+  const rtcLastTranscriptForAutoResponseRef = useRef("");
   const rtcFallbackActiveRef = useRef(false);
   const rtcResponseInFlightRef = useRef(false);
 
@@ -4749,6 +4752,58 @@ async function confirmFounderHandoff() {
     }
   }
 
+  function clearRealtimeAutoResponseFallback() {
+    if (rtcAutoResponseFallbackTimerRef.current) {
+      try { clearTimeout(rtcAutoResponseFallbackTimerRef.current); } catch {}
+      rtcAutoResponseFallbackTimerRef.current = null;
+    }
+  }
+
+  function scheduleRealtimeAutoResponseFallback(transcript = "", source = "transcript_final") {
+    const clean = String(transcript || "").trim();
+    if (!clean) return;
+
+    clearRealtimeAutoResponseFallback();
+    rtcLastTranscriptForAutoResponseRef.current = clean;
+
+    rtcAutoResponseFallbackTimerRef.current = setTimeout(() => {
+      try {
+        if (!realtimeModeRef.current) return;
+        if (!rtcSessionIdRef.current) return;
+        if (rtcResponseInFlightRef.current) return;
+
+        const dc = rtcDcRef.current;
+        if (!dc || dc.readyState !== "open") {
+          logRealtimeStep("ao66a_hf1:auto_response_fallback_skipped_dc_closed", {
+            source,
+            readyState: dc?.readyState || null,
+            marker: ORKIO_AO66A_HF1_BUILD_MARKER,
+          });
+          return;
+        }
+
+        const latest = String(rtcLastFinalTranscriptRef.current || "").trim();
+        if (!latest || latest !== rtcLastTranscriptForAutoResponseRef.current) return;
+
+        logRealtimeStep("ao66a_hf1:auto_response_fallback_trigger", {
+          source,
+          transcriptLen: latest.length,
+          marker: ORKIO_AO66A_HF1_BUILD_MARKER,
+        });
+
+        triggerRealtimeResponse("auto_fallback_after_transcript");
+      } catch (err) {
+        logRealtimeStep("ao66a_hf1:auto_response_fallback_failed", {
+          source,
+          message: err?.message || null,
+          marker: ORKIO_AO66A_HF1_BUILD_MARKER,
+        });
+      } finally {
+        rtcAutoResponseFallbackTimerRef.current = null;
+      }
+    }, 1400);
+  }
+
 
 function clearRealtimeIdleFollowup() {
   if (rtcIdleFollowupTimerRef.current) {
@@ -5310,6 +5365,7 @@ function scheduleRealtimeIdleFollowup() {
     logRealtimeStep("hf5:hard_reset_begin", { reason, sessionId: rtcSessionIdRef.current || null });
 
     try { clearRealtimeResponseTimeout(); } catch {}
+    try { clearRealtimeAutoResponseFallback(); } catch {}
     try { clearRealtimeIdleFollowup(); } catch {}
     try { clearRealtimeAudioWatchdog(); } catch {}
     try { clearRealtimeStartupWatchdog(); } catch {}
@@ -5570,7 +5626,7 @@ function scheduleRealtimeIdleFollowup() {
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
       setRtcTimeboxRemaining(remaining);
 
-      if (remaining > 15) {
+      if (remaining > 15 && !rtcResponseInFlightRef.current) {
         updateRealtimePremiumStatus("listening", "📝 Transcrição ativa");
       }
 
@@ -6111,6 +6167,7 @@ function scheduleRealtimeIdleFollowup() {
               });
               if (extractedAssistantText) {
                 clearRealtimeResponseTimeout();
+                clearRealtimeAutoResponseFallback();
                 if (eventType === "response.done") rtcResponseInFlightRef.current = false;
                 scheduleRealtimeAssistantFinalCommit(extractedAssistantText, { source: eventType, delayMs: eventType === "response.done" ? 150 : 1100 });
               }
@@ -6147,9 +6204,17 @@ function scheduleRealtimeIdleFollowup() {
                   console.warn('[Realtime] magic trigger failed', err);
                 }
               } else if (raw.trim()) {
-                setRtcReadyToRespond(false);
-                logRealtimeStep('runtime:awaiting_server_auto_response', {
+                // AO66A-HF1:
+                // Keep manual response available and schedule a safe fallback.
+                // The server VAD create_response=true remains primary, but if no
+                // response.created arrives shortly after the final transcript,
+                // the client triggers exactly one response.create instead of
+                // leaving the UI stuck in "Aguardando a fala terminar".
+                setRtcReadyToRespond(true);
+                scheduleRealtimeAutoResponseFallback(raw, "input_audio_transcription.completed");
+                logRealtimeStep('ao66a_hf1:awaiting_server_auto_response_with_client_fallback', {
                   transcript: raw,
+                  marker: ORKIO_AO66A_HF1_BUILD_MARKER,
                 });
               }
             });
@@ -6161,6 +6226,7 @@ function scheduleRealtimeIdleFollowup() {
           }
           if (ev?.type === 'response.created') {
             clearRealtimeResponseTimeout();
+            clearRealtimeAutoResponseFallback();
             rtcResponseInFlightRef.current = true;
             setV2vPhase('responding');
             updateRealtimePremiumStatus("responding", "Orkio está respondendo por voz.");
@@ -6225,6 +6291,7 @@ function scheduleRealtimeIdleFollowup() {
 
           if (ev?.type === 'response.done') {
             clearRealtimeResponseTimeout();
+            clearRealtimeAutoResponseFallback();
             rtcResponseInFlightRef.current = false;
             updateRealtimePremiumStatus("listening", "📝 Transcrição ativa");
 
@@ -6263,6 +6330,7 @@ function scheduleRealtimeIdleFollowup() {
 
           if (ev?.type === 'error') {
             clearRealtimeResponseTimeout();
+            clearRealtimeAutoResponseFallback();
             rtcResponseInFlightRef.current = false;
             console.warn('[Realtime] error', ev);
             logRealtimeStep('runtime:error_event', ev);
@@ -6393,6 +6461,7 @@ function scheduleRealtimeIdleFollowup() {
       }
       rtcResponseInFlightRef.current = true;
       clearRealtimeResponseTimeout();
+      clearRealtimeAutoResponseFallback();
       clearRealtimeIdleFollowup();
       rtcResponseTimeoutRef.current = setTimeout(() => {
         setUploadStatus("⌛ Realtime ainda processando...");
@@ -6808,6 +6877,7 @@ async function stopRealtime(reason = 'client_stop') {
 
     try {
       clearRealtimeResponseTimeout();
+      clearRealtimeAutoResponseFallback();
       clearRealtimeIdleFollowup();
       clearRealtimeAudioWatchdog();
       clearRealtimeStartupWatchdog();
