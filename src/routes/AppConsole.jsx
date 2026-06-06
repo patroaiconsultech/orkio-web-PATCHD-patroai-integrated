@@ -2059,6 +2059,9 @@ const messagesEndRef = useRef(null);
   // AO65A-HF3: allow stopping while /api/tts is still generating audio.
   const ttsAbortRef = useRef(null);
   const ttsStopRequestedRef = useRef(false);
+  // AO65A-HF4: hard-stop protection against delayed blobs/audio callbacks after user stop.
+  const ttsPlaySeqRef = useRef(0);
+  const ttsSuppressAutoUntilRef = useRef(0);
   const [ttsVoice, setTtsVoice] = useState(localStorage.getItem('orkio_tts_voice') || ORKIO_DEFAULT_VOICE_ID);
   const lastSpokenMsgRef = useRef('');
   const lastSpokenMessageIdRef = useRef(null);
@@ -6885,40 +6888,102 @@ async function stopRealtime(reason = 'client_stop') {
     }
   }
 
-  function stopTts() {
-    // AO65A-HF3: stop must cancel both active playback and pending /api/tts generation.
+  function stopTts(reason = "manual_stop") {
+    // AO65A-HF4: hard stop must invalidate every pending TTS generation/playback path.
+    // This prevents a delayed /api/tts blob or a stale Audio callback from resuming after stop.
     ttsStopRequestedRef.current = true;
+    ttsPlaySeqRef.current += 1;
+
+    const shouldSuppressAuto =
+      reason !== "before_new_play" &&
+      reason !== "natural_end" &&
+      reason !== "tts_error";
+
+    if (shouldSuppressAuto) {
+      // Short shield against auto TTS / V2V restarts triggered by stale async callbacks.
+      ttsSuppressAutoUntilRef.current = Date.now() + 2500;
+    }
+
     try {
       ttsAbortRef.current?.abort?.();
     } catch (_) {}
     ttsAbortRef.current = null;
 
-    if (ttsAudioRef.current) {
+    const activeAudio = ttsAudioRef.current;
+    ttsAudioRef.current = null;
+
+    if (activeAudio) {
       try {
-        ttsAudioRef.current.pause();
-        ttsAudioRef.current.currentTime = 0;
+        activeAudio.onended = null;
+        activeAudio.onerror = null;
+        activeAudio.onpause = null;
       } catch (_) {}
-      ttsAudioRef.current = null;
+      try {
+        activeAudio.pause();
+        activeAudio.currentTime = 0;
+      } catch (_) {}
+      try {
+        activeAudio.removeAttribute("src");
+        activeAudio.load?.();
+      } catch (_) {}
     }
+
     if (ttsObjectUrlRef.current) {
       try {
         URL.revokeObjectURL(ttsObjectUrlRef.current);
       } catch (_) {}
       ttsObjectUrlRef.current = null;
     }
+
+    try {
+      if (micRestartTimeoutRef.current) {
+        clearTimeout(micRestartTimeoutRef.current);
+        micRestartTimeoutRef.current = null;
+      }
+    } catch (_) {}
+
     lastSpokenMessageIdRef.current = null;
     lastSpokenMsgRef.current = "";
     setTtsPlaying(false);
     setTtsPlayingMessageId(null);
-    if (v2vPhase === "playing") {
+    if (v2vPhase === "playing" || v2vPhase === "tts") {
       setV2vPhase(null);
     }
+  }
+
+  function resolveUnifiedClassicTtsVoice(voiceOverride = null) {
+    const ORKIO_ENV = (typeof window !== "undefined" && window.__ORKIO_ENV__) ? window.__ORKIO_ENV__ : {};
+    const envRealtimeVoice = (
+      ORKIO_ENV.VITE_REALTIME_VOICE ||
+      import.meta.env.VITE_REALTIME_VOICE ||
+      ""
+    ).trim();
+
+    const currentRealtimeVoice =
+      rtcVoiceRef.current && rtcVoiceRef.current !== ORKIO_DEFAULT_VOICE_ID
+        ? rtcVoiceRef.current
+        : "";
+
+    return coerceVoiceId(
+      voiceOverride ||
+        currentRealtimeVoice ||
+        envRealtimeVoice ||
+        ORKIO_DEFAULT_VOICE_ID
+    );
   }
 
   async function playTts(textToSpeak, agentId, opts = {}) {
     // F-01 FIX: desestruturar opts no início da função
     const { forceAuto = false, messageId = null, traceId = null, voiceOverride = null } = opts || {};
     if (!textToSpeak || textToSpeak.length < 2) return;
+
+    // AO65A-HF4: after a manual stop, block automatic TTS restarts briefly.
+    // Manual user clicks remain allowed.
+    if (forceAuto && Date.now() < Number(ttsSuppressAutoUntilRef.current || 0)) {
+      console.info("[V2V] auto TTS suppressed after manual stop message_id=%s agent_id=%s", messageId, agentId);
+      return;
+    }
+
     // AO47B2_FRONTEND_SUPPRESS_CLASSIC_TTS_DURING_REALTIME
     // Realtime já possui áudio nativo. Durante sessão Realtime, nunca chamar /api/tts clássico.
     if (realtimeModeRef.current || rtcSessionIdRef.current) {
@@ -6930,12 +6995,12 @@ async function stopRealtime(reason = 'client_stop') {
       return;
     }
 
-    // AO65A-HF3: permitir desligar também enquanto o /api/tts ainda está gerando.
+    // AO65A-HF3/HF4: permitir desligar também enquanto o /api/tts ainda está gerando.
     const sameMessageRequested = messageId
       ? messageId === lastSpokenMessageIdRef.current
       : textToSpeak === lastSpokenMsgRef.current;
     if ((ttsPlaying || ttsPlayingMessageId || ttsAudioRef.current || ttsAbortRef.current) && sameMessageRequested) {
-      stopTts();
+      stopTts("user_toggle");
       return;
     }
 
@@ -6961,11 +7026,18 @@ async function stopRealtime(reason = 'client_stop') {
     }
     if (clean.length < 2) return;
 
-    stopTts();
+    stopTts("before_new_play");
     // stopTts() marks a stop request; this new play request must clear it.
     ttsStopRequestedRef.current = false;
     const ttsController = new AbortController();
+    const playSeq = ++ttsPlaySeqRef.current;
     ttsAbortRef.current = ttsController;
+
+    const isCurrentTtsPlay = () =>
+      ttsPlaySeqRef.current === playSeq &&
+      ttsAbortRef.current === ttsController &&
+      !ttsStopRequestedRef.current &&
+      !ttsController.signal.aborted;
 
     setTtsPlaying(true);
     setTtsPlayingMessageId(messageId || "__manual__");
@@ -6989,29 +7061,35 @@ async function stopRealtime(reason = 'client_stop') {
       const ttsSpeed = coerceTtsSpeed(
         ORKIO_ENV.VITE_ORKIO_TTS_SPEED || import.meta.env.VITE_ORKIO_TTS_SPEED || ORKIO_DEFAULT_TTS_SPEED
       );
+      const unifiedVoice = resolveUnifiedClassicTtsVoice(voiceOverride);
 
       const res = await fetch(`${apiUrl}/api/tts`, {
         method: 'POST',
         headers: ttsHeaders,
         signal: ttsController.signal,
-        // V2V-PATCH: preferir message_id (backend resolve voz correta por agente)
-        // agent_id só como fallback se message_id não disponível
+        // AO65A-HF4: use the same voice profile as Realtime for classic message TTS.
+        // This avoids Orkio sounding different between the 🔊 button and Realtime.
         body: JSON.stringify({
           text: clean,
-          voice: voiceOverride ? resolveAgentVoice({ voice_id: voiceOverride }) : ((forceAuto || messageId) ? null : (ttsVoice === "auto" ? null : ttsVoice)),
+          voice: unifiedVoice,
           speed: ttsSpeed,
-          agent_id: messageId ? null : (agentId || null),
+          agent_id: agentId || null,
           message_id: messageId || null,
           // AO47B2: defesa adicional para o backend AO47B1 conseguir bloquear se este caminho for chamado.
           thread_id: threadId || null,
         }),
       });
 
+      if (!isCurrentTtsPlay()) {
+        return;
+      }
+
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
+        if (!isCurrentTtsPlay()) return;
         console.warn('[V2V] v2v_tts_fail trace_id=%s status=%d body=%s', effectiveTrace, res.status, errText.slice(0, 200));
         setTtsPlaying(false);
-          setTtsPlayingMessageId(null);
+        setTtsPlayingMessageId(null);
         setV2vPhase('error');
         setV2vError(`TTS falhou (HTTP ${res.status})`);
         if (res.status === 401) {
@@ -7023,25 +7101,25 @@ async function stopRealtime(reason = 'client_stop') {
       }
 
       const blob = await res.blob();
+
+      if (!isCurrentTtsPlay()) {
+        return;
+      }
+
       if (!blob || blob.size < 50) {
         console.warn('[V2V] v2v_tts_fail trace_id=%s reason=empty_blob size=%d', effectiveTrace, blob?.size);
         setTtsPlaying(false);
-          setTtsPlayingMessageId(null);
+        setTtsPlayingMessageId(null);
         setV2vPhase('error');
         setV2vError('TTS retornou áudio vazio');
         return;
       }
 
-      console.info('[V2V] v2v_tts_ok trace_id=%s bytes=%d', effectiveTrace, blob.size);
+      console.info('[V2V] v2v_tts_ok trace_id=%s bytes=%d voice=%s', effectiveTrace, blob.size, unifiedVoice);
       const url = URL.createObjectURL(blob);
 
-      if (ttsStopRequestedRef.current || ttsController.signal.aborted) {
+      if (!isCurrentTtsPlay()) {
         try { URL.revokeObjectURL(url); } catch (_) {}
-        ttsObjectUrlRef.current = null;
-        ttsAudioRef.current = null;
-        setTtsPlaying(false);
-        setTtsPlayingMessageId(null);
-        setV2vPhase(null);
         return;
       }
 
@@ -7050,40 +7128,56 @@ async function stopRealtime(reason = 'client_stop') {
       ttsAudioRef.current = audio;
 
       await new Promise((resolve, reject) => {
-        audio.onended = () => {
-          console.info('[V2V] v2v_play_end trace_id=%s', effectiveTrace);
-          setTtsPlaying(false);
-          setTtsPlayingMessageId(null);
-          setV2vPhase(null);
-          URL.revokeObjectURL(url);
+        const cleanupCurrentAudio = (nextPhase = null) => {
+          try { URL.revokeObjectURL(url); } catch (_) {}
           if (ttsObjectUrlRef.current === url) ttsObjectUrlRef.current = null;
-          ttsAudioRef.current = null;
-          // Reiniciar microfone após fala (ciclo V2V)
+          if (ttsAudioRef.current === audio) ttsAudioRef.current = null;
+
+          // Only the current play is allowed to change visible TTS state.
+          // Stale audio callbacks from an older blob must never flip the button or restart UI state.
+          if (ttsPlaySeqRef.current === playSeq) {
+            setTtsPlaying(false);
+            setTtsPlayingMessageId(null);
+            setV2vPhase(nextPhase);
+          }
+        };
+
+        audio.onended = () => {
+          if (!isCurrentTtsPlay()) {
+            cleanupCurrentAudio(null);
+            resolve();
+            return;
+          }
+          console.info('[V2V] v2v_play_end trace_id=%s', effectiveTrace);
+          stopTts("natural_end");
+          // Reiniciar microfone após fala (ciclo V2V) apenas em voice mode clássico.
           if (voiceModeRef.current && (speechSupported || mediaRecorderSupported) && !micEnabledRef.current) {
             scheduleMicRestart('tts_end', 0);
           }
           resolve();
         };
+
         audio.onerror = (err) => {
+          if (!isCurrentTtsPlay()) {
+            cleanupCurrentAudio(null);
+            resolve();
+            return;
+          }
           console.error('[V2V] audio.onerror trace_id=%s', effectiveTrace, err);
-          setTtsPlaying(false);
-          setTtsPlayingMessageId(null);
-          setV2vPhase('error');
+          cleanupCurrentAudio('error');
           setV2vError('Erro ao reproduzir áudio');
-          URL.revokeObjectURL(url);
-          if (ttsObjectUrlRef.current === url) ttsObjectUrlRef.current = null;
-          ttsAudioRef.current = null;
           reject(new Error('Audio playback error'));
         };
+
         audio.play().catch(err => {
+          if (!isCurrentTtsPlay()) {
+            cleanupCurrentAudio(null);
+            resolve();
+            return;
+          }
           // autoplay bloqueado pelo browser — fallback silencioso
           console.warn('[V2V] autoplay blocked trace_id=%s:', effectiveTrace, err?.message);
-          setTtsPlaying(false);
-          setTtsPlayingMessageId(null);
-          setV2vPhase(null);
-          URL.revokeObjectURL(url);
-          if (ttsObjectUrlRef.current === url) ttsObjectUrlRef.current = null;
-          ttsAudioRef.current = null;
+          cleanupCurrentAudio(null);
           // BUG-01 FIX: reiniciar mic mesmo sem áudio — ciclo V2V não pode morrer aqui
           if (voiceModeRef.current && !micEnabledRef.current) {
             scheduleMicRestart('tts_autoplay_blocked', 300);
@@ -7092,17 +7186,22 @@ async function stopRealtime(reason = 'client_stop') {
         });
       });
     } catch (e) {
-      if (e?.name === "AbortError") {
+      if (e?.name === "AbortError" || ttsController.signal.aborted || ttsStopRequestedRef.current) {
+        if (ttsAbortRef.current === ttsController) {
+          ttsAbortRef.current = null;
+        }
         setTtsPlaying(false);
         setTtsPlayingMessageId(null);
         setV2vPhase(null);
         return;
       }
       console.error('[V2V] v2v_tts_fail trace_id=%s error:', effectiveTrace, e);
-      setTtsPlaying(false);
-          setTtsPlayingMessageId(null);
-      setV2vPhase('error');
-      setV2vError(e?.message || 'Erro desconhecido no TTS');
+      if (isCurrentTtsPlay()) {
+        setTtsPlaying(false);
+        setTtsPlayingMessageId(null);
+        setV2vPhase('error');
+        setV2vError(e?.message || 'Erro desconhecido no TTS');
+      }
     } finally {
       if (ttsAbortRef.current === ttsController) {
         ttsAbortRef.current = null;
