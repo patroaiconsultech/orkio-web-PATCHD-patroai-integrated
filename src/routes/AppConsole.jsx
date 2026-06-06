@@ -10,6 +10,8 @@ import { startSessionHeartbeat } from "../lib/sessionHeartbeat.js";
 import EmptyStatePremium from "../components/EmptyStatePremium.jsx";
 import ExecutionTimeline from "../components/ExecutionTimeline.jsx";
 import MessageBubble from "../components/chat/MessageBubble.jsx";
+import RealtimeTimeboxOverlay from "../components/realtime/RealtimeTimeboxOverlay.jsx";
+import RealtimeTranscriptSummary from "../components/realtime/RealtimeTranscriptSummary.jsx";
 
 // ORKIO_AO60D_REALTIME_MOBILE_HARDENING
 function buildRealtimeDiagnosticError(code, message, diagnostic = {}) {
@@ -2172,6 +2174,9 @@ const rtcLastUserActivityAtRef = useRef(0);
   const [lastRealtimeSessionId, setLastRealtimeSessionId] = useState(null);
   const [summitSessionScore, setSummitSessionScore] = useState(null);
   const [summitReviewPending, setSummitReviewPending] = useState(false);
+  const [realtimeTranscriptSummary, setRealtimeTranscriptSummary] = useState(null);
+  const [realtimeTranscriptSummaryOpen, setRealtimeTranscriptSummaryOpen] = useState(false);
+  const realtimeTranscriptTurnsRef = useRef([]);
   const summitRuntimeModeRef = useRef((((window.__ORKIO_ENV__?.VITE_ORKIO_RUNTIME_MODE || import.meta.env.VITE_ORKIO_RUNTIME_MODE || "summit")).trim().toLowerCase() === "summit") ? "summit" : "platform");
   const summitLanguageProfileRef = useRef((((window.__ORKIO_ENV__?.VITE_SUMMIT_LANGUAGE_PROFILE || import.meta.env.VITE_SUMMIT_LANGUAGE_PROFILE || "pt-BR")).trim() || "auto"));
 
@@ -5118,6 +5123,114 @@ function scheduleRealtimeIdleFollowup() {
     try { setRtcPremiumStatusDetail(String(detail || "")); } catch {}
   }
 
+  // AO66A_REALTIME_FULLSCREEN_CLOCK_TRANSCRIPT_SUMMARY
+  function normalizeRealtimeTranscriptText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function resetRealtimeTranscriptSession(reason = "reset") {
+    try { realtimeTranscriptTurnsRef.current = []; } catch {}
+    try { setRealtimeTranscriptSummary(null); } catch {}
+    try { setRealtimeTranscriptSummaryOpen(false); } catch {}
+    try { logRealtimeStep("ao66a:transcript_summary_reset", { reason }); } catch {}
+  }
+
+  function appendRealtimeTranscriptTurn(role, content, meta = {}) {
+    const text = normalizeRealtimeTranscriptText(content);
+    if (!text) return;
+    const safeRole = role === "assistant" ? "assistant" : "user";
+    const now = Math.floor(Date.now() / 1000);
+    const nextTurn = {
+      id: `rt_${safeRole}_${now}_${Math.random().toString(16).slice(2)}`,
+      role: safeRole,
+      label: safeRole === "assistant" ? "Orkio respondeu" : "Você disse",
+      content: text,
+      created_at: now,
+      meta: meta && typeof meta === "object" ? meta : {},
+    };
+
+    try {
+      const prev = Array.isArray(realtimeTranscriptTurnsRef.current)
+        ? realtimeTranscriptTurnsRef.current.slice()
+        : [];
+
+      const last = prev[prev.length - 1];
+      const shouldUpgradeAssistant = Boolean(
+        safeRole === "assistant"
+        && last
+        && last.role === "assistant"
+        && text.length >= String(last.content || "").length
+      );
+
+      if (shouldUpgradeAssistant) {
+        prev[prev.length - 1] = { ...last, ...nextTurn, id: last.id, meta: { ...(last.meta || {}), ...(nextTurn.meta || {}), upgraded: true } };
+      } else if (!last || last.role !== safeRole || String(last.content || "").trim() !== text) {
+        prev.push(nextTurn);
+      }
+
+      realtimeTranscriptTurnsRef.current = prev.slice(-12);
+    } catch {}
+  }
+
+  function buildRealtimeTranscriptSummary(reason = "ended", extra = {}) {
+    const turns = Array.isArray(realtimeTranscriptTurnsRef.current)
+      ? realtimeTranscriptTurnsRef.current.filter((turn) => normalizeRealtimeTranscriptText(turn?.content))
+      : [];
+
+    const userTurns = turns.filter((turn) => turn.role === "user");
+    const assistantTurns = turns.filter((turn) => turn.role === "assistant");
+
+    const userText = normalizeRealtimeTranscriptText(
+      userTurns.length
+        ? userTurns.map((turn) => turn.content).join("\n\n")
+        : rtcLastFinalTranscriptRef.current
+    );
+    const assistantText = normalizeRealtimeTranscriptText(
+      assistantTurns.length
+        ? assistantTurns.map((turn) => turn.content).join("\n\n")
+        : rtcAssistantFinalTextRef.current
+    );
+
+    return {
+      id: `rt_summary_${Date.now()}`,
+      reason,
+      sessionId: extra?.sessionId || rtcSessionIdRef.current || lastRealtimeSessionId || null,
+      endedAt: Math.floor(Date.now() / 1000),
+      userText,
+      assistantText,
+      turns,
+      source: extra?.source || "frontend_realtime_events",
+    };
+  }
+
+  function publishRealtimeTranscriptSummary(reason = "ended", extra = {}) {
+    try {
+      const summary = buildRealtimeTranscriptSummary(reason, extra);
+      const hasContent = Boolean(
+        normalizeRealtimeTranscriptText(summary.userText)
+        || normalizeRealtimeTranscriptText(summary.assistantText)
+        || (Array.isArray(summary.turns) && summary.turns.length > 0)
+      );
+      if (!hasContent) {
+        logRealtimeStep("ao66a:transcript_summary_empty", { reason, sessionId: summary.sessionId || null });
+        return false;
+      }
+      setRealtimeTranscriptSummary(summary);
+      setRealtimeTranscriptSummaryOpen(true);
+      logRealtimeStep("ao66a:transcript_summary_published", {
+        reason,
+        sessionId: summary.sessionId || null,
+        turns: summary.turns?.length || 0,
+        hasUser: Boolean(summary.userText),
+        hasAssistant: Boolean(summary.assistantText),
+      });
+      return true;
+    } catch (err) {
+      try { logRealtimeStep("ao66a:transcript_summary_failed", { reason, message: err?.message || null }); } catch {}
+      return false;
+    }
+  }
+
   function getRealtimePremiumStatusLabel() {
     if (rtcCooldownRemaining > 0 && !realtimeMode) {
       return `🕒 Voz disponível novamente em ${formatRealtimeCountdown(rtcCooldownRemaining)}`;
@@ -5609,6 +5722,8 @@ function scheduleRealtimeIdleFollowup() {
       }
       hardResetRealtimeClientState("pre_start", { startNonce });
 
+      resetRealtimeTranscriptSession("realtime_start");
+
       try { setRtcAuditEvents([]); } catch {}
       try { setRtcPunctStatus(null); } catch {}
       try { setSummitSessionScore(null); } catch {}
@@ -6013,6 +6128,7 @@ function scheduleRealtimeIdleFollowup() {
             queueRealtimeEvent({ event_type: 'transcript.final', role: 'user', content: raw, is_final: true });
             try {} catch {}
             rtcLastFinalTranscriptRef.current = raw;
+            appendRealtimeTranscriptTurn("user", raw, { source: "input_audio_transcription.completed" });
             markRealtimeUserActivity();
 
             Promise.resolve(guardAndMaybeBlockRealtimeTranscript(raw)).then((blocked) => {
@@ -6603,6 +6719,7 @@ function scheduleRealtimeIdleFollowup() {
     rtcLastAssistantFinalRef.current = dedupeKey;
     rtcAssistantFinalCommittedRef.current = true;
     rtcAssistantFinalTextRef.current = finalText;
+    appendRealtimeTranscriptTurn("assistant", finalText, { source });
 
     queueRealtimeEvent({ event_type: 'response.final', role: 'assistant', content: finalText, is_final: true, meta: { source, hf4: true, upgraded: isMeaningfulUpgrade } });
 
@@ -6720,6 +6837,8 @@ async function stopRealtime(reason = 'client_stop') {
       } catch (err) {
         console.warn('[Realtime] stop finalize failed', err);
       }
+
+      publishRealtimeTranscriptSummary(reason, { sessionId: sid, source: "stopRealtime" });
 
       hardResetRealtimeClientState(`stop_${reason}`);
 
@@ -7788,6 +7907,30 @@ async function stopRealtime(reason = 'client_stop') {
 
   const pendingApprovedPatchExecution = findPendingApprovedPatchExecution(messages);
 
+  const realtimeOverlayActive = Boolean(
+    SUMMIT_VOICE_MODE === "realtime"
+    && (
+      realtimeMode
+      || rtcTimeboxRemaining !== null
+      || v2vPhase === "connecting"
+      || rtcPremiumStatus === "connecting"
+      || rtcPremiumStatus === "listening"
+      || rtcPremiumStatus === "transcribing"
+      || rtcPremiumStatus === "responding"
+      || rtcPremiumStatus === "ending"
+    )
+    && rtcPremiumStatus !== "cooldown"
+  );
+  const realtimeOverlayMaxSeconds = Math.max(
+    1,
+    Math.ceil(Number(rtcTimeboxPolicyRef.current?.maxSeconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS))
+  );
+  const realtimeOverlayRemainingSeconds = rtcTimeboxRemaining !== null
+    ? rtcTimeboxRemaining
+    : realtimeOverlayMaxSeconds;
+  const realtimeOverlayStatusLabel = getRealtimePremiumStatusLabel();
+  const realtimeOverlayDetail = rtcPremiumStatusDetail || (realtimeMode ? "Conversa em tempo real ativa." : "");
+
   if (!onboardingChecked && !bootstrapFailOpen) {
     return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#0f1115", color: "#fff", fontFamily: "system-ui" }}>Carregando sua experiência...</div>;
   }
@@ -7795,6 +7938,21 @@ async function stopRealtime(reason = 'client_stop') {
   return (
     <>
     <PWAInstallPrompt />
+    <RealtimeTimeboxOverlay
+      active={realtimeOverlayActive}
+      remainingSeconds={realtimeOverlayRemainingSeconds}
+      maxSeconds={realtimeOverlayMaxSeconds}
+      status={rtcPremiumStatus || (realtimeMode ? "listening" : null)}
+      statusLabel={realtimeOverlayStatusLabel}
+      detail={realtimeOverlayDetail}
+      voiceLabel="Orkio em tempo real"
+      onStop={() => stopRealtime("client_stop_fullscreen_clock")}
+    />
+    <RealtimeTranscriptSummary
+      open={realtimeTranscriptSummaryOpen}
+      summary={realtimeTranscriptSummary}
+      onClose={() => setRealtimeTranscriptSummaryOpen(false)}
+    />
     {bootstrapFailOpen && (
       <div style={{ position: "fixed", top: "12px", left: "50%", transform: "translateX(-50%)", zIndex: 120, padding: "10px 14px", borderRadius: "12px", border: "1px solid rgba(251,191,36,0.35)", background: "rgba(120,53,15,0.92)", color: "#fde68a", fontSize: "12px", fontWeight: 700, boxShadow: "0 12px 28px rgba(0,0,0,0.28)" }}>
         Console liberado em modo fail-open. O bootstrap inicial demorou mais que o esperado.
