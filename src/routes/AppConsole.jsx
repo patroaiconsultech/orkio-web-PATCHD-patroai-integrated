@@ -1683,7 +1683,7 @@ export default function AppConsole() {
 const ORKIO_AO61A_BUILD_MARKER = "AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK";
 const ORKIO_AO61A_HF3_BUILD_MARKER = "AO61A-HF3_TIMEBOX_COUNTER_AUTOSTOP_ASSISTANT_TRANSCRIPT";
 const ORKIO_AO61A_HF4_BUILD_MARKER = "AO61A-HF4_FIXED_COUNTER_LONGEST_ASSISTANT_TRANSCRIPT";
-const ORKIO_AO66A_HF1_BUILD_MARKER = "AO66A-HF1_REALTIME_RESPONSE_FALLBACK_NO_EARLY_END";
+const ORKIO_AO66A_HF2_BUILD_MARKER = "AO66A-HF2_REALTIME_RESPONSE_FALLBACK_NO_EARLY_END";
 
   const nav = useNavigate();
 
@@ -2127,6 +2127,10 @@ const messagesEndRef = useRef(null);
   const rtcLastTranscriptForAutoResponseRef = useRef("");
   const rtcFallbackActiveRef = useRef(false);
   const rtcResponseInFlightRef = useRef(false);
+  // AO66A-HF2: prevent premature auto-end while Realtime is still stabilizing.
+  const rtcSessionStartedAtRef = useRef(0);
+  const rtcPendingAutoStopTimerRef = useRef(null);
+  const rtcLastStopReasonRef = useRef("");
 
 
 const rtcIdleFollowupTimerRef = useRef(null);
@@ -4745,6 +4749,58 @@ async function confirmFounderHandoff() {
 
 
 
+  function clearRealtimePendingAutoStop() {
+    if (rtcPendingAutoStopTimerRef.current) {
+      try { clearTimeout(rtcPendingAutoStopTimerRef.current); } catch {}
+      rtcPendingAutoStopTimerRef.current = null;
+    }
+  }
+
+  function getRealtimeSessionAgeMs() {
+    try {
+      const started = Number(rtcSessionStartedAtRef.current || 0);
+      return started ? Math.max(0, Date.now() - started) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function isManualRealtimeStopReason(reason = "") {
+    const r = String(reason || "").toLowerCase();
+    return (
+      r.includes("client_stop") ||
+      r.includes("toggle_off") ||
+      r.includes("voice_mode") ||
+      r.includes("pagehide") ||
+      r.includes("time_limit") ||
+      r.includes("backend_cooldown") ||
+      r.includes("cooldown") ||
+      r.includes("start_error") ||
+      r.includes("start_blocked") ||
+      r.includes("pre_start") ||
+      r.includes("diagnostic") ||
+      r.includes("permission") ||
+      r.includes("forbidden") ||
+      r.includes("unauthorized")
+    );
+  }
+
+  function isPrematureAutoRealtimeStopReason(reason = "") {
+    const r = String(reason || "").toLowerCase();
+    if (isManualRealtimeStopReason(r)) return false;
+    return (
+      r.includes("startup_watchdog") ||
+      r.includes("watchdog") ||
+      r.includes("no_audio") ||
+      r.includes("audio_watchdog") ||
+      r.includes("response_timeout") ||
+      r.includes("speech") ||
+      r.includes("silence") ||
+      r.includes("fallback") ||
+      r.includes("auto")
+    );
+  }
+
   function clearRealtimeResponseTimeout() {
     if (rtcResponseTimeoutRef.current) {
       try { clearTimeout(rtcResponseTimeoutRef.current); } catch {}
@@ -4774,10 +4830,10 @@ async function confirmFounderHandoff() {
 
         const dc = rtcDcRef.current;
         if (!dc || dc.readyState !== "open") {
-          logRealtimeStep("ao66a_hf1:auto_response_fallback_skipped_dc_closed", {
+          logRealtimeStep("ao66a_hf2:auto_response_fallback_skipped_dc_closed", {
             source,
             readyState: dc?.readyState || null,
-            marker: ORKIO_AO66A_HF1_BUILD_MARKER,
+            marker: ORKIO_AO66A_HF2_BUILD_MARKER,
           });
           return;
         }
@@ -4785,18 +4841,18 @@ async function confirmFounderHandoff() {
         const latest = String(rtcLastFinalTranscriptRef.current || "").trim();
         if (!latest || latest !== rtcLastTranscriptForAutoResponseRef.current) return;
 
-        logRealtimeStep("ao66a_hf1:auto_response_fallback_trigger", {
+        logRealtimeStep("ao66a_hf2:auto_response_fallback_trigger", {
           source,
           transcriptLen: latest.length,
-          marker: ORKIO_AO66A_HF1_BUILD_MARKER,
+          marker: ORKIO_AO66A_HF2_BUILD_MARKER,
         });
 
         triggerRealtimeResponse("auto_fallback_after_transcript");
       } catch (err) {
-        logRealtimeStep("ao66a_hf1:auto_response_fallback_failed", {
+        logRealtimeStep("ao66a_hf2:auto_response_fallback_failed", {
           source,
           message: err?.message || null,
-          marker: ORKIO_AO66A_HF1_BUILD_MARKER,
+          marker: ORKIO_AO66A_HF2_BUILD_MARKER,
         });
       } finally {
         rtcAutoResponseFallbackTimerRef.current = null;
@@ -5082,7 +5138,7 @@ function scheduleRealtimeIdleFollowup() {
             void requestRealtimeWakeLock("guard_tick_reacquire");
           }
         } catch {}
-      }, 15000);
+      }, 30000);
 
       logRealtimeStep("mobile:wake_lock_guard_started", { reason });
     } catch {}
@@ -5437,6 +5493,9 @@ function scheduleRealtimeIdleFollowup() {
     try { rtcAssistantPendingFinalSourceRef.current = ""; } catch {}
     try { if (rtcAssistantPendingFinalTimerRef.current) clearTimeout(rtcAssistantPendingFinalTimerRef.current); rtcAssistantPendingFinalTimerRef.current = null; } catch {}
     try { if (rtcTimeboxHardStopTimerRef.current) clearTimeout(rtcTimeboxHardStopTimerRef.current); rtcTimeboxHardStopTimerRef.current = null; rtcTimeboxDeadlineRef.current = 0; } catch {}
+    try { clearRealtimePendingAutoStop(); } catch {}
+    try { rtcSessionStartedAtRef.current = 0; } catch {}
+    try { rtcLastStopReasonRef.current = ""; } catch {}
     try { rtcResponseInFlightRef.current = false; } catch {}
     try { rtcFallbackActiveRef.current = false; } catch {}
     try { rtcLivePollSessionIdRef.current = null; } catch {}
@@ -5458,14 +5517,19 @@ function scheduleRealtimeIdleFollowup() {
         const pcState = String(rtcPcRef.current?.connectionState || rtcPcRef.current?.iceConnectionState || "").toLowerCase();
         if (dcReady) return;
 
-        logRealtimeStep("hf5:startup_watchdog_reconnect_required", { sessionId, reason, pcState });
-        setRealtimeMode(false);
-        realtimeModeRef.current = false;
-        setV2vPhase("error");
-        setV2vError("Não consegui estabilizar a voz nesta tentativa. Toque no ⚡ novamente ou continue por texto.");
-        setUploadStatus("⚡ Voz não estabilizou. Toque novamente em alguns segundos.");
-        setTimeout(() => setUploadStatus(""), 3500);
-        void stopRealtime("startup_watchdog_no_datachannel");
+        logRealtimeStep("ao66a_hf2:startup_watchdog_datachannel_not_ready", {
+          sessionId,
+          reason,
+          pcState,
+          ageMs: getRealtimeSessionAgeMs(),
+          marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+        });
+        updateRealtimePremiumStatus("connecting", "Ainda estabilizando a conexão de voz. Não encerrei a sessão automaticamente.");
+        setUploadStatus("⚡ A voz ainda está estabilizando. Aguarde alguns segundos ou toque em Encerrar se quiser cancelar.");
+        setTimeout(() => setUploadStatus(""), 4500);
+        // AO66A-HF2: do not auto-end at the old 15s watchdog point.
+        // The user may be on mobile/PWA and the datachannel can settle late.
+        return;
       } catch {}
     }, 15000);
   }
@@ -5872,7 +5936,9 @@ function scheduleRealtimeIdleFollowup() {
       logRealtimeStep('start:ephemeral_ok', { session_id: start?.session_id || null, thread_id: start?.thread_id || null });
 
       rtcSessionIdRef.current = start?.session_id || null;
-      try { console.log("REALTIME_SESSION_STARTED", { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null }); } catch {}
+      rtcSessionStartedAtRef.current = Date.now();
+      clearRealtimePendingAutoStop();
+      try { console.log("REALTIME_SESSION_STARTED", { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null, marker: ORKIO_AO66A_HF2_BUILD_MARKER }); } catch {}
       setLastRealtimeSessionId(start?.session_id || null);
       rtcThreadIdRef.current = start?.thread_id || threadId || null;
 
@@ -6204,7 +6270,7 @@ function scheduleRealtimeIdleFollowup() {
                   console.warn('[Realtime] magic trigger failed', err);
                 }
               } else if (raw.trim()) {
-                // AO66A-HF1:
+                // AO66A-HF2:
                 // Keep manual response available and schedule a safe fallback.
                 // The server VAD create_response=true remains primary, but if no
                 // response.created arrives shortly after the final transcript,
@@ -6212,9 +6278,9 @@ function scheduleRealtimeIdleFollowup() {
                 // leaving the UI stuck in "Aguardando a fala terminar".
                 setRtcReadyToRespond(true);
                 scheduleRealtimeAutoResponseFallback(raw, "input_audio_transcription.completed");
-                logRealtimeStep('ao66a_hf1:awaiting_server_auto_response_with_client_fallback', {
+                logRealtimeStep('ao66a_hf2:awaiting_server_auto_response_with_client_fallback', {
                   transcript: raw,
-                  marker: ORKIO_AO66A_HF1_BUILD_MARKER,
+                  marker: ORKIO_AO66A_HF2_BUILD_MARKER,
                 });
               }
             });
@@ -6862,9 +6928,58 @@ function scheduleRealtimeIdleFollowup() {
 
 async function stopRealtime(reason = 'client_stop') {
     const sid = rtcSessionIdRef.current;
+    const reasonTextEarly = String(reason || "client_stop");
+    const sessionAgeMs = getRealtimeSessionAgeMs();
+    const minAutoStopMs = 20000;
+    const isPrematureAutoStop = Boolean(
+      sid &&
+      sessionAgeMs !== null &&
+      sessionAgeMs < minAutoStopMs &&
+      isPrematureAutoRealtimeStopReason(reasonTextEarly)
+    );
+
+    try {
+      console.log("REALTIME_END_REQUESTED", {
+        reason: reasonTextEarly,
+        sessionId: sid,
+        sessionAgeMs,
+        prematureAutoStopBlocked: isPrematureAutoStop,
+        marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+      });
+    } catch {}
+
+    if (isPrematureAutoStop) {
+      const delayMs = Math.max(1200, minAutoStopMs - Number(sessionAgeMs || 0) + 500);
+      clearRealtimePendingAutoStop();
+      rtcLastStopReasonRef.current = reasonTextEarly;
+      updateRealtimePremiumStatus("connecting", "A voz ainda está estabilizando. Mantive a sessão aberta para evitar corte prematuro.");
+      setUploadStatus("⚡ Mantendo a sessão de voz aberta. Aguardando estabilização do áudio.");
+      try {
+        console.warn("REALTIME_END_BLOCKED_PREMATURE", {
+          reason: reasonTextEarly,
+          sessionId: sid,
+          sessionAgeMs,
+          retryInMs: delayMs,
+          marker: ORKIO_AO66A_HF2_BUILD_MARKER,
+        });
+      } catch {}
+      rtcPendingAutoStopTimerRef.current = setTimeout(() => {
+        rtcPendingAutoStopTimerRef.current = null;
+        try {
+          if (!rtcSessionIdRef.current || rtcSessionIdRef.current !== sid) return;
+          void stopRealtime(`${reasonTextEarly}_delayed_after_min_guard`);
+        } catch {}
+      }, delayMs);
+      return;
+    }
+
+    if (isManualRealtimeStopReason(reasonTextEarly)) {
+      clearRealtimePendingAutoStop();
+    }
+
     try { updateRealtimePremiumStatus("ending", "Encerrando sessão de voz com segurança."); } catch {}
     try {
-      console.log("REALTIME_STOP_REASON", reason, { sessionId: sid });
+      console.log("REALTIME_STOP_REASON", reasonTextEarly, { sessionId: sid, sessionAgeMs, marker: ORKIO_AO66A_HF2_BUILD_MARKER });
     } catch {}
 
     if (rtcStopInFlightRef.current) {
@@ -6881,6 +6996,7 @@ async function stopRealtime(reason = 'client_stop') {
       clearRealtimeIdleFollowup();
       clearRealtimeAudioWatchdog();
       clearRealtimeStartupWatchdog();
+      clearRealtimePendingAutoStop();
       clearRealtimeTimeboxTimer();
       clearRealtimeLivePoll();
       await releaseRealtimeWakeLock(reason);
@@ -6913,6 +7029,7 @@ async function stopRealtime(reason = 'client_stop') {
       hardResetRealtimeClientState(`stop_${reason}`);
 
       try { rtcSessionIdRef.current = null; } catch {}
+      try { rtcSessionStartedAtRef.current = 0; } catch {}
       try { rtcThreadIdRef.current = null; } catch {}
       try { setRtcReadyToRespond(false); } catch {}
       try { setV2vPhase(null); } catch {}
