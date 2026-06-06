@@ -8599,43 +8599,65 @@ async function stopRealtime(reason = 'client_stop') {
                 🎙️
               </button>
             ) : (
-              <button
-                type="button"
-                style={{
-                  ...styles.micBtn,
-                  background: realtimeMode ? "rgba(80,160,255,0.25)" : "rgba(255,255,255,0.05)",
-                  border: realtimeMode ? "1px solid rgba(80,160,255,0.5)" : "1px solid rgba(255,255,255,0.1)",
-                  position: "relative",
-                  opacity: (!realtimeMode && rtcCooldownRemaining > 0) ? 0.45 : 1,
-                  cursor: (!realtimeMode && rtcCooldownRemaining > 0) ? "not-allowed" : "pointer",
-                }}
-                onClick={toggleRealtimeMode}
-                disabled={!realtimeMode && rtcCooldownRemaining > 0}
-                title={
-                  (!realtimeMode && rtcCooldownRemaining > 0)
-                    ? `Voz disponível novamente em ${formatRealtimeCountdown(rtcCooldownRemaining)}`
-                    : realtimeMode ? "Desativar voz em tempo real" : "Ativar voz em tempo real"
-                }
-              >
-                <span style={{ fontSize: "16px" }}>⚡</span>
-                {realtimeMode && <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "8px", height: "8px", borderRadius: "50%", background: "#50a0ff", animation: "pulse 1.5s infinite" }} />}
-              </button>
-              {SUMMIT_VOICE_MODE === "realtime" && (isRealtimeTimeboxLimitedUser() || rtcBackendTimeboxLimited || rtcCooldownRemaining > 0) && (realtimeMode || rtcCooldownRemaining > 0) ? (
-                <span
+              <>
+                <button
+                  type="button"
                   style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    height: "32px",
-                    whiteSpace: "nowrap",
+                    ...styles.micBtn,
+                    background: realtimeMode ? "rgba(80,160,255,0.25)" : "rgba(255,255,255,0.05)",
+                    border: realtimeMode ? "1px solid rgba(80,160,255,0.5)" : "1px solid rgba(255,255,255,0.1)",
+                    position: "relative",
+                    opacity: (!realtimeMode && rtcCooldownRemaining > 0) ? 0.45 : 1,
+                    cursor: (!realtimeMode && rtcCooldownRemaining > 0) ? "not-allowed" : "pointer",
                   }}
+                  onClick={toggleRealtimeMode}
+                  disabled={!realtimeMode && rtcCooldownRemaining > 0}
+                  title={
+                    (!realtimeMode && rtcCooldownRemaining > 0)
+                      ? `Voz disponível novamente em ${formatRealtimeCountdown(rtcCooldownRemaining)}`
+                      : realtimeMode ? "Desativar voz em tempo real" : "Ativar voz em tempo real"
+                  }
                 >
-                  {realtimeMode ? (
+                  <span style={{ fontSize: "16px" }}>⚡</span>
+                  {realtimeMode && <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "8px", height: "8px", borderRadius: "50%", background: "#50a0ff", animation: "pulse 1.5s infinite" }} />}
+                </button>
+                {SUMMIT_VOICE_MODE === "realtime" && (isRealtimeTimeboxLimitedUser() || rtcBackendTimeboxLimited || rtcCooldownRemaining > 0) && (realtimeMode || rtcCooldownRemaining > 0) ? (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      height: "32px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {realtimeMode ? (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          height: "32px",
+                          padding: "0 8px",
+                          borderRadius: "999px",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          background: "rgba(255,255,255,0.05)",
+                          fontSize: "12px",
+                          lineHeight: "1",
+                          opacity: 0.95,
+                        }}
+                        title="Tentando manter a tela ligada durante a voz"
+                      >
+                        <span aria-hidden="true">🔆</span>
+                        <span>Tela ativa</span>
+                      </span>
+                    ) : null}
                     <span
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
                         gap: "4px",
+                        minWidth: "64px",
                         height: "32px",
                         padding: "0 8px",
                         borderRadius: "999px",
@@ -8643,37 +8665,17 @@ async function stopRealtime(reason = 'client_stop') {
                         background: "rgba(255,255,255,0.05)",
                         fontSize: "12px",
                         lineHeight: "1",
+                        whiteSpace: "nowrap",
                         opacity: 0.95,
                       }}
-                      title="Tentando manter a tela ligada durante a voz"
+                      title={realtimeMode ? "Tempo restante da sessão de voz" : "Voz disponível novamente em breve"}
                     >
-                      <span aria-hidden="true">🔆</span>
-                      <span>Tela ativa</span>
+                      <span aria-hidden="true">{realtimeMode ? "⏳" : "🕒"}</span>
+                      <span>{realtimeMode ? formatRealtimeCountdown(rtcTimeboxRemaining ?? REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) : formatRealtimeCountdown(rtcCooldownRemaining)}</span>
                     </span>
-                  ) : null}
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      minWidth: "64px",
-                      height: "32px",
-                      padding: "0 8px",
-                      borderRadius: "999px",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      background: "rgba(255,255,255,0.05)",
-                      fontSize: "12px",
-                      lineHeight: "1",
-                      whiteSpace: "nowrap",
-                      opacity: 0.95,
-                    }}
-                    title={realtimeMode ? "Tempo restante da sessão de voz" : "Voz disponível novamente em breve"}
-                  >
-                    <span aria-hidden="true">{realtimeMode ? "⏳" : "🕒"}</span>
-                    <span>{realtimeMode ? formatRealtimeCountdown(rtcTimeboxRemaining ?? REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) : formatRealtimeCountdown(rtcCooldownRemaining)}</span>
                   </span>
-                </span>
-              ) : null}
+                ) : null}
+              </>
             )}
 
             {!isMobile && realtimeMode && SUMMIT_VOICE_MODE === "realtime" ? (
