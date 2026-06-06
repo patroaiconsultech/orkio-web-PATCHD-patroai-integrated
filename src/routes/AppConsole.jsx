@@ -977,6 +977,83 @@ function canonicalizeSpeakerLabel(raw) {
   return map[normalizedKey] || text;
 }
 
+// AO64D — Public assistant speaker sanitation.
+// Orion is an internal audit/governance agent and must not appear as the visible
+// assistant for AMCHAM/public users. Backend may return blocked_agent=Orion and
+// resolved_agent=Orkio; the UI must honor the resolved public speaker.
+function canSeeInternalOrionSpeaker() {
+  try {
+    return Boolean(isAdmin?.());
+  } catch {
+    return false;
+  }
+}
+
+function readRuntimeRoutingField(messageLike, key) {
+  try {
+    return (
+      messageLike?.[key] ||
+      messageLike?.runtime_hints?.routing?.[key] ||
+      messageLike?.runtimeHints?.routing?.[key] ||
+      messageLike?.done_payload?.[key] ||
+      messageLike?.done_payload?.runtime_hints?.routing?.[key] ||
+      ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+function sanitizePublicAssistantSpeaker(messageLike, proposedName = "Orkio") {
+  const proposed = canonicalizeSpeakerLabel(proposedName || "Orkio");
+  const proposedKey = String(proposed || "").trim().toLowerCase();
+
+  const blockedAgent = canonicalizeSpeakerLabel(
+    readRuntimeRoutingField(messageLike, "blocked_agent") ||
+    readRuntimeRoutingField(messageLike, "blockedAgent") ||
+    messageLike?.blocked_agent ||
+    messageLike?.blockedAgent ||
+    ""
+  );
+  const resolvedAgent = canonicalizeSpeakerLabel(
+    readRuntimeRoutingField(messageLike, "resolved_agent") ||
+    readRuntimeRoutingField(messageLike, "resolvedAgent") ||
+    messageLike?.resolved_agent ||
+    messageLike?.resolvedAgent ||
+    ""
+  );
+  const finalSpeaker = canonicalizeSpeakerLabel(
+    messageLike?.final_speaker ||
+    readRuntimeRoutingField(messageLike, "final_speaker") ||
+    ""
+  );
+  const visibleAgent = canonicalizeSpeakerLabel(
+    messageLike?.visible_agent ||
+    readRuntimeRoutingField(messageLike, "visible_agent") ||
+    ""
+  );
+
+  const blockedKey = String(blockedAgent || "").trim().toLowerCase();
+  const resolvedKey = String(resolvedAgent || "").trim().toLowerCase();
+  const finalKey = String(finalSpeaker || "").trim().toLowerCase();
+  const visibleKey = String(visibleAgent || "").trim().toLowerCase();
+
+  if (blockedKey === "orion" || resolvedKey === "orkio") {
+    return "Orkio";
+  }
+
+  if ((finalKey === "orkio" || visibleKey === "orkio") && proposedKey === "orion") {
+    return "Orkio";
+  }
+
+  if (proposedKey === "orion" && !canSeeInternalOrionSpeaker()) {
+    return "Orkio";
+  }
+
+  return proposed || "Orkio";
+}
+
+
 function inferSpeakerNameFromContent(content) {
   const text = String(content || "").trim();
   if (!text) return "";
@@ -1004,6 +1081,7 @@ function resolveAssistantDisplayName(messageLike, fallback = "Agent") {
     messageLike?.speaker_name ||
     messageLike?.name ||
     "";
+
   const explicitFromContent = inferSpeakerNameFromContent(
     messageLike?.final_text || messageLike?.content || messageLike?.text || ""
   );
@@ -1011,28 +1089,35 @@ function resolveAssistantDisplayName(messageLike, fallback = "Agent") {
   const normalizedRaw = canonicalizeSpeakerLabel(rawName);
   const rawLower = String(normalizedRaw || "").trim().toLowerCase();
 
+  let candidate = "";
+
   if (explicitFromContent && ["agent", "assistant", "model"].includes(rawLower)) {
-    return explicitFromContent;
+    candidate = explicitFromContent;
+  } else if (explicitFromContent && !rawName) {
+    candidate = explicitFromContent;
+  } else if (normalizedRaw) {
+    candidate = normalizedRaw;
+  } else if (explicitFromContent) {
+    candidate = explicitFromContent;
+  } else {
+    candidate = fallback;
   }
-  if (explicitFromContent && !rawName) {
-    return explicitFromContent;
-  }
-  if (normalizedRaw) {
-    return normalizedRaw;
-  }
-  if (explicitFromContent) {
-    return explicitFromContent;
-  }
-  return fallback;
+
+  return sanitizePublicAssistantSpeaker(messageLike, candidate || fallback || "Orkio");
 }
 
 function normalizeMessageSpeaker(messageLike) {
   if (!messageLike || String(messageLike?.role || "").toLowerCase() !== "assistant") {
     return messageLike;
   }
+
+  const displayName = resolveAssistantDisplayName(messageLike, "Orkio");
+
   return {
     ...messageLike,
-    agent_name: resolveAssistantDisplayName(messageLike, "Agent"),
+    agent_name: displayName,
+    final_speaker: displayName,
+    visible_agent: displayName,
   };
 }
 
@@ -2565,7 +2650,7 @@ useEffect(() => {
     threadId: turnThreadId,
     draftAssistantId,
     finalTextCandidate = "",
-    finalAgentName = "Orion",
+    finalAgentName = "Orkio",
     finalAgentId = null,
     finalVoiceId = null,
     finalAvatarUrl = null,
@@ -3162,8 +3247,8 @@ function openPatchApprovalModal(message) {
           id: `patch-approval-${Date.now()}`,
           role: "assistant",
           content: responseText,
-          agent_name: "Orion",
-          agent_id: "orion",
+          agent_name: canSeeInternalOrionSpeaker() ? "Orion" : "Orkio",
+          agent_id: canSeeInternalOrionSpeaker() ? "orion" : "orkio",
           created_at: Math.floor(Date.now() / 1000),
         },
       ]);
@@ -3200,8 +3285,8 @@ function openPatchApprovalModal(message) {
           id: `patch-exec-${Date.now()}`,
           role: "assistant",
           content: responseText,
-          agent_name: "Orion",
-          agent_id: "orion",
+          agent_name: canSeeInternalOrionSpeaker() ? "Orion" : "Orkio",
+          agent_id: canSeeInternalOrionSpeaker() ? "orion" : "orkio",
           created_at: Math.floor(Date.now() / 1000),
         },
       ]);
@@ -3214,8 +3299,8 @@ function openPatchApprovalModal(message) {
           id: `patch-exec-error-${Date.now()}`,
           role: "assistant",
           content: responseText,
-          agent_name: "Orion",
-          agent_id: "orion",
+          agent_name: canSeeInternalOrionSpeaker() ? "Orion" : "Orkio",
+          agent_id: canSeeInternalOrionSpeaker() ? "orion" : "orkio",
           created_at: Math.floor(Date.now() / 1000),
         },
       ]);
@@ -3244,8 +3329,8 @@ async function sendMessage(presetMsg = null, opts = {}) {
           id: `patch-execution-pending-${Date.now()}`,
           role: "assistant",
           content: guidance,
-          agent_name: "Orion",
-          agent_id: "orion",
+          agent_name: canSeeInternalOrionSpeaker() ? "Orion" : "Orkio",
+          agent_id: canSeeInternalOrionSpeaker() ? "orion" : "orkio",
           created_at: Math.floor(Date.now() / 1000),
         },
       ]);
@@ -3868,10 +3953,18 @@ async function sendMessage(presetMsg = null, opts = {}) {
         ""
       ).trim();
 
-      const finalAgentName =
-        streamDonePayload?.agent_name ||
-        streamMeta?.done_payload?.agent_name ||
-        "Orion";
+      const finalAgentName = resolveAssistantDisplayName(
+        {
+          ...(streamMeta?.done_payload || {}),
+          ...(streamDonePayload || {}),
+          runtime_hints:
+            streamDonePayload?.runtime_hints ||
+            streamMeta?.runtime_hints ||
+            streamMeta?.done_payload?.runtime_hints ||
+            null,
+        },
+        streamDonePayload?.agent_name || streamMeta?.done_payload?.agent_name || "Orkio"
+      );
       const finalAgentId =
         streamDonePayload?.agent_id ||
         streamMeta?.done_payload?.agent_id ||
@@ -4124,7 +4217,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
             threadId: effectiveTidForLoad,
             draftAssistantId,
             finalTextCandidate: "",
-            finalAgentName: activeRuntimeAgent || "Orion",
+            finalAgentName: resolveAssistantDisplayName({ agent_name: activeRuntimeAgent }, "Orkio"),
             turnStartedAt,
           });
         }
@@ -7624,7 +7717,7 @@ async function stopRealtime(reason = 'client_stop') {
             <div style={{ ...styles.health, display: isMobile ? "none" : undefined }}>
               {publicBetaOrkioOnly
                 ? "Destino: Orkio • beta público"
-                : `Destino: ${destMode === "team" ? "Team" : destMode === "single" ? "Agente" : "Multi"} • @Team / @Orkio / @Chris / @Orion`}
+                : `Destino: ${destMode === "team" ? "Team" : destMode === "single" ? "Agente" : "Multi"} • @Team / @Orkio / @Chris${canAccessAdmin ? " / @Orion" : ""}`}
             </div>
             {isMobile ? (
               <div
