@@ -27,6 +27,7 @@ export default function MessageBubble({
   normalizeUserFacingRuntimeMessage,
   renderMessageContentPremium,
   playTts,
+  stopTts,
   ttsPlaying,
   ttsPlayingMessageId,
   extractPatchGovernanceMeta,
@@ -105,10 +106,31 @@ export default function MessageBubble({
                 <div style={styles.messageContent}>
                   {renderMessageContentPremium(visible || m.content)}
                   {!isUser && !isSystem && (visible || m.content) && (() => {
-                    const isThisTtsPlaying = Boolean(ttsPlaying && ttsPlayingMessageId && m.id && ttsPlayingMessageId === m.id);
+                    // AO65A-HF6: if any classic TTS is active, the next click must stop it immediately.
+                    // Relying on message_id equality caused double-click stop failures when the active
+                    // playback had a normalized/null/manual id.
+                    const isAnyTtsPlaying = Boolean(ttsPlaying || ttsPlayingMessageId);
+                    const isThisTtsPlaying = isAnyTtsPlaying;
+                    const handleTtsClick = (event) => {
+                      event?.preventDefault?.();
+                      event?.stopPropagation?.();
+
+                      if (isAnyTtsPlaying) {
+                        stopTts?.("user_toggle");
+                        return;
+                      }
+
+                      playTts((visible || m.content), (m.agent_id || null), {
+                        messageId: m.id || null,
+                        userInitiated: true,
+                        voiceOverride: m.voice_id || m.voice || lastAgentInfo?.voice_id || null,
+                      });
+                    };
+
                     return (
                       <button
-                        onClick={() => playTts((visible || m.content), (m.agent_id || null), { messageId: m.id || null, userInitiated: true })}
+                        type="button"
+                        onClick={handleTtsClick}
                         style={{
                           marginLeft: "8px",
                           background: "none",
