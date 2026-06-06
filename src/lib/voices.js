@@ -1,17 +1,22 @@
 // Central voice registry for Orkio (Admin + App must stay consistent)
-// id: the value sent to the realtime API
-
-// Realtime voices supported in current Orkio environment:
+// AO65V-FE8 — canonical voice lock.
+//
+// id: the value sent to the realtime and TTS APIs.
+// Realtime/TTS voices supported in current Orkio environment:
 // alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar
-export const ORKIO_DEFAULT_VOICE_ID = "shimmer";
+
+export const ORKIO_CANONICAL_VOICE_ID = "cedar";
+export const ORKIO_DEFAULT_VOICE_ID = ORKIO_CANONICAL_VOICE_ID;
 export const ORKIO_DEFAULT_TTS_SPEED = 0.9;
 
 // Curadoria de experiência:
-// - shimmer: padrãOrkio, feminina, suave e acolhedora para avatar/PWA
-// - marin/coral/sage: boas alternativas naturais e próximas
-// - cedar/echo: mantidas para perfis mais graves, mas não são default
+// - cedar: voz oficial/canônica do Orkio neste ciclo;
+// - shimmer: mantida como opção suportada, mas não deve ser fallback local do Orkio;
+// - marin/coral/sage: alternativas naturais;
+// - echo/alloy/ash/verse/ballad: opções complementares.
 export const ORKIO_VOICES = [
-  { id: "shimmer", label: "Shimmer (Orkio, feminina e acolhedora)" },
+  { id: "cedar", label: "Cedar (Orkio, voz oficial)" },
+  { id: "shimmer", label: "Shimmer (suave e acolhedora)" },
   { id: "marin", label: "Marin (natural, suave)" },
   { id: "coral", label: "Coral (clara, próxima)" },
   { id: "sage", label: "Sage (calma, consultiva)" },
@@ -19,7 +24,6 @@ export const ORKIO_VOICES = [
   { id: "ballad", label: "Ballad (narrativa)" },
   { id: "alloy", label: "Alloy (neutra)" },
   { id: "ash", label: "Ash" },
-  { id: "cedar", label: "Cedar (grave)" },
   { id: "echo", label: "Echo (masculina)" },
 ];
 
@@ -34,9 +38,11 @@ const VOICE_ALIASES = {
 export const ORKIO_VOICE_IDS = new Set(ORKIO_VOICES.map((v) => v.id));
 
 export function coerceVoiceId(value, fallback = ORKIO_DEFAULT_VOICE_ID) {
+  const safeFallback = (fallback || ORKIO_CANONICAL_VOICE_ID || "cedar").toString().trim().toLowerCase();
   const v0 = (value || "").toString().trim().toLowerCase();
   const v = VOICE_ALIASES[v0] || v0;
-  return ORKIO_VOICE_IDS.has(v) ? v : fallback;
+  if (ORKIO_VOICE_IDS.has(v)) return v;
+  return ORKIO_VOICE_IDS.has(safeFallback) ? safeFallback : ORKIO_CANONICAL_VOICE_ID;
 }
 
 export function coerceTtsSpeed(value, fallback = ORKIO_DEFAULT_TTS_SPEED) {
