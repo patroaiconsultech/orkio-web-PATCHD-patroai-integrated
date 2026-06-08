@@ -9007,7 +9007,57 @@ async function stopRealtime(reason = 'client_stop') {
       detail={realtimeOverlayDetail}
       voiceLabel="Orkio em tempo real"
       onStop={() => {
-        try { console.log("REALTIME_MANUAL_END_CLICK", { marker: ORKIO_AO66R_HF4_BUILD_MARKER }); } catch {}
+        // AO01-HF6R15_REALTIME_OVERLAY_TAP_SHIELD:
+        // The fullscreen/timebox overlay can appear immediately after /api/realtime/start.
+        // On mobile/PWA, the same tap used to start Realtime may hit the overlay stop control
+        // before DataChannel/audio activation. That produced:
+        //   client_stop_fullscreen_clock -> transcript_summary_forced_empty -> dc:close
+        // Guard early warmup from destructive stop. Real manual stop still works after activation
+        // or after the first warmup seconds.
+        const sessionAgeMs = getRealtimeSessionAgeMs();
+        const earlyWarmupOverlayStop = Boolean(
+          rtcSessionIdRef.current &&
+          !rtcConversationStartedRef.current &&
+          Number.isFinite(Number(sessionAgeMs)) &&
+          Number(sessionAgeMs) >= 0 &&
+          Number(sessionAgeMs) < 12000
+        );
+
+        try {
+          console.log("REALTIME_MANUAL_END_CLICK", {
+            marker: ORKIO_AO66R_HF4_BUILD_MARKER,
+            sessionId: rtcSessionIdRef.current || null,
+            sessionAgeMs,
+            earlyWarmupOverlayStop,
+          });
+        } catch {}
+
+        if (earlyWarmupOverlayStop) {
+          try {
+            logRealtimeStep("ao01_hf6r15:overlay_stop_ignored_warmup", {
+              sessionId: rtcSessionIdRef.current || null,
+              sessionAgeMs,
+              reason: "client_stop_fullscreen_clock",
+            });
+          } catch {}
+          try {
+            queueRealtimeTelemetry("overlay_stop_ignored_warmup", {
+              sessionAgeMs,
+              reason: "client_stop_fullscreen_clock",
+            });
+          } catch {}
+          try { setRtcOverlayForceClosed(false); } catch {}
+          try { setRealtimeMode(true); } catch {}
+          try { realtimeModeRef.current = true; } catch {}
+          try { setV2vPhase("connecting"); } catch {}
+          try { updateRealtimePremiumStatus("connecting", "Realtime conectando. Mantive a sessão aberta para concluir o áudio."); } catch {}
+          try {
+            setUploadStatus("⚡ Mantive o Realtime aberto. Aguarde a conexão de voz concluir.");
+            setTimeout(() => setUploadStatus(""), 2500);
+          } catch {}
+          return;
+        }
+
         try { setRtcOverlayForceClosed(true); } catch {}
         try { setRealtimeMode(false); } catch {}
         try { realtimeModeRef.current = false; } catch {}
