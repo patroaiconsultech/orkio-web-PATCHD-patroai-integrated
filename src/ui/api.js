@@ -665,6 +665,7 @@ export async function startRealtimeSession({
       mode,
       response_profile,
       language_profile,
+      language: language_profile,
     },
   });
   return data;
