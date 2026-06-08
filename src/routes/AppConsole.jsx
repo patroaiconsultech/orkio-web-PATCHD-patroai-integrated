@@ -13,6 +13,8 @@ import MessageBubble from "../components/chat/MessageBubble.jsx";
 import RealtimeTimeboxOverlay from "../components/realtime/RealtimeTimeboxOverlay.jsx";
 import RealtimeTranscriptSummary from "../components/realtime/RealtimeTranscriptSummary.jsx";
 
+// AO68A-HF6R5_REALTIME_OPENING_STT_FOCUS — safe AppConsole patch applied
+
 // ORKIO_AO60D_REALTIME_MOBILE_HARDENING
 function buildRealtimeDiagnosticError(code, message, diagnostic = {}) {
   const err = new Error(message || "Falha ao iniciar Realtime");
@@ -776,9 +778,38 @@ const REALTIME_IDLE_FOLLOWUP_MS = Math.max(5000, Number(ORKIO_ENV.VITE_REALTIME_
 const REALTIME_REARM_AFTER_ASSISTANT_MS = Math.max(800, Number(ORKIO_ENV.VITE_REALTIME_RESTART_AFTER_TTS_MS || import.meta.env.VITE_REALTIME_RESTART_AFTER_TTS_MS || 1800) || 1800);
 
 const REALTIME_AUTO_RESPONSE_ENABLED = ((ORKIO_ENV.VITE_REALTIME_AUTO_RESPONSE_ENABLED || import.meta.env.VITE_REALTIME_AUTO_RESPONSE_ENABLED || "true").toString().trim().toLowerCase() !== "false");
-const REALTIME_SERVER_VAD_SILENCE_MS = Math.max(250, Number(ORKIO_ENV.VITE_REALTIME_VAD_SILENCE_MS || import.meta.env.VITE_REALTIME_VAD_SILENCE_MS || 900) || 900);
-const REALTIME_SERVER_VAD_PREFIX_MS = Math.max(0, Number(ORKIO_ENV.VITE_REALTIME_VAD_HOLD_MS || import.meta.env.VITE_REALTIME_VAD_HOLD_MS || 300) || 300);
 
+// AO68A-HF6R5 — AMCHAM realtime VAD defaults.
+// Goal: less noise-triggered topic drift and fewer early phrase cuts in PT/EN.
+const REALTIME_SERVER_VAD_THRESHOLD = Math.min(
+  0.95,
+  Math.max(
+    0.1,
+    Number(
+      ORKIO_ENV.VITE_REALTIME_VAD_THRESHOLD ||
+        import.meta.env.VITE_REALTIME_VAD_THRESHOLD ||
+        0.72
+    ) || 0.72
+  )
+);
+const REALTIME_SERVER_VAD_SILENCE_MS = Math.max(
+  250,
+  Number(
+    ORKIO_ENV.VITE_REALTIME_VAD_SILENCE_MS ||
+      import.meta.env.VITE_REALTIME_VAD_SILENCE_MS ||
+      1800
+  ) || 1800
+);
+const REALTIME_SERVER_VAD_PREFIX_MS = Math.max(
+  0,
+  Number(
+    ORKIO_ENV.VITE_REALTIME_VAD_PREFIX_PADDING_MS ||
+      ORKIO_ENV.VITE_REALTIME_VAD_HOLD_MS ||
+      import.meta.env.VITE_REALTIME_VAD_PREFIX_PADDING_MS ||
+      import.meta.env.VITE_REALTIME_VAD_HOLD_MS ||
+      500
+  ) || 500
+);
 
 function resolveRealtimeIdleDisplayName(userObj) {
   const raw = (userObj?.name || userObj?.full_name || "").toString().trim();
@@ -1550,14 +1581,20 @@ function traceStepTone(kind = "status") {
 }
 
 function resolveRealtimeTranscriptionLanguage(languageProfile) {
-  // AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK
-  // Realtime transcription must not fall back to broad auto-detection for the public platform.
-  // Default to Portuguese Brazil, while sending the compact language hint expected by Realtime.
-  const raw = (languageProfile || "pt-BR").trim();
+  // AO68A-HF6R5 — AMCHAM bilingual STT.
+  // Onboarding controls the hint; "auto" keeps provider auto-detection.
+  const raw = String(languageProfile || "").trim();
+  if (!raw) return null;
+
   const normalized = raw.toLowerCase().replace("_", "-");
-  if (!normalized || normalized === "auto") return "pt";
-  if (normalized === "pt" || normalized === "pt-br") return "pt";
-  return raw;
+  if (!normalized || normalized === "auto") return null;
+
+  if (normalized === "pt" || normalized.startsWith("pt-")) return "pt";
+  if (normalized === "en" || normalized.startsWith("en-")) return "en";
+  if (normalized === "es" || normalized.startsWith("es-")) return "es";
+  if (normalized === "fr" || normalized.startsWith("fr-")) return "fr";
+
+  return normalized.split("-")[0] || null;
 }
 
 
@@ -6044,16 +6081,20 @@ function scheduleRealtimeIdleFollowup() {
     clearRealtimeActivationProbe();
     rtcActivationProbeSentRef.current = false;
 
+    // AO68A-HF6R5 — fast safety probe.
+    // Primary opening is announceRealtimeTimeboxStart(). This retry only fires if no
+    // response was acknowledged and no response is already in flight.
     rtcActivationProbeTimerRef.current = setTimeout(() => {
       try {
         if (!realtimeModeRef.current || !rtcSessionIdRef.current) return;
         const currentDc = rtcDcRef.current || dc;
         if (!currentDc || currentDc.readyState !== "open") return;
         if (rtcLastResponseCreatedAtRef.current) return;
+        if (rtcResponseInFlightRef.current) return;
         if (rtcActivationProbeSentRef.current) return;
 
         rtcActivationProbeSentRef.current = true;
-        logRealtimeStep("ao66r:activation_probe_trigger", {
+        logRealtimeStep("ao68a_hf6r5:activation_probe_trigger", {
           source,
           sessionAgeMs: getRealtimeSessionAgeMs(),
           marker: ORKIO_AO66R_HF4_BUILD_MARKER,
@@ -6067,7 +6108,7 @@ function scheduleRealtimeIdleFollowup() {
           instructions: probe.instructions,
         });
       } catch (err) {
-        logRealtimeStep("ao66r:activation_probe_failed", {
+        logRealtimeStep("ao68a_hf6r5:activation_probe_failed", {
           source,
           message: err?.message || null,
           marker: ORKIO_AO66R_HF4_BUILD_MARKER,
@@ -6075,7 +6116,7 @@ function scheduleRealtimeIdleFollowup() {
       } finally {
         rtcActivationProbeTimerRef.current = null;
       }
-    }, 2600);
+    }, 900);
   }
 
   function announceRealtimeTimeboxStart(dc, seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
@@ -6083,21 +6124,56 @@ function scheduleRealtimeIdleFollowup() {
 
     const maxSeconds = Math.max(1, Math.ceil(Number(seconds || REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS)));
     const durationLabel = formatRealtimeDurationLabel(maxSeconds);
-    const cooldownSeconds = Math.max(1, Math.ceil(Number(rtcTimeboxPolicyRef.current?.cooldownSeconds || REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS)));
-    const cooldownLabel = formatRealtimeDurationLabel(cooldownSeconds);
-    const announcement =
-      isRealtimeTimeboxLimitedUser()
-        ? (
-          `Efatà. Orkio em tempo real. Temos até ${durationLabel} para conversar nesta sessão de voz. ` +
-          "O contador está na tela e estou à sua disposição. " +
-          "Vou tentar manter a tela ligada enquanto o navegador permitir. " +
-          `Ao final, a voz em tempo real estará disponível novamente em ${cooldownLabel}; o chat por texto continua disponível.`
-        )
-        : "Efatà. Orkio em tempo real ativo. Pode falar comigo normalmente.";
+    const lang = normalizeRealtimeLanguageProfile(rtcLanguageProfileRef.current);
 
-    logRealtimeStep("ao66r:start_announcement_requested", { seconds: maxSeconds, durationLabel });
+    const announcement =
+      lang === "en"
+        ? (
+          isRealtimeTimeboxLimitedUser()
+            ? (
+              `Efatà. Orkio is live in real time. We have up to ${durationLabel} for this voice conversation. ` +
+              "The timer is already on screen. I will ask one question at a time and keep the focus on your answer. " +
+              "What would you like to start with?"
+            )
+            : "Efatà. Orkio is live in real time. I will ask one question at a time and keep the focus on your answer. What would you like to start with?"
+        )
+        : lang === "es"
+          ? (
+            isRealtimeTimeboxLimitedUser()
+              ? (
+                `Efatà. Orkio está en tiempo real. Tenemos hasta ${durationLabel} para esta conversación por voz. ` +
+                "El contador ya está en pantalla. Haré una pregunta a la vez y mantendré el foco en tu respuesta. " +
+                "¿Por dónde quieres empezar?"
+              )
+              : "Efatà. Orkio está en tiempo real. Haré una pregunta a la vez y mantendré el foco en tu respuesta. ¿Por dónde quieres empezar?"
+          )
+          : (
+            isRealtimeTimeboxLimitedUser()
+              ? (
+                `Efatà. Orkio em tempo real. Temos até ${durationLabel} para esta conversa por voz. ` +
+                "O relógio já está na tela. Vou fazer uma pergunta por vez e manter o foco no que você responder. " +
+                "Por onde você quer começar?"
+              )
+              : "Efatà. Orkio em tempo real. Vou fazer uma pergunta por vez e manter o foco no que você responder. Por onde você quer começar?"
+          );
+
+    const activationInput =
+      lang === "en"
+        ? "Start this real-time voice session now with a short greeting and one opening question."
+        : lang === "es"
+          ? "Inicia ahora esta sesión de voz en tiempo real con un saludo breve y una pregunta inicial."
+          : "Inicie agora esta sessão de voz em tempo real com uma saudação curta e uma pergunta inicial.";
+
+    logRealtimeStep("ao68a_hf6r5:start_announcement_requested", {
+      seconds: maxSeconds,
+      durationLabel,
+      languageProfile: lang,
+    });
+
     return requestRealtimeSpokenResponse(dc, {
       reason: "start_announcement",
+      conversationItem: true,
+      inputText: activationInput,
       instructions: announcement,
     });
   }
@@ -6312,11 +6388,16 @@ function scheduleRealtimeIdleFollowup() {
             backendTimeboxLimited: Boolean(rtcBackendTimeboxLimitedRef.current),
           });
         } catch {}
-        // AO66R-HF6: do not start the public-beta timebox at /start.
-        // The 2-minute budget starts only after Orkio completes the first spoken response.
+        // AO68A-HF6R5: open the clock immediately after the user clicks voice
+        // and /api/realtime/start returns 200. The user must see the timebox while
+        // Orkio performs the spoken greeting.
         rtcPendingTimeboxSecondsRef.current = immediateTimeboxSeconds;
-        setRtcTimeboxRemaining(null);
-        updateRealtimePremiumStatus("connecting", "Sessão aberta. Orkio fará a abertura por voz antes de iniciar os 2 minutos.");
+        setRtcTimeboxRemaining(immediateTimeboxSeconds);
+        startRealtimeTimebox(immediateTimeboxSeconds, {
+          force: true,
+          source: "after_start_200_click_clock_open",
+        });
+        updateRealtimePremiumStatus("connecting", "Relógio aberto. Orkio fará a saudação inicial por voz.");
         startRealtimeStartupWatchdog(rtcSessionIdRef.current, "after_start_200");
       } catch {}
       // AO01_REALTIME_THREAD_FOCUS_GUARD:
@@ -6528,24 +6609,53 @@ function scheduleRealtimeIdleFollowup() {
         startRealtimeWakeLockGuard("data_channel_open");
         ensureRealtimeAudioOutput("data_channel_open");
 
-        // AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK
-        // Lock/fallback Realtime transcription to Portuguese for platform use.
+        // AO68A-HF6R5 — Realtime transcription follows onboarding language and is less noise-sensitive.
         try {
-          const envLang = (window.__ORKIO_ENV__?.VITE_REALTIME_TRANSCRIBE_LANGUAGE || import.meta.env.VITE_REALTIME_TRANSCRIBE_LANGUAGE || "pt-BR").trim();
-          const preferredLang = summitRuntimeModeRef.current === "summit"
-            ? (summitLanguageProfileRef.current || envLang || "pt-BR")
-            : (envLang || "pt-BR");
+          const envLang = String(
+            window.__ORKIO_ENV__?.VITE_REALTIME_TRANSCRIBE_LANGUAGE ||
+            import.meta.env.VITE_REALTIME_TRANSCRIBE_LANGUAGE ||
+            ""
+          ).trim();
+
+          const preferredLang = normalizeRealtimeLanguageProfile(
+            rtcLanguageProfileRef.current ||
+              (summitRuntimeModeRef.current === "summit" ? summitLanguageProfileRef.current : "") ||
+              envLang ||
+              "auto"
+          );
+
           const langHint = resolveRealtimeTranscriptionLanguage(preferredLang);
-          const transcription = { model: "gpt-4o-transcribe" };
+          const transcriptionModel = String(
+            window.__ORKIO_ENV__?.VITE_REALTIME_TRANSCRIBE_MODEL ||
+              import.meta.env.VITE_REALTIME_TRANSCRIBE_MODEL ||
+              "gpt-4o-mini-transcribe"
+          ).trim() || "gpt-4o-mini-transcribe";
+
+          const transcription = { model: transcriptionModel };
           if (langHint) transcription.language = langHint;
+
+          const realtimeInstructions =
+            preferredLang === "en"
+              ? "You are Orkio in real time. Keep the conversation focused on the user's last clear answer. Ask one short question at a time. Do not change topic because of noise or unclear fragments. If the audio is unclear, ask the user to repeat."
+              : preferredLang === "es"
+                ? "Eres Orkio en tiempo real. Mantén la conversación enfocada en la última respuesta clara del usuario. Haz una pregunta corta por vez. No cambies de tema por ruido o fragmentos poco claros. Si el audio no está claro, pide que el usuario repita."
+                : preferredLang === "pt"
+                  ? "Você é Orkio em tempo real. Mantenha a conversa focada na última resposta clara do usuário. Faça uma pergunta curta por vez. Não mude de assunto por ruído ou fragmentos pouco claros. Se o áudio estiver confuso, peça para o usuário repetir."
+                  : "You are Orkio in real time. Answer in the same language the user is using. Keep the conversation focused on the user's last clear answer. Ask one short question at a time. Do not change topic because of noise or unclear fragments. If the audio is unclear, ask the user to repeat.";
+
           try {
             console.log("REALTIME_TRANSCRIPTION_LANGUAGE", {
-              marker: ORKIO_AO61A_BUILD_MARKER,
+              marker: "AO68A-HF6R5_REALTIME_OPENING_STT_FOCUS",
               envLang,
               preferredLang,
               langHint,
+              transcriptionModel,
+              vadThreshold: REALTIME_SERVER_VAD_THRESHOLD,
+              vadSilenceMs: REALTIME_SERVER_VAD_SILENCE_MS,
+              vadPrefixMs: REALTIME_SERVER_VAD_PREFIX_MS,
             });
           } catch {}
+
           sendRealtimeClientEvent(dc, {
             type: "session.update",
             session: {
@@ -6556,6 +6666,7 @@ function scheduleRealtimeIdleFollowup() {
                   transcription,
                   turn_detection: {
                     type: "server_vad",
+                    threshold: REALTIME_SERVER_VAD_THRESHOLD,
                     silence_duration_ms: REALTIME_SERVER_VAD_SILENCE_MS,
                     prefix_padding_ms: REALTIME_SERVER_VAD_PREFIX_MS,
                     create_response: true,
@@ -6566,10 +6677,12 @@ function scheduleRealtimeIdleFollowup() {
                   voice: rtcVoiceRef.current
                 }
               },
-              instructions: "Você é Orkio em tempo real. Responda em pt-BR, com voz natural, de forma curta, útil e humana."
+              instructions: realtimeInstructions
             }
           }, "session_update_audio_vad");
-        } catch {}
+        } catch (err) {
+          logRealtimeStep("runtime:transcription_language_update_failed", { message: err?.message || null });
+        }
 
         // AO66R: send a proof-of-audio greeting and, if the provider does not emit
         // response.created quickly, send one fallback conversation item + response.create.
