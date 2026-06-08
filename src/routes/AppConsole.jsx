@@ -13,8 +13,6 @@ import MessageBubble from "../components/chat/MessageBubble.jsx";
 import RealtimeTimeboxOverlay from "../components/realtime/RealtimeTimeboxOverlay.jsx";
 import RealtimeTranscriptSummary from "../components/realtime/RealtimeTranscriptSummary.jsx";
 
-// AO68A-HF6R2_AMCHAM_REALTIME_START_GREETING — frontend patch applied
-
 // ORKIO_AO60D_REALTIME_MOBILE_HARDENING
 function buildRealtimeDiagnosticError(code, message, diagnostic = {}) {
   const err = new Error(message || "Falha ao iniciar Realtime");
@@ -1552,21 +1550,14 @@ function traceStepTone(kind = "status") {
 }
 
 function resolveRealtimeTranscriptionLanguage(languageProfile) {
-  // AO68A-HF6R2 — AMCHAM bilingual STT.
-  // Do not force Portuguese when the user selected English or when language is auto.
-  // Realtime accepts compact hints such as "pt", "en", "es"; null keeps provider auto-detect.
-  const raw = String(languageProfile || "").trim();
-  if (!raw) return null;
-
+  // AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK
+  // Realtime transcription must not fall back to broad auto-detection for the public platform.
+  // Default to Portuguese Brazil, while sending the compact language hint expected by Realtime.
+  const raw = (languageProfile || "pt-BR").trim();
   const normalized = raw.toLowerCase().replace("_", "-");
-  if (!normalized || normalized === "auto") return null;
-
-  if (normalized === "pt" || normalized.startsWith("pt-")) return "pt";
-  if (normalized === "en" || normalized.startsWith("en-")) return "en";
-  if (normalized === "es" || normalized.startsWith("es-")) return "es";
-  if (normalized === "fr" || normalized.startsWith("fr-")) return "fr";
-
-  return normalized.split("-")[0] || null;
+  if (!normalized || normalized === "auto") return "pt";
+  if (normalized === "pt" || normalized === "pt-br") return "pt";
+  return raw;
 }
 
 
@@ -6053,16 +6044,12 @@ function scheduleRealtimeIdleFollowup() {
     clearRealtimeActivationProbe();
     rtcActivationProbeSentRef.current = false;
 
-    // AO68A-HF6R2 — Short safety probe.
-    // The primary greeting is announceRealtimeTimeboxStart(). This probe only retries
-    // if the provider has not acknowledged any response yet and no response is in flight.
     rtcActivationProbeTimerRef.current = setTimeout(() => {
       try {
         if (!realtimeModeRef.current || !rtcSessionIdRef.current) return;
         const currentDc = rtcDcRef.current || dc;
         if (!currentDc || currentDc.readyState !== "open") return;
         if (rtcLastResponseCreatedAtRef.current) return;
-        if (rtcResponseInFlightRef.current) return;
         if (rtcActivationProbeSentRef.current) return;
 
         rtcActivationProbeSentRef.current = true;
@@ -6088,7 +6075,7 @@ function scheduleRealtimeIdleFollowup() {
       } finally {
         rtcActivationProbeTimerRef.current = null;
       }
-    }, 900);
+    }, 2600);
   }
 
   function announceRealtimeTimeboxStart(dc, seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
@@ -6108,19 +6095,9 @@ function scheduleRealtimeIdleFollowup() {
         )
         : "Efatà. Orkio em tempo real ativo. Pode falar comigo normalmente.";
 
-    const lang = normalizeRealtimeLanguageProfile(rtcLanguageProfileRef.current);
-    const activationInput =
-      lang === "en"
-        ? "Start this real-time voice session now with a short greeting."
-        : lang === "es"
-          ? "Inicia ahora esta sesión de voz en tiempo real con un saludo breve."
-          : "Inicie agora esta sessão de voz em tempo real com uma saudação curta.";
-
-    logRealtimeStep("ao66r:start_announcement_requested", { seconds: maxSeconds, durationLabel, languageProfile: lang });
+    logRealtimeStep("ao66r:start_announcement_requested", { seconds: maxSeconds, durationLabel });
     return requestRealtimeSpokenResponse(dc, {
       reason: "start_announcement",
-      conversationItem: true,
-      inputText: activationInput,
       instructions: announcement,
     });
   }
@@ -6551,51 +6528,24 @@ function scheduleRealtimeIdleFollowup() {
         startRealtimeWakeLockGuard("data_channel_open");
         ensureRealtimeAudioOutput("data_channel_open");
 
-        // AO68A-HF6R2 — Realtime transcription follows onboarding language.
-        // Do not force pt-BR here; AMCHAM demos need PT/EN behavior.
+        // AO61A_REALTIME_PREMIUM_UX_COOLDOWN_TRANSCRIPTION_LOCK
+        // Lock/fallback Realtime transcription to Portuguese for platform use.
         try {
-          const envLang = String(
-            window.__ORKIO_ENV__?.VITE_REALTIME_TRANSCRIBE_LANGUAGE ||
-            import.meta.env.VITE_REALTIME_TRANSCRIBE_LANGUAGE ||
-            ""
-          ).trim();
-
-          const preferredLang = normalizeRealtimeLanguageProfile(
-            rtcLanguageProfileRef.current ||
-            (summitRuntimeModeRef.current === "summit" ? summitLanguageProfileRef.current : "") ||
-            envLang ||
-            "auto"
-          );
-
+          const envLang = (window.__ORKIO_ENV__?.VITE_REALTIME_TRANSCRIBE_LANGUAGE || import.meta.env.VITE_REALTIME_TRANSCRIBE_LANGUAGE || "pt-BR").trim();
+          const preferredLang = summitRuntimeModeRef.current === "summit"
+            ? (summitLanguageProfileRef.current || envLang || "pt-BR")
+            : (envLang || "pt-BR");
           const langHint = resolveRealtimeTranscriptionLanguage(preferredLang);
-          const transcriptionModel = String(
-            window.__ORKIO_ENV__?.VITE_REALTIME_TRANSCRIBE_MODEL ||
-            import.meta.env.VITE_REALTIME_TRANSCRIBE_MODEL ||
-            "gpt-4o-mini-transcribe"
-          ).trim() || "gpt-4o-mini-transcribe";
-
-          const transcription = { model: transcriptionModel };
+          const transcription = { model: "gpt-4o-transcribe" };
           if (langHint) transcription.language = langHint;
-
-          const realtimeInstructions =
-            preferredLang === "en"
-              ? "You are Orkio in real time. Answer in English with a natural voice, briefly, usefully and humanly."
-              : preferredLang === "es"
-                ? "Eres Orkio en tiempo real. Responde en español con voz natural, de forma breve, útil y humana."
-                : preferredLang === "pt"
-                  ? "Você é Orkio em tempo real. Responda em português com voz natural, de forma curta, útil e humana."
-                  : "You are Orkio in real time. Answer in the same language the user is using, with a natural voice, briefly, usefully and humanly.";
-
           try {
             console.log("REALTIME_TRANSCRIPTION_LANGUAGE", {
-              marker: "AO68A-HF6R2_AMCHAM_REALTIME_START_GREETING",
+              marker: ORKIO_AO61A_BUILD_MARKER,
               envLang,
               preferredLang,
               langHint,
-              transcriptionModel,
             });
           } catch {}
-
           sendRealtimeClientEvent(dc, {
             type: "session.update",
             session: {
@@ -6616,12 +6566,10 @@ function scheduleRealtimeIdleFollowup() {
                   voice: rtcVoiceRef.current
                 }
               },
-              instructions: realtimeInstructions
+              instructions: "Você é Orkio em tempo real. Responda em pt-BR, com voz natural, de forma curta, útil e humana."
             }
           }, "session_update_audio_vad");
-        } catch (err) {
-          logRealtimeStep("runtime:transcription_language_update_failed", { message: err?.message || null });
-        }
+        } catch {}
 
         // AO66R: send a proof-of-audio greeting and, if the provider does not emit
         // response.created quickly, send one fallback conversation item + response.create.
