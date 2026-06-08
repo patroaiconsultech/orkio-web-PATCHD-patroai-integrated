@@ -651,7 +651,9 @@ export async function startRealtimeSession({
   mode = "platform",
   response_profile = null,
   language_profile = null,
+  language = null,
 } = {}) {
+  const resolvedLanguageProfile = language_profile || language || null;
   const { data } = await apiFetch("/api/realtime/start", {
     method: "POST",
     token,
@@ -664,8 +666,8 @@ export async function startRealtimeSession({
       ttl_seconds,
       mode,
       response_profile,
-      language_profile,
-      language: language_profile,
+      language_profile: resolvedLanguageProfile,
+      language: resolvedLanguageProfile,
     },
   });
   return data;
