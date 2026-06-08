@@ -13,9 +13,7 @@ import MessageBubble from "../components/chat/MessageBubble.jsx";
 import RealtimeTimeboxOverlay from "../components/realtime/RealtimeTimeboxOverlay.jsx";
 import RealtimeTranscriptSummary from "../components/realtime/RealtimeTranscriptSummary.jsx";
 
-// AO68A-HF6R7_REALTIME_SDP_FALLBACK_NO_EARLY_END — frontend patch applied
-
-// AO68A-HF6R5_REALTIME_OPENING_STT_FOCUS — safe AppConsole patch applied
+// AO68A-HF6R8_REALTIME_RESPONSE_CREATE_AUDIO_ARMING — safe AppConsole patch applied
 
 // ORKIO_AO60D_REALTIME_MOBILE_HARDENING
 function buildRealtimeDiagnosticError(code, message, diagnostic = {}) {
@@ -781,16 +779,15 @@ const REALTIME_REARM_AFTER_ASSISTANT_MS = Math.max(800, Number(ORKIO_ENV.VITE_RE
 
 const REALTIME_AUTO_RESPONSE_ENABLED = ((ORKIO_ENV.VITE_REALTIME_AUTO_RESPONSE_ENABLED || import.meta.env.VITE_REALTIME_AUTO_RESPONSE_ENABLED || "true").toString().trim().toLowerCase() !== "false");
 
-// AO68A-HF6R5 — AMCHAM realtime VAD defaults.
-// Goal: less noise-triggered topic drift and fewer early phrase cuts in PT/EN.
+// AO68A-HF6R8 — stable realtime VAD defaults for PT/EN demos.
 const REALTIME_SERVER_VAD_THRESHOLD = Math.min(
   0.95,
   Math.max(
     0.1,
     Number(
       ORKIO_ENV.VITE_REALTIME_VAD_THRESHOLD ||
-        import.meta.env.VITE_REALTIME_VAD_THRESHOLD ||
-        0.72
+      import.meta.env.VITE_REALTIME_VAD_THRESHOLD ||
+      0.72
     ) || 0.72
   )
 );
@@ -798,18 +795,18 @@ const REALTIME_SERVER_VAD_SILENCE_MS = Math.max(
   250,
   Number(
     ORKIO_ENV.VITE_REALTIME_VAD_SILENCE_MS ||
-      import.meta.env.VITE_REALTIME_VAD_SILENCE_MS ||
-      1800
+    import.meta.env.VITE_REALTIME_VAD_SILENCE_MS ||
+    1800
   ) || 1800
 );
 const REALTIME_SERVER_VAD_PREFIX_MS = Math.max(
   0,
   Number(
     ORKIO_ENV.VITE_REALTIME_VAD_PREFIX_PADDING_MS ||
-      ORKIO_ENV.VITE_REALTIME_VAD_HOLD_MS ||
-      import.meta.env.VITE_REALTIME_VAD_PREFIX_PADDING_MS ||
-      import.meta.env.VITE_REALTIME_VAD_HOLD_MS ||
-      500
+    ORKIO_ENV.VITE_REALTIME_VAD_HOLD_MS ||
+    import.meta.env.VITE_REALTIME_VAD_PREFIX_PADDING_MS ||
+    import.meta.env.VITE_REALTIME_VAD_HOLD_MS ||
+    500
   ) || 500
 );
 
@@ -1283,7 +1280,6 @@ function hasAdminAccess(userObj) {
 }
 
 
-
 // Icons (inline SVG)
 const IconPlus = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -1595,8 +1591,7 @@ function traceStepTone(kind = "status") {
 }
 
 function resolveRealtimeTranscriptionLanguage(languageProfile) {
-  // AO68A-HF6R5 — AMCHAM bilingual STT.
-  // Onboarding controls the hint; "auto" keeps provider auto-detection.
+  // AO68A-HF6R8 — Onboarding controls the language hint. "auto" keeps provider auto-detect.
   const raw = String(languageProfile || "").trim();
   if (!raw) return null;
 
@@ -1610,7 +1605,6 @@ function resolveRealtimeTranscriptionLanguage(languageProfile) {
 
   return normalized.split("-")[0] || null;
 }
-
 
 
 const ONBOARDING_USER_TYPES = [
@@ -5558,9 +5552,7 @@ function scheduleRealtimeIdleFollowup() {
   }
 
   function isRealtimeTimeboxLimitedUser() {
-    // AO68A-HF6R6 — Superadmin/Admin must bypass public beta timebox.
-    // Backend timebox policy can still protect public users, but must not override
-    // the local admin authority for daniel@patroai.com/superadmin sessions.
+    // AO68A-HF6R8 — Admin/superadmin bypasses public beta timebox.
     if (canAccessAdmin) return false;
     return rtcBackendTimeboxLimitedRef.current === true || rtcBackendTimeboxLimited === true || !canAccessAdmin;
   }
@@ -6067,12 +6059,19 @@ function scheduleRealtimeIdleFollowup() {
     const ok = sendRealtimeClientEvent(dc, {
       type: "response.create",
       response: {
+        // AO68A-HF6R8 — arm audio explicitly for both Realtime payload variants.
         modalities: ["audio", "text"],
+        output_modalities: ["audio", "text"],
+        audio: {
+          output: {
+            voice,
+          },
+        },
         instructions: responseInstructions,
         metadata: {
           source: "orkio_web",
           reason,
-          marker: ORKIO_AO66R_HF4_BUILD_MARKER,
+          marker: "AO68A-HF6R8_REALTIME_RESPONSE_CREATE_AUDIO_ARMING",
         },
       },
     }, `${reason}:response_create`);
@@ -6099,9 +6098,6 @@ function scheduleRealtimeIdleFollowup() {
     clearRealtimeActivationProbe();
     rtcActivationProbeSentRef.current = false;
 
-    // AO68A-HF6R5 — fast safety probe.
-    // Primary opening is announceRealtimeTimeboxStart(). This retry only fires if no
-    // response was acknowledged and no response is already in flight.
     rtcActivationProbeTimerRef.current = setTimeout(() => {
       try {
         if (!realtimeModeRef.current || !rtcSessionIdRef.current) return;
@@ -6112,7 +6108,7 @@ function scheduleRealtimeIdleFollowup() {
         if (rtcActivationProbeSentRef.current) return;
 
         rtcActivationProbeSentRef.current = true;
-        logRealtimeStep("ao68a_hf6r5:activation_probe_trigger", {
+        logRealtimeStep("ao66r:activation_probe_trigger", {
           source,
           sessionAgeMs: getRealtimeSessionAgeMs(),
           marker: ORKIO_AO66R_HF4_BUILD_MARKER,
@@ -6126,7 +6122,7 @@ function scheduleRealtimeIdleFollowup() {
           instructions: probe.instructions,
         });
       } catch (err) {
-        logRealtimeStep("ao68a_hf6r5:activation_probe_failed", {
+        logRealtimeStep("ao66r:activation_probe_failed", {
           source,
           message: err?.message || null,
           marker: ORKIO_AO66R_HF4_BUILD_MARKER,
@@ -6134,7 +6130,7 @@ function scheduleRealtimeIdleFollowup() {
       } finally {
         rtcActivationProbeTimerRef.current = null;
       }
-    }, 900);
+    }, 1200);
   }
 
   function announceRealtimeTimeboxStart(dc, seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS) {
@@ -6148,31 +6144,19 @@ function scheduleRealtimeIdleFollowup() {
       lang === "en"
         ? (
           isRealtimeTimeboxLimitedUser()
-            ? (
-              `Efatà. Orkio is live in real time. We have up to ${durationLabel} for this voice conversation. ` +
-              "The timer is already on screen. I will ask one question at a time and keep the focus on your answer. " +
-              "What would you like to start with?"
-            )
-            : "Efatà. Orkio is live in real time. I will ask one question at a time and keep the focus on your answer. What would you like to start with?"
+            ? `Efatà. Orkio is live in real time. We have up to ${durationLabel}. I will ask one short question at a time. What would you like to start with?`
+            : "Efatà. Orkio is live in real time. You are in an unrestricted admin session. I will ask one short question at a time. What would you like to start with?"
         )
         : lang === "es"
           ? (
             isRealtimeTimeboxLimitedUser()
-              ? (
-                `Efatà. Orkio está en tiempo real. Tenemos hasta ${durationLabel} para esta conversación por voz. ` +
-                "El contador ya está en pantalla. Haré una pregunta a la vez y mantendré el foco en tu respuesta. " +
-                "¿Por dónde quieres empezar?"
-              )
-              : "Efatà. Orkio está en tiempo real. Haré una pregunta a la vez y mantendré el foco en tu respuesta. ¿Por dónde quieres empezar?"
+              ? `Efatà. Orkio está en tiempo real. Tenemos hasta ${durationLabel}. Haré una pregunta corta por vez. ¿Por dónde quieres empezar?`
+              : "Efatà. Orkio está en tiempo real. Estás en una sesión de administrador sin límite público. Haré una pregunta corta por vez. ¿Por dónde quieres empezar?"
           )
           : (
             isRealtimeTimeboxLimitedUser()
-              ? (
-                `Efatà. Orkio em tempo real. Temos até ${durationLabel} para esta conversa por voz. ` +
-                "O relógio já está na tela. Vou fazer uma pergunta por vez e manter o foco no que você responder. " +
-                "Por onde você quer começar?"
-              )
-              : "Efatà. Orkio em tempo real. Vou fazer uma pergunta por vez e manter o foco no que você responder. Por onde você quer começar?"
+              ? `Efatà. Orkio em tempo real. Temos até ${durationLabel}. Vou fazer uma pergunta curta por vez. Por onde você quer começar?`
+              : "Efatà. Orkio em tempo real. Você está em uma sessão admin sem limite público. Vou fazer uma pergunta curta por vez. Por onde você quer começar?"
           );
 
     const activationInput =
@@ -6182,10 +6166,11 @@ function scheduleRealtimeIdleFollowup() {
           ? "Inicia ahora esta sesión de voz en tiempo real con un saludo breve y una pregunta inicial."
           : "Inicie agora esta sessão de voz em tempo real com uma saudação curta e uma pergunta inicial.";
 
-    logRealtimeStep("ao68a_hf6r5:start_announcement_requested", {
+    logRealtimeStep("ao68a_hf6r8:start_announcement_requested", {
       seconds: maxSeconds,
       durationLabel,
       languageProfile: lang,
+      limited: Boolean(isRealtimeTimeboxLimitedUser()),
     });
 
     return requestRealtimeSpokenResponse(dc, {
@@ -6375,6 +6360,14 @@ function scheduleRealtimeIdleFollowup() {
             cooldownSeconds: rtcTimeboxPolicyRef.current.cooldownSeconds,
             hf3Marker: ORKIO_AO61A_HF3_BUILD_MARKER,
           });
+        } else {
+          rtcTimeboxPolicyRef.current = null;
+          setRtcTimeboxRemaining(null);
+          logRealtimeStep("timebox:admin_bypass_synced", {
+            canAccessAdmin: Boolean(canAccessAdmin),
+            limitedByBackend: Boolean(limitedByBackend),
+            ttlSeconds: effectiveRealtimeTtlSeconds,
+          });
         }
       } catch {}
       const EPHEMERAL_KEY = start?.client_secret?.value || start?.client_secret_value || start?.value || null;
@@ -6407,22 +6400,22 @@ function scheduleRealtimeIdleFollowup() {
             backendTimeboxLimited: Boolean(rtcBackendTimeboxLimitedRef.current),
           });
         } catch {}
-        // AO68A-HF6R6:
-        // Public users see the 2-minute clock immediately.
-        // Admin/superadmin sessions are unlimited and must not start the public hard-stop timer.
+        // AO68A-HF6R8:
+        // Public users see the clock after /start 200.
+        // Admin/superadmin sessions remain live without public hard-stop.
         if (isRealtimeTimeboxLimitedUser()) {
           rtcPendingTimeboxSecondsRef.current = immediateTimeboxSeconds;
           setRtcTimeboxRemaining(immediateTimeboxSeconds);
           startRealtimeTimebox(immediateTimeboxSeconds, {
             force: true,
-            source: "after_start_200_click_clock_open",
+            source: "after_start_200_public_clock_open",
           });
           updateRealtimePremiumStatus("connecting", "Relógio aberto. Orkio fará a saudação inicial por voz.");
         } else {
           rtcPendingTimeboxSecondsRef.current = null;
           clearRealtimeTimeboxTimer();
           setRtcTimeboxRemaining(null);
-          updateRealtimePremiumStatus("connecting", "Realtime abrindo. Orkio fará a saudação inicial por voz.");
+          updateRealtimePremiumStatus("connecting", "Realtime ao vivo sem limite público. Orkio fará a saudação inicial por voz.");
         }
         startRealtimeStartupWatchdog(rtcSessionIdRef.current, "after_start_200");
       } catch {}
@@ -6621,30 +6614,24 @@ function scheduleRealtimeIdleFollowup() {
           const cooldownLabel = formatRealtimeDurationLabel(cooldownSeconds);
           setUploadStatus(`⚡ Orkio em tempo real — até ${durationLabel}. Depois, nova voz em ${cooldownLabel}. Texto liberado.`);
           setTimeout(() => setUploadStatus(''), 3500);
-        } else {
-          setUploadStatus('⚡ Realtime ativo — fale normalmente.');
-          setTimeout(() => setUploadStatus(''), 1500);
-        }
-
-        startRealtimeAudioWatchdog();
-        clearRealtimeStartupWatchdog();
-        // AO68A-HF6R6: channel open is not conversation start.
-        // Keep the public timebox pending until Orkio's first response.done.
-        // Admin/superadmin sessions do not use the public countdown/hard-stop.
-        if (isRealtimeTimeboxLimitedUser()) {
           if (!rtcPendingTimeboxSecondsRef.current) {
             rtcPendingTimeboxSecondsRef.current = resolveRealtimeStartTimeboxSeconds({ timebox: rtcTimeboxPolicyRef.current });
           }
-          setRtcTimeboxRemaining(null);
+          setRtcTimeboxRemaining(rtcPendingTimeboxSecondsRef.current || activeTimeboxSeconds);
         } else {
+          setUploadStatus('⚡ Realtime admin ativo — sem limite público.');
+          setTimeout(() => setUploadStatus(''), 1500);
           rtcPendingTimeboxSecondsRef.current = null;
           clearRealtimeTimeboxTimer();
           setRtcTimeboxRemaining(null);
         }
+
+        startRealtimeAudioWatchdog();
+        clearRealtimeStartupWatchdog();
         startRealtimeWakeLockGuard("data_channel_open");
         ensureRealtimeAudioOutput("data_channel_open");
 
-        // AO68A-HF6R5 — Realtime transcription follows onboarding language and is less noise-sensitive.
+        // AO68A-HF6R8 — Realtime transcription follows onboarding language and keeps audio response armed.
         try {
           const envLang = String(
             window.__ORKIO_ENV__?.VITE_REALTIME_TRANSCRIBE_LANGUAGE ||
@@ -6654,16 +6641,16 @@ function scheduleRealtimeIdleFollowup() {
 
           const preferredLang = normalizeRealtimeLanguageProfile(
             rtcLanguageProfileRef.current ||
-              (summitRuntimeModeRef.current === "summit" ? summitLanguageProfileRef.current : "") ||
-              envLang ||
-              "auto"
+            (summitRuntimeModeRef.current === "summit" ? summitLanguageProfileRef.current : "") ||
+            envLang ||
+            "auto"
           );
 
           const langHint = resolveRealtimeTranscriptionLanguage(preferredLang);
           const transcriptionModel = String(
             window.__ORKIO_ENV__?.VITE_REALTIME_TRANSCRIBE_MODEL ||
-              import.meta.env.VITE_REALTIME_TRANSCRIBE_MODEL ||
-              "gpt-4o-mini-transcribe"
+            import.meta.env.VITE_REALTIME_TRANSCRIBE_MODEL ||
+            "gpt-4o-mini-transcribe"
           ).trim() || "gpt-4o-mini-transcribe";
 
           const transcription = { model: transcriptionModel };
@@ -6671,16 +6658,16 @@ function scheduleRealtimeIdleFollowup() {
 
           const realtimeInstructions =
             preferredLang === "en"
-              ? "You are Orkio in real time. Keep the conversation focused on the user's last clear answer. Ask one short question at a time. Do not change topic because of noise or unclear fragments. If the audio is unclear, ask the user to repeat."
+              ? "You are Orkio in real time. Start by speaking first. Keep the conversation focused on the user's last clear answer. Ask one short question at a time. If the audio is unclear, ask the user to repeat."
               : preferredLang === "es"
-                ? "Eres Orkio en tiempo real. Mantén la conversación enfocada en la última respuesta clara del usuario. Haz una pregunta corta por vez. No cambies de tema por ruido o fragmentos poco claros. Si el audio no está claro, pide que el usuario repita."
+                ? "Eres Orkio en tiempo real. Empieza hablando primero. Mantén la conversación enfocada en la última respuesta clara del usuario. Haz una pregunta corta por vez. Si el audio no está claro, pide que el usuario repita."
                 : preferredLang === "pt"
-                  ? "Você é Orkio em tempo real. Mantenha a conversa focada na última resposta clara do usuário. Faça uma pergunta curta por vez. Não mude de assunto por ruído ou fragmentos pouco claros. Se o áudio estiver confuso, peça para o usuário repetir."
-                  : "You are Orkio in real time. Answer in the same language the user is using. Keep the conversation focused on the user's last clear answer. Ask one short question at a time. Do not change topic because of noise or unclear fragments. If the audio is unclear, ask the user to repeat.";
+                  ? "Você é Orkio em tempo real. Comece falando primeiro. Mantenha a conversa focada na última resposta clara do usuário. Faça uma pergunta curta por vez. Se o áudio estiver confuso, peça para o usuário repetir."
+                  : "You are Orkio in real time. Start by speaking first. Answer in the same language the user is using. Keep the conversation focused and ask one short question at a time.";
 
           try {
             console.log("REALTIME_TRANSCRIPTION_LANGUAGE", {
-              marker: "AO68A-HF6R5_REALTIME_OPENING_STT_FOCUS",
+              marker: "AO68A-HF6R8_REALTIME_RESPONSE_CREATE_AUDIO_ARMING",
               envLang,
               preferredLang,
               langHint,
@@ -6696,6 +6683,7 @@ function scheduleRealtimeIdleFollowup() {
             session: {
               type: "realtime",
               output_modalities: ["audio", "text"],
+              modalities: ["audio", "text"],
               audio: {
                 input: {
                   transcription,
@@ -6967,96 +6955,49 @@ function scheduleRealtimeIdleFollowup() {
       await pc.setLocalDescription(offer);
       logRealtimeStep('start:local_description_set', { sdpLength: offer?.sdp?.length || 0 });
 
-      // AO68A-HF6R7 — Robust SDP handshake.
-      // Some OpenAI Realtime deployments accept the GA /v1/realtime/calls endpoint,
-      // while others still require the WebRTC endpoint with ?model=...
-      // Try both before declaring startup failure.
-      const realtimeSdpEndpoints = [
-        {
-          label: "calls",
-          url: "https://api.openai.com/v1/realtime/calls",
-        },
-        {
-          label: "webrtc_model",
-          url: `https://api.openai.com/v1/realtime?model=${encodeURIComponent(rtModel || "gpt-realtime-mini")}`,
-        },
-      ];
+      const sdpAbortController = new AbortController();
+      const sdpTimeout = setTimeout(() => {
+        try { sdpAbortController.abort(); } catch {}
+      }, 20000);
 
-      let sdpResponse = null;
-      let sdpText = "";
-      let sdpLastError = null;
-
-      for (const endpoint of realtimeSdpEndpoints) {
-        const sdpAbortController = new AbortController();
-        const sdpTimeout = setTimeout(() => {
-          try { sdpAbortController.abort(); } catch {}
-        }, 20000);
-
-        try {
-          logRealtimeStep("start:sdp_attempt", {
-            endpoint: endpoint.label,
-            url: endpoint.url,
-            model: rtModel || null,
-          });
-
-          const response = await fetch(endpoint.url, {
-            method: "POST",
-            body: offer.sdp,
-            signal: sdpAbortController.signal,
-            headers: {
-              Authorization: `Bearer ${EPHEMERAL_KEY}`,
-              "Content-Type": "application/sdp",
-            },
-          });
-
-          const text = await response.text().catch(() => "");
-
-          if (response.ok && text) {
-            sdpResponse = response;
-            sdpText = text;
-            logRealtimeStep("start:sdp_ok", {
-              endpoint: endpoint.label,
-              answerLength: text.length,
-              status: response.status,
-            });
-            break;
-          }
-
-          sdpLastError = {
-            endpoint: endpoint.label,
-            status: response.status,
-            body: text || response.statusText || "",
-          };
-
-          logRealtimeStep("start:sdp_error", sdpLastError);
-        } catch (sdpFetchErr) {
-          sdpLastError = {
-            endpoint: endpoint.label,
+      let sdpResponse;
+      try {
+        sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
+          method: 'POST',
+          body: offer.sdp,
+          signal: sdpAbortController.signal,
+          headers: {
+            Authorization: `Bearer ${EPHEMERAL_KEY}`,
+            'Content-Type': 'application/sdp',
+          },
+        });
+      } catch (sdpFetchErr) {
+        logRealtimeStep("start:sdp_fetch_failed", {
+          name: sdpFetchErr?.name || null,
+          message: sdpFetchErr?.message || null,
+        });
+        throw buildRealtimeDiagnosticError(
+          "REALTIME_SDP_FETCH_FAILED",
+          "Não consegui concluir a conexão de voz em tempo real com o provedor agora. O chat continua disponível por texto.",
+          {
             name: sdpFetchErr?.name || null,
             message: sdpFetchErr?.message || null,
             aborted: sdpFetchErr?.name === "AbortError",
-          };
-
-          logRealtimeStep("start:sdp_fetch_failed", sdpLastError);
-        } finally {
-          try { clearTimeout(sdpTimeout); } catch {}
-        }
-      }
-
-      if (!sdpResponse || !sdpText) {
-        throw buildRealtimeDiagnosticError(
-          "REALTIME_SDP_HANDSHAKE_FAILED",
-          "Não consegui concluir a conexão WebRTC com o provedor agora. O chat continua disponível por texto.",
-          sdpLastError || {}
+          }
         );
+      } finally {
+        try { clearTimeout(sdpTimeout); } catch {}
       }
 
-      const answer = { type: "answer", sdp: sdpText };
+      const sdpText = await sdpResponse.text().catch(() => '');
+      if (!sdpResponse.ok) {
+        logRealtimeStep('start:sdp_error', { status: sdpResponse.status, body: sdpText || sdpResponse.statusText });
+        throw new Error(`SDP handshake falhou (${sdpResponse.status}): ${sdpText || sdpResponse.statusText}`);
+      }
+
+      logRealtimeStep('start:sdp_ok', { answerLength: sdpText.length });
+      const answer = { type: 'answer', sdp: sdpText };
       await pc.setRemoteDescription(answer);
-      logRealtimeStep("start:remote_description_set", {
-        sessionId: start?.session_id || null,
-        threadId: start?.thread_id || threadId || null,
-      });
       logRealtimeStep('start:ready', { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null });
 
     } catch (e) {
@@ -7096,41 +7037,18 @@ function scheduleRealtimeIdleFollowup() {
       );
       setV2vError(friendlyRealtimeError);
       setUploadStatus("❌ Realtime indisponível. Você pode continuar por texto.");
-
-      // AO68A-HF6R7 — Do not immediately call /api/realtime/end on startup failure.
-      // The previous cleanup killed backend sessions ~1–2s after /start, making it
-      // impossible to separate session creation, SDP failure, datachannel opening and greeting.
-      // Keep the diagnostic session visible and only perform local cleanup. Manual stop,
-      // quota/cooldown and explicit timebox expiration still call stopRealtime().
-      try {
-        console.warn("REALTIME_START_ERROR_HELD_NO_BACKEND_END", {
-          code: e?.code || null,
-          message: e?.message || null,
-          diagnostic: e?.diagnostic || null,
-          sessionId: rtcSessionIdRef.current || null,
-          marker: "AO68A-HF6R7_NO_EARLY_END",
-        });
-      } catch {}
-
-      try { clearRealtimeStartupWatchdog(); } catch {}
-      try { clearRealtimeActivationProbe(); } catch {}
-      try { clearRealtimeAudioWatchdog(); } catch {}
-      try { clearRealtimeAutoResponseFallback(); } catch {}
-      try { clearRealtimeIdleFollowup(); } catch {}
-      try { clearRealtimeResponseTimeout(); } catch {}
-      try { rtcPcRef.current?.close?.(); } catch {}
-      try { rtcPcRef.current = null; } catch {}
-      try { rtcDcRef.current = null; } catch {}
-      try {
-        if (rtcMicStreamRef.current) {
-          rtcMicStreamRef.current.getTracks?.().forEach((track) => {
-            try { track.stop(); } catch {}
-          });
-        }
-      } catch {}
-      try { rtcMicStreamRef.current = null; } catch {}
-
       setTimeout(() => setUploadStatus(""), 3500);
+
+      // AO68A-HF6R8: do not call /api/realtime/end immediately after initial
+      // browser/WebRTC/SDP failure. Keep the backend evidence intact and avoid
+      // killing a session that may still be stabilizing on mobile/PWA.
+      logRealtimeStep("ao68a_hf6r8:start_error_no_early_end", {
+        code: e?.code || null,
+        status: e?.status || null,
+        message: e?.message || null,
+        sessionId: rtcSessionIdRef.current || null,
+      });
+      hardResetRealtimeClientState("start_error_local_reset_only");
     } finally {
       rtcConnectingRef.current = false;
     }
