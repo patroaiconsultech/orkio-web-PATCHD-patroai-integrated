@@ -13,6 +13,8 @@ import MessageBubble from "../components/chat/MessageBubble.jsx";
 import RealtimeTimeboxOverlay from "../components/realtime/RealtimeTimeboxOverlay.jsx";
 import RealtimeTranscriptSummary from "../components/realtime/RealtimeTranscriptSummary.jsx";
 
+// AO68A-HF6R10_NO_BACKEND_END_ON_WARMUP — suppress fake quota/cooldown on failed realtime warmup
+
 // AO68A-HF6R9_REALTIME_NO_COOLDOWN_ON_RETRY — safe AppConsole patch applied
 
 // ORKIO_AO60D_REALTIME_MOBILE_HARDENING
@@ -4894,23 +4896,26 @@ async function confirmFounderHandoff() {
     }
   }
 
-  function isManualRealtimeStopReason(reason = "") {
-    const r = String(reason || "").toLowerCase();
+  function isExplicitRealtimeEndReason(reason = "") {
+    // AO68A-HF6R10:
+    // Only true user intent or public timebox completion may call /api/realtime/end.
+    // Startup cleanup, pre_start reset, pagehide, watchdog, fallback and provider errors
+    // must never consume the public quota/cooldown.
+    const r = String(reason || "").toLowerCase().trim();
     return (
-      r.includes("client_stop") ||
-      r.includes("toggle_off") ||
-      r.includes("time_limit") ||
-      r.includes("backend_cooldown") ||
-      r.includes("cooldown") ||
-      r.includes("start_error") ||
-      r.includes("start_blocked") ||
-      r.includes("pre_start") ||
-      r.includes("diagnostic") ||
-      r.includes("permission") ||
-      r.includes("forbidden") ||
-      r.includes("unauthorized")
+      r === "client_stop" ||
+      r === "toggle_off" ||
+      r === "client_stop_fullscreen_clock" ||
+      r === "time_limit_frontend" ||
+      r === "time_limit_frontend_hard_stop" ||
+      r === "backend_cooldown"
     );
   }
+
+  function isManualRealtimeStopReason(reason = "") {
+    return isExplicitRealtimeEndReason(reason);
+  }
+
 
   function isPrematureAutoRealtimeStopReason(reason = "") {
     const r = String(reason || "").toLowerCase();
@@ -6248,9 +6253,23 @@ function scheduleRealtimeIdleFollowup() {
       // If a backend session id exists, close it first without starting local cooldown:
       // the new /start response remains the source of truth.
       if (rtcSessionIdRef.current) {
-        await stopRealtime('start_error_pre_start_hard_reset');
+        // AO68A-HF6R10:
+        // Do not call stopRealtime() during pre-start cleanup.
+        // It sends /api/realtime/end and turns failed warmups into consumed public quota.
+        logRealtimeStep("ao68a_hf6r10:pre_start_local_cleanup_no_backend_end", {
+          previousSessionId: rtcSessionIdRef.current || null,
+          startNonce,
+        });
+        try { clearRealtimeResponseTimeout(); } catch {}
+        try { clearRealtimeActivationProbe(); } catch {}
+        try { clearRealtimeAutoResponseFallback(); } catch {}
+        try { clearRealtimeStartupWatchdog(); } catch {}
+        try { clearRealtimeAudioWatchdog(); } catch {}
+        try { clearRealtimeIdleFollowup(); } catch {}
+        try { clearRealtimeTimeboxTimer(); } catch {}
+        try { clearRealtimeLivePoll(); } catch {}
       }
-      hardResetRealtimeClientState("pre_start", { startNonce });
+      hardResetRealtimeClientState("pre_start", { startNonce, noBackendEnd: true });
 
       resetRealtimeTranscriptSession("realtime_start");
 
@@ -7518,6 +7537,8 @@ async function stopRealtime(reason = 'client_stop') {
     const reasonTextEarly = String(reason || "client_stop");
     const sessionAgeMs = getRealtimeSessionAgeMs();
 
+    const allowBackendEnd = isExplicitRealtimeEndReason(reasonTextEarly);
+
     // AO66R-HF3: UI must never remain hostage to network/WebRTC cleanup.
     // For manual stop, close overlay immediately and open summary shell even if transcript is empty.
     const isManualStopEarly = isManualRealtimeStopReason(reasonTextEarly);
@@ -7541,6 +7562,7 @@ async function stopRealtime(reason = 'client_stop') {
     const minAutoStopMs = 30000;
     const isPrematureAutoStop = Boolean(
       sid &&
+      !allowBackendEnd &&
       shouldHoldRealtimeInsteadOfEnding(reasonTextEarly, sessionAgeMs)
     );
 
@@ -7550,6 +7572,7 @@ async function stopRealtime(reason = 'client_stop') {
         sessionId: sid,
         sessionAgeMs,
         prematureAutoStopBlocked: isPrematureAutoStop,
+        allowBackendEnd,
         marker: ORKIO_AO66R_HF4_BUILD_MARKER,
       });
     } catch {}
@@ -7617,7 +7640,25 @@ async function stopRealtime(reason = 'client_stop') {
       try {
         if (sid) {
           await flushRealtimeEvents();
-          await endRealtimeSession({ session_id: sid, ended_at: Math.floor(Date.now() / 1000), meta: { reason, mode: summitRuntimeModeRef.current } });
+
+          if (allowBackendEnd) {
+            await endRealtimeSession({ session_id: sid, ended_at: Math.floor(Date.now() / 1000), meta: { reason, mode: summitRuntimeModeRef.current, hf6r10_explicit_end: true } });
+          } else {
+            logRealtimeStep("ao68a_hf6r10:backend_end_suppressed", {
+              reason: reasonTextEarly,
+              sessionId: sid,
+              sessionAgeMs,
+            });
+            try {
+              console.warn("REALTIME_BACKEND_END_SUPPRESSED", {
+                reason: reasonTextEarly,
+                sessionId: sid,
+                sessionAgeMs,
+                marker: "AO68A-HF6R10_NO_BACKEND_END_ON_WARMUP",
+              });
+            } catch {}
+          }
+
           try {
             const data = await getRealtimeSession({ session_id: sid, finals_only: true });
             if (data?.events) setRtcAuditEvents(data.events);
@@ -7721,8 +7762,14 @@ async function stopRealtime(reason = 'client_stop') {
     function handleRealtimePageHide() {
       try {
         if (!realtimeModeRef.current && !rtcSessionIdRef.current) return;
-        markRealtimePausedForBackground("pagehide");
-        void stopRealtime("pagehide_mobile_background");
+        // AO68A-HF6R10:
+        // Mobile/PWA pagehide must not end backend Realtime sessions.
+        // It was creating fake usage and public cooldown during warmup.
+        markRealtimePausedForBackground("pagehide_no_backend_end");
+        logRealtimeStep("ao68a_hf6r10:pagehide_no_backend_end", {
+          sessionId: rtcSessionIdRef.current || null,
+          sessionAgeMs: getRealtimeSessionAgeMs(),
+        });
       } catch {}
     }
 
@@ -7858,7 +7905,7 @@ async function stopRealtime(reason = 'client_stop') {
           rtcSessionIdRef.current &&
           !rtcConversationStartedRef.current &&
           ageMs >= 0 &&
-          ageMs < 45000
+          ageMs < 180000
         )
       );
 
@@ -7874,6 +7921,14 @@ async function stopRealtime(reason = 'client_stop') {
     }
 
     if (next && isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0) {
+      // AO68A-HF6R10:
+      // If the browser still has a warming session, retry activation instead of showing cooldown.
+      const ageMs = getRealtimeSessionAgeMs();
+      if (rtcSessionIdRef.current && !rtcConversationStartedRef.current && ageMs >= 0 && ageMs < 180000) {
+        const nudged = nudgeRealtimeActivation("cooldown_tap_existing_warmup_session");
+        if (nudged) return;
+      }
+
       const label = formatRealtimeCountdown(rtcCooldownRemaining);
       setV2vPhase("error");
       setV2vError(`A voz em tempo real estará disponível novamente em ${label}. O chat por texto continua disponível.`);
