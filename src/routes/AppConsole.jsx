@@ -4994,11 +4994,11 @@ async function confirmFounderHandoff() {
         if (rtcResponseInFlightRef.current) {
           const hasRecentServerResponse = Boolean(
             rtcLastResponseCreatedAtRef.current &&
-            (Date.now() - Number(rtcLastResponseCreatedAtRef.current || 0)) < 8000
+            (Date.now() - Number(rtcLastResponseCreatedAtRef.current || 0)) < 2500
           );
           if (hasRecentServerResponse) return;
 
-          logRealtimeStep("ao66r_hf2:clearing_stale_inflight_before_user_response", {
+          logRealtimeStep("ao01_hf6r17:clearing_stale_inflight_before_forced_audio_response", {
             source,
             sessionAgeMs: getRealtimeSessionAgeMs(),
             marker: ORKIO_AO66R_HF4_BUILD_MARKER,
@@ -5037,7 +5037,7 @@ async function confirmFounderHandoff() {
       } finally {
         rtcAutoResponseFallbackTimerRef.current = null;
       }
-    }, 1400);
+    }, 450);
   }
 
 
@@ -6525,26 +6525,56 @@ function scheduleRealtimeIdleFollowup() {
       const pc = new RTCPeerConnection();
       rtcPcRef.current = pc;
 
+      // AO01-HF6R17_REALTIME_AUDIO_OUTPUT_NEGOTIATION
+      // Explicitly ask WebRTC to receive assistant audio. Relying only on the
+      // microphone sender may leave the provider free to complete text events
+      // without delivering a playable remote audio track.
+      try {
+        pc.addTransceiver("audio", { direction: "recvonly" });
+        logRealtimeStep("audio:recvonly_transceiver_added");
+      } catch (err) {
+        logRealtimeStep("audio:recvonly_transceiver_failed", { message: err?.message || null });
+      }
+
       // Remote audio output
       const audioEl = document.createElement('audio');
       audioEl.autoplay = true;
       audioEl.playsInline = true;
       audioEl.muted = false;
       audioEl.volume = 1;
+      try { audioEl.controls = false; } catch {}
+      try { audioEl.preload = "auto"; } catch {}
       try { audioEl.setAttribute("playsinline", ""); } catch {}
       try { audioEl.setAttribute("webkit-playsinline", ""); } catch {}
+      try {
+        audioEl.style.display = "none";
+        document.body.appendChild(audioEl);
+      } catch {}
       rtcAudioElRef.current = audioEl;
+
       pc.ontrack = (e) => {
         try {
-          rtcRemoteStreamRef.current = e.streams?.[0] || null;
-          audioEl.srcObject = rtcRemoteStreamRef.current;
-          // Ensure element is connected for better autoplay compatibility
-          if (!audioEl.isConnected) {
-            audioEl.style.display = "none";
-            document.body.appendChild(audioEl);
+          let remoteStream = e.streams?.[0] || rtcRemoteStreamRef.current || null;
+          if (!remoteStream && e.track) {
+            remoteStream = new MediaStream();
           }
+          if (remoteStream && e.track && !remoteStream.getTracks?.().some((t) => t.id === e.track.id)) {
+            try { remoteStream.addTrack(e.track); } catch {}
+          }
+          rtcRemoteStreamRef.current = remoteStream || null;
+          if (rtcRemoteStreamRef.current && audioEl.srcObject !== rtcRemoteStreamRef.current) {
+            audioEl.srcObject = rtcRemoteStreamRef.current;
+          }
+          logRealtimeStep("audio:ontrack", {
+            kind: e.track?.kind || null,
+            readyState: e.track?.readyState || null,
+            streams: e.streams?.length || 0,
+            remoteTracks: rtcRemoteStreamRef.current?.getTracks?.().length || 0,
+          });
           ensureRealtimeAudioOutput("ontrack");
-        } catch {}
+        } catch (err) {
+          logRealtimeStep("audio:ontrack_failed", { message: err?.message || null });
+        }
       };
 
       // Mic input
@@ -6896,8 +6926,8 @@ function scheduleRealtimeIdleFollowup() {
                 // the client triggers exactly one response.create instead of
                 // leaving the UI stuck in "Aguardando a fala terminar".
                 setRtcReadyToRespond(true);
-                scheduleRealtimeAutoResponseFallback(raw, "input_audio_transcription.completed");
-                logRealtimeStep('ao66r_hf4:awaiting_server_auto_response_with_client_fallback', {
+                scheduleRealtimeAutoResponseFallback(raw, "input_audio_transcription.completed_force_audio");
+                logRealtimeStep('ao01_hf6r17:forcing_audio_response_after_final_transcript', {
                   transcript: raw,
                   marker: ORKIO_AO66R_HF4_BUILD_MARKER,
                 });
