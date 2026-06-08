@@ -36,14 +36,47 @@ const PATROAI_PAGE_COPY = {
       titleBefore: "Resolvemos as dores do seu negócio com",
       titleHighlight: "IA e ESG.",
       subtitle:
-        "A PatroAI cria startups, produtos digitais, verticais inteligentes e agentes de IA para empresas em formação ou já consolidadas. Nosso foco é entender as dores reais do negócio, integrar sistemas e informações já existentes e transformar processos em operação inteligente com execução rápida, segura e eficiente, governança, rastreabilidade, visão ESG e continuidade para o negócio.",
-      primary: "Conhecer a PatroAI →",
-      secondary: "Falar com Orkio",
+        "A PatroAI cria startups, produtos digitais, verticais inteligentes e agentes de IA para empresas em formação ou já consolidadas. Nosso foco é entender as dores reais do negócio, integrar sistemas e informações já existentes e transformar processos em operação inteligente com execução rápida, segura e eficiente e orientar um futuro sustentável com governança, rastreabilidade, visão ESG e continuidade para o negócio.",
+      primary: "Agendar demonstração →",
+      secondary: "Conhecer soluções",
       trust:
-        "Projetos conduzidos de forma rápida, segura e eficiente, com estratégia, tecnologia, integrações, IA e consultoria especializada.",
+        "Projetos conduzidos de forma rápida, segura e eficiente — da dor real à operação inteligente, com estratégia, tecnologia, integrações, IA e governança.",
     },
     orkioSpeech:
       "Olá. Eu sou Orkio. Posso mostrar como a PatroAI resolve dores do negócio com inteligência artificial, integra sistemas, aproveita informações já existentes, estrutura startups e cria verticais sob demanda com governança, rastreabilidade, ESG e visão de continuidade para o negócio.",
+    missionVision: {
+      label: "Missão, visão e valores",
+      title: "Tecnologia com propósito. IA aplicada à execução real.",
+      text:
+        "A PatroAI une estratégia, governança, criatividade e inteligência artificial para transformar desafios reais em soluções práticas, seguras, escaláveis e sustentáveis.",
+      cards: [
+        {
+          title: "Missão",
+          text:
+            "Potencializar pessoas e empresas com inteligência artificial segura, estratégica e aplicada à execução real.",
+        },
+        {
+          title: "Visão",
+          text:
+            "Ser referência em IA operacional governável, conectando tecnologia, negócios e propósito para transformar o futuro das organizações.",
+        },
+        {
+          title: "Valores",
+          text:
+            "Construímos tecnologia com consciência, responsabilidade e foco em resultado sustentável.",
+          values: [
+            "Propósito",
+            "Ética",
+            "Segurança",
+            "Execução",
+            "Inovação",
+            "Humanidade",
+            "Prosperidade compartilhada",
+            "Evolução contínua",
+          ],
+        },
+      ],
+    },
     processAria: "Como atuamos",
     processSteps: [
       {
@@ -211,14 +244,47 @@ const PATROAI_PAGE_COPY = {
       titleBefore: "We solve your business pains with",
       titleHighlight: "AI and ESG.",
       subtitle:
-        "PatroAI creates startups, digital products, intelligent verticals and AI agents for companies that are being formed or already consolidated. Our focus is to understand real business pains, integrate existing systems and information, and transform processes into intelligent operations with fast, secure and efficient execution, governance, traceability, an ESG perspective and business continuity.",
-      primary: "Discover PatroAI →",
-      secondary: "Talk to Orkio",
+        "PatroAI creates startups, digital products, intelligent verticals and AI agents for companies that are being formed or already consolidated. Our focus is to understand real business pains, integrate existing systems and information, and transform processes into intelligent operations with fast, secure and efficient execution and guide a sustainable future with governance, traceability, an ESG perspective and business continuity.",
+      primary: "Schedule a demo →",
+      secondary: "Explore solutions",
       trust:
         "Projects conducted in a fast, secure and efficient way, with strategy, technology, integrations, AI and specialized consulting.",
     },
     orkioSpeech:
       "Hello. I am Orkio. I can show how PatroAI solves business pains with artificial intelligence, integrates systems, leverages existing information, structures startups and creates on-demand verticals with governance, traceability, ESG and a continuity perspective for the business.",
+    missionVision: {
+      label: "Mission, vision and values",
+      title: "Technology with purpose. AI applied to real execution.",
+      text:
+        "PatroAI combines strategy, governance, creativity and artificial intelligence to transform real challenges into practical, secure, scalable and sustainable solutions.",
+      cards: [
+        {
+          title: "Mission",
+          text:
+            "Empower people and companies with safe, strategic artificial intelligence applied to real execution.",
+        },
+        {
+          title: "Vision",
+          text:
+            "Become a reference in governable operational AI, connecting technology, business and purpose to transform the future of organizations.",
+        },
+        {
+          title: "Values",
+          text:
+            "We build technology with awareness, responsibility and focus on sustainable outcomes.",
+          values: [
+            "Purpose",
+            "Ethics",
+            "Security",
+            "Execution",
+            "Innovation",
+            "Humanity",
+            "Shared prosperity",
+            "Continuous evolution",
+          ],
+        },
+      ],
+    },
     processAria: "How we work",
     processSteps: [
       {
@@ -454,10 +520,6 @@ export default function PatroaiLanding() {
   const heroSubtitle = useMemo(() => copy.hero.subtitle, [copy.hero.subtitle]);
   const orkioSpeech = useMemo(() => copy.orkioSpeech, [copy.orkioSpeech]);
 
-  function handleLogin() {
-    safeNavigateToAuth({ mode: "login", source: "patroai_landing", lang: locale });
-  }
-
   function handleDemo() {
     safeNavigateToAuth({ mode: "register", source: "patroai_demo", lang: locale });
   }
@@ -620,13 +682,13 @@ export default function PatroaiLanding() {
         .patroai-hero {
           padding: clamp(62px, 8vw, 112px) 0 52px;
           display: grid;
-          grid-template-columns: minmax(0, 1.08fr) minmax(280px, .72fr);
+          grid-template-columns: minmax(0, 1.02fr) minmax(300px, .82fr);
           gap: clamp(32px, 5vw, 76px);
           align-items: center;
         }
 
         .patroai-hero-main {
-          max-width: 820px;
+          max-width: 790px;
         }
 
         .patroai-kicker,
@@ -647,10 +709,10 @@ export default function PatroaiLanding() {
 
         .patroai-hero h1 {
           margin: 24px 0 18px;
-          font-size: clamp(42px, 7vw, 80px);
+          font-size: clamp(40px, 6.4vw, 76px);
           line-height: .94;
           letter-spacing: -.072em;
-          max-width: 820px;
+          max-width: 780px;
         }
 
         .patroai-hero h1 span,
@@ -690,9 +752,9 @@ export default function PatroaiLanding() {
           min-height: 420px;
           display: grid;
           place-items: center;
-          align-self: start;
+          align-self: center;
           isolation: isolate;
-          transform: translateY(-42px);
+          transform: translateY(-64px);
         }
 
         .patroai-hero-orb::before {
@@ -831,6 +893,75 @@ export default function PatroaiLanding() {
           color: rgba(255,255,255,.68);
           line-height: 1.55;
           font-size: 14px;
+        }
+
+
+        .mission-section {
+          padding-top: 30px;
+        }
+
+        .mission-heading {
+          max-width: 920px;
+        }
+
+        .mission-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 16px;
+        }
+
+        .mission-card {
+          position: relative;
+          overflow: hidden;
+          min-height: 250px;
+          border-radius: 28px;
+          border: 1px solid rgba(255,255,255,.10);
+          background:
+            radial-gradient(circle at top left, rgba(250,204,21,.12), transparent 38%),
+            linear-gradient(145deg, rgba(255,255,255,.075), rgba(255,255,255,.035));
+          padding: 24px;
+          box-shadow: 0 22px 58px rgba(0,0,0,.22);
+        }
+
+        .mission-card::after {
+          content: "";
+          position: absolute;
+          inset: auto 20px 0 20px;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(250,204,21,.44), transparent);
+          opacity: .72;
+        }
+
+        .mission-card h3 {
+          margin: 14px 0 10px;
+          font-size: 24px;
+          letter-spacing: -.035em;
+        }
+
+        .mission-card p {
+          margin: 0;
+          color: rgba(255,255,255,.70);
+          line-height: 1.6;
+          font-size: 15px;
+        }
+
+        .mission-values {
+          list-style: none;
+          padding: 0;
+          margin: 18px 0 0;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .mission-values li {
+          border-radius: 999px;
+          border: 1px solid rgba(250,204,21,.18);
+          background: rgba(250,204,21,.08);
+          color: rgba(255,255,255,.82);
+          padding: 7px 10px;
+          font-size: 12px;
+          font-weight: 850;
         }
 
         .verticals-section {
@@ -1090,6 +1221,10 @@ export default function PatroaiLanding() {
           .services-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
+
+          .mission-grid {
+            grid-template-columns: 1fr;
+          }
         }
 
         @media (max-width: 640px) {
@@ -1156,20 +1291,11 @@ export default function PatroaiLanding() {
             <a href="#verticals">{copy.nav.verticals}</a>
             <a href="#orkio">{copy.nav.orkio}</a>
             <a href="#method">{copy.nav.resources}</a>
-            <a href="#about">{copy.nav.about}</a>
+            <a href="#mission">{copy.nav.about}</a>
           </nav>
 
           <div className="patroai-actions">
-            <button className="patroai-btn primary" type="button" onClick={handleDemo}>
-              {copy.actions.demo}
-            </button>
-            <button className="patroai-btn" type="button" onClick={() => navigateTo(ROUTES.admin)}>
-              {copy.actions.admin}
-            </button>
-            <button className="patroai-btn" type="button" onClick={handleLogin}>
-              {copy.actions.login}
-            </button>
-            <LandingLanguageSwitch value={locale} onChange={setLocale} />
+            <LandingLanguageSwitch value={locale} onChange={setLocale} compact inline />
           </div>
         </div>
       </header>
@@ -1191,7 +1317,11 @@ export default function PatroaiLanding() {
             <button className="patroai-btn primary" type="button" onClick={handleDemo}>
               {copy.hero.primary}
             </button>
-            <button className="patroai-btn" type="button" onClick={handleStartAvatarJourney}>
+            <button
+              className="patroai-btn"
+              type="button"
+              onClick={() => document.getElementById("solutions")?.scrollIntoView({ behavior: "smooth" })}
+            >
               {copy.hero.secondary}
             </button>
           </div>
@@ -1212,6 +1342,32 @@ export default function PatroaiLanding() {
               <strong>{step.number}</strong>
               <h3>{step.title}</h3>
               <p>{step.text}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="patroai-shell patroai-section mission-section" id="mission">
+        <div className="section-heading mission-heading">
+          <span>{copy.missionVision.label}</span>
+          <h2>{copy.missionVision.title}</h2>
+          <p>{copy.missionVision.text}</p>
+        </div>
+
+        <div className="mission-grid">
+          {copy.missionVision.cards.map((item) => (
+            <article className="mission-card" key={item.title}>
+              <div className="service-icon">✦</div>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+
+              {item.values ? (
+                <ul className="mission-values">
+                  {item.values.map((value) => (
+                    <li key={value}>{value}</li>
+                  ))}
+                </ul>
+              ) : null}
             </article>
           ))}
         </div>
