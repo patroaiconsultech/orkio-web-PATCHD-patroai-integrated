@@ -6006,6 +6006,7 @@ function scheduleRealtimeIdleFollowup() {
       } catch {}
 
       dc.send(JSON.stringify(finalPayload));
+      try { queueRealtimeTelemetry("client_event_sent", { reason, type: finalPayload.type, event_id: eventId }); } catch {}
       logRealtimeStep("ao66r:client_event_sent", {
         reason,
         type: finalPayload.type,
@@ -6060,6 +6061,14 @@ function scheduleRealtimeIdleFollowup() {
         updateRealtimePremiumStatus("listening", "Realtime conectado. Aguardando resposta de áudio.");
       } catch {}
     }, 6000);
+
+    queueRealtimeTelemetry("response_create_attempt", {
+      reason,
+      conversationItem: Boolean(conversationItem),
+      hasInputText: Boolean(cleanInput),
+      hasInstructions: Boolean(cleanInstructions),
+      voice,
+    });
 
     const ok = sendRealtimeClientEvent(dc, {
       type: "response.create",
@@ -6571,6 +6580,7 @@ function scheduleRealtimeIdleFollowup() {
       }
 
       logRealtimeStep('start:mic_ok', { label: outboundTrack?.label || null, readyState: outboundTrack?.readyState || null });
+      queueRealtimeTelemetry('mic_ok', { label: outboundTrack?.label || null, readyState: outboundTrack?.readyState || null });
       outboundTrack.onended = () => {
         try {
           logRealtimeStep("mic:ended");
@@ -6588,6 +6598,7 @@ function scheduleRealtimeIdleFollowup() {
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState || "unknown";
         logRealtimeStep("pc:connection_state", { state });
+        queueRealtimeTelemetry("pc_connection_state", { state, iceState: pc.iceConnectionState || null, signalingState: pc.signalingState || null });
         if (state === "failed" || state === "disconnected" || state === "closed") {
           flushRealtimePartialTranscript(`pc_${state}_partial_flush`);
           setV2vError(`Realtime connection ${state}`);
@@ -6599,6 +6610,7 @@ function scheduleRealtimeIdleFollowup() {
 
       dc.addEventListener("close", () => {
         logRealtimeStep("dc:close");
+        queueRealtimeTelemetry("datachannel_close", { readyState: dc.readyState || null });
         flushRealtimePartialTranscript("dc_close_partial_flush");
         rtcResponseInFlightRef.current = false;
         if (realtimeModeRef.current) {
@@ -6611,9 +6623,11 @@ function scheduleRealtimeIdleFollowup() {
       dc.addEventListener("error", (err) => {
         console.warn("[Realtime] datachannel error", err);
         logRealtimeStep("dc:error", { message: err?.message || null });
+        queueRealtimeTelemetry("datachannel_error", { message: err?.message || null, readyState: dc.readyState || null });
       });
 
             dc.addEventListener('open', () => {
+        queueRealtimeTelemetry("datachannel_open", { readyState: dc.readyState || null, pcState: pc.connectionState || null, iceState: pc.iceConnectionState || null });
         setV2vPhase('listening');
         updateRealtimePremiumStatus("listening", "📝 Transcrição ativa");
 
@@ -6729,7 +6743,8 @@ function scheduleRealtimeIdleFollowup() {
         // AO66R: send a proof-of-audio greeting and, if the provider does not emit
         // response.created quickly, send one fallback conversation item + response.create.
         // This separates "session/call opened" from "audio response actually activated".
-        announceRealtimeTimeboxStart(dc, activeTimeboxSeconds);
+        const greetingSent = announceRealtimeTimeboxStart(dc, activeTimeboxSeconds);
+        queueRealtimeTelemetry("greeting_sent", { sent: Boolean(greetingSent), activeTimeboxSeconds });
         scheduleRealtimeActivationProbe(dc, "data_channel_open");
       });
 
@@ -6833,6 +6848,7 @@ function scheduleRealtimeIdleFollowup() {
             rtcTextBufRef.current += ev.delta;
           }
           if (ev?.type === 'response.created') {
+            queueRealtimeTelemetry("session_activated", { source: "response.created", response_id: ev?.response?.id || ev?.response_id || null });
             try {
               console.log("REALTIME_ASSISTANT_RESPONSE_RECEIVED", {
                 type: ev?.type,
@@ -6877,6 +6893,7 @@ function scheduleRealtimeIdleFollowup() {
           }
           // Audio transcript (when model outputs audio without text)
           if (ev?.type === 'response.audio.delta' || ev?.type === 'response.output_audio.delta') {
+            queueRealtimeTelemetry("assistant_audio_started", { source: ev?.type || "response.audio.delta" });
             clearRealtimeResponseTimeout();
             try { ensureRealtimeAudioOutput("response_audio_delta"); } catch {}
           }
@@ -6970,9 +6987,11 @@ function scheduleRealtimeIdleFollowup() {
 
       // SDP handshake
       logRealtimeStep('start:create_offer');
+      queueRealtimeTelemetry("offer_create_start", { pcState: pc.connectionState || null, iceState: pc.iceConnectionState || null });
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       logRealtimeStep('start:local_description_set', { sdpLength: offer?.sdp?.length || 0 });
+      queueRealtimeTelemetry("local_description_set", { sdpLength: offer?.sdp?.length || 0, signalingState: pc.signalingState || null });
 
       const sdpAbortController = new AbortController();
       const sdpTimeout = setTimeout(() => {
@@ -6981,6 +7000,7 @@ function scheduleRealtimeIdleFollowup() {
 
       let sdpResponse;
       try {
+        queueRealtimeTelemetry("sdp_fetch_start", { endpoint: "https://api.openai.com/v1/realtime/calls", model: start?.model || null });
         sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
           method: 'POST',
           body: offer.sdp,
@@ -6995,6 +7015,7 @@ function scheduleRealtimeIdleFollowup() {
           name: sdpFetchErr?.name || null,
           message: sdpFetchErr?.message || null,
         });
+        queueRealtimeTelemetry("sdp_fetch_failed", { name: sdpFetchErr?.name || null, message: sdpFetchErr?.message || null, aborted: sdpFetchErr?.name === "AbortError" });
         throw buildRealtimeDiagnosticError(
           "REALTIME_SDP_FETCH_FAILED",
           "Não consegui concluir a conexão de voz em tempo real com o provedor agora. O chat continua disponível por texto.",
@@ -7011,16 +7032,20 @@ function scheduleRealtimeIdleFollowup() {
       const sdpText = await sdpResponse.text().catch(() => '');
       if (!sdpResponse.ok) {
         logRealtimeStep('start:sdp_error', { status: sdpResponse.status, body: sdpText || sdpResponse.statusText });
+        queueRealtimeTelemetry("sdp_error", { status: sdpResponse.status, body: String(sdpText || sdpResponse.statusText || "").slice(0, 800) });
         throw new Error(`SDP handshake falhou (${sdpResponse.status}): ${sdpText || sdpResponse.statusText}`);
       }
 
       logRealtimeStep('start:sdp_ok', { answerLength: sdpText.length });
+      queueRealtimeTelemetry("sdp_ok", { answerLength: sdpText.length, status: sdpResponse.status });
       const answer = { type: 'answer', sdp: sdpText };
       await pc.setRemoteDescription(answer);
+      queueRealtimeTelemetry("remote_description_set", { signalingState: pc.signalingState || null, pcState: pc.connectionState || null, iceState: pc.iceConnectionState || null });
       logRealtimeStep('start:ready', { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null });
 
     } catch (e) {
       console.error('[Realtime] startRealtime error', e);
+      queueRealtimeTelemetry("start_catch", { code: e?.code || null, status: e?.status || null, message: e?.message || null, userMessage: e?.userMessage || null });
       logRealtimeStep('start:catch', {
         code: e?.code || null,
         status: e?.status || null,
@@ -7175,6 +7200,37 @@ function scheduleRealtimeIdleFollowup() {
       // On failure, put events back to try later (best-effort)
       rtcEventQueueRef.current = q.concat(rtcEventQueueRef.current || []);
       console.warn('[Realtime] events batch failed', err);
+    }
+  }
+
+  // AO01-HF6R13 — WebRTC handshake telemetry bridge.
+  // Backend logs showed /api/realtime/start 200 and polling, but no events:batch.
+  // This helper writes every browser/WebRTC phase to /api/realtime/events:batch
+  // so the next log proves where activation stops: mic, offer, SDP, remote answer,
+  // DataChannel open/close/error, response.create or local catch.
+  function queueRealtimeTelemetry(eventName, meta = {}) {
+    try {
+      const name = String(eventName || "").trim();
+      if (!name) return;
+      queueRealtimeEvent({
+        event_type: name.startsWith("telemetry.") ? name : `telemetry.${name}`,
+        role: "system",
+        content: "",
+        is_final: false,
+        meta: {
+          ...(meta && typeof meta === "object" ? meta : {}),
+          ao01_hf6r13: true,
+          session_age_ms: getRealtimeSessionAgeMs(),
+          client_ts_ms: Date.now(),
+        },
+      });
+      setTimeout(() => {
+        try { void flushRealtimeEvents(); } catch {}
+      }, 0);
+    } catch (err) {
+      try {
+        console.warn("[Realtime] telemetry bridge failed", eventName, err);
+      } catch {}
     }
   }
 
