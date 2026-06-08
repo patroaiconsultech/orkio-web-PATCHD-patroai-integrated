@@ -13,6 +13,8 @@ import MessageBubble from "../components/chat/MessageBubble.jsx";
 import RealtimeTimeboxOverlay from "../components/realtime/RealtimeTimeboxOverlay.jsx";
 import RealtimeTranscriptSummary from "../components/realtime/RealtimeTranscriptSummary.jsx";
 
+// AO68A-HF6R7_REALTIME_SDP_FALLBACK_NO_EARLY_END — frontend patch applied
+
 // AO68A-HF6R5_REALTIME_OPENING_STT_FOCUS — safe AppConsole patch applied
 
 // ORKIO_AO60D_REALTIME_MOBILE_HARDENING
@@ -6965,49 +6967,96 @@ function scheduleRealtimeIdleFollowup() {
       await pc.setLocalDescription(offer);
       logRealtimeStep('start:local_description_set', { sdpLength: offer?.sdp?.length || 0 });
 
-      const sdpAbortController = new AbortController();
-      const sdpTimeout = setTimeout(() => {
-        try { sdpAbortController.abort(); } catch {}
-      }, 20000);
+      // AO68A-HF6R7 — Robust SDP handshake.
+      // Some OpenAI Realtime deployments accept the GA /v1/realtime/calls endpoint,
+      // while others still require the WebRTC endpoint with ?model=...
+      // Try both before declaring startup failure.
+      const realtimeSdpEndpoints = [
+        {
+          label: "calls",
+          url: "https://api.openai.com/v1/realtime/calls",
+        },
+        {
+          label: "webrtc_model",
+          url: `https://api.openai.com/v1/realtime?model=${encodeURIComponent(rtModel || "gpt-realtime-mini")}`,
+        },
+      ];
 
-      let sdpResponse;
-      try {
-        sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
-          method: 'POST',
-          body: offer.sdp,
-          signal: sdpAbortController.signal,
-          headers: {
-            Authorization: `Bearer ${EPHEMERAL_KEY}`,
-            'Content-Type': 'application/sdp',
-          },
-        });
-      } catch (sdpFetchErr) {
-        logRealtimeStep("start:sdp_fetch_failed", {
-          name: sdpFetchErr?.name || null,
-          message: sdpFetchErr?.message || null,
-        });
-        throw buildRealtimeDiagnosticError(
-          "REALTIME_SDP_FETCH_FAILED",
-          "Não consegui concluir a conexão de voz em tempo real com o provedor agora. O chat continua disponível por texto.",
-          {
+      let sdpResponse = null;
+      let sdpText = "";
+      let sdpLastError = null;
+
+      for (const endpoint of realtimeSdpEndpoints) {
+        const sdpAbortController = new AbortController();
+        const sdpTimeout = setTimeout(() => {
+          try { sdpAbortController.abort(); } catch {}
+        }, 20000);
+
+        try {
+          logRealtimeStep("start:sdp_attempt", {
+            endpoint: endpoint.label,
+            url: endpoint.url,
+            model: rtModel || null,
+          });
+
+          const response = await fetch(endpoint.url, {
+            method: "POST",
+            body: offer.sdp,
+            signal: sdpAbortController.signal,
+            headers: {
+              Authorization: `Bearer ${EPHEMERAL_KEY}`,
+              "Content-Type": "application/sdp",
+            },
+          });
+
+          const text = await response.text().catch(() => "");
+
+          if (response.ok && text) {
+            sdpResponse = response;
+            sdpText = text;
+            logRealtimeStep("start:sdp_ok", {
+              endpoint: endpoint.label,
+              answerLength: text.length,
+              status: response.status,
+            });
+            break;
+          }
+
+          sdpLastError = {
+            endpoint: endpoint.label,
+            status: response.status,
+            body: text || response.statusText || "",
+          };
+
+          logRealtimeStep("start:sdp_error", sdpLastError);
+        } catch (sdpFetchErr) {
+          sdpLastError = {
+            endpoint: endpoint.label,
             name: sdpFetchErr?.name || null,
             message: sdpFetchErr?.message || null,
             aborted: sdpFetchErr?.name === "AbortError",
-          }
+          };
+
+          logRealtimeStep("start:sdp_fetch_failed", sdpLastError);
+        } finally {
+          try { clearTimeout(sdpTimeout); } catch {}
+        }
+      }
+
+      if (!sdpResponse || !sdpText) {
+        throw buildRealtimeDiagnosticError(
+          "REALTIME_SDP_HANDSHAKE_FAILED",
+          "Não consegui concluir a conexão WebRTC com o provedor agora. O chat continua disponível por texto.",
+          sdpLastError || {}
         );
-      } finally {
-        try { clearTimeout(sdpTimeout); } catch {}
       }
 
-      const sdpText = await sdpResponse.text().catch(() => '');
-      if (!sdpResponse.ok) {
-        logRealtimeStep('start:sdp_error', { status: sdpResponse.status, body: sdpText || sdpResponse.statusText });
-        throw new Error(`SDP handshake falhou (${sdpResponse.status}): ${sdpText || sdpResponse.statusText}`);
-      }
-
-      logRealtimeStep('start:sdp_ok', { answerLength: sdpText.length });
-      const answer = { type: 'answer', sdp: sdpText };
+      const answer = { type: "answer", sdp: sdpText };
       await pc.setRemoteDescription(answer);
+      logRealtimeStep("start:remote_description_set", {
+        sessionId: start?.session_id || null,
+        threadId: start?.thread_id || threadId || null,
+      });
       logRealtimeStep('start:ready', { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null });
 
     } catch (e) {
@@ -7047,9 +7096,41 @@ function scheduleRealtimeIdleFollowup() {
       );
       setV2vError(friendlyRealtimeError);
       setUploadStatus("❌ Realtime indisponível. Você pode continuar por texto.");
+
+      // AO68A-HF6R7 — Do not immediately call /api/realtime/end on startup failure.
+      // The previous cleanup killed backend sessions ~1–2s after /start, making it
+      // impossible to separate session creation, SDP failure, datachannel opening and greeting.
+      // Keep the diagnostic session visible and only perform local cleanup. Manual stop,
+      // quota/cooldown and explicit timebox expiration still call stopRealtime().
+      try {
+        console.warn("REALTIME_START_ERROR_HELD_NO_BACKEND_END", {
+          code: e?.code || null,
+          message: e?.message || null,
+          diagnostic: e?.diagnostic || null,
+          sessionId: rtcSessionIdRef.current || null,
+          marker: "AO68A-HF6R7_NO_EARLY_END",
+        });
+      } catch {}
+
+      try { clearRealtimeStartupWatchdog(); } catch {}
+      try { clearRealtimeActivationProbe(); } catch {}
+      try { clearRealtimeAudioWatchdog(); } catch {}
+      try { clearRealtimeAutoResponseFallback(); } catch {}
+      try { clearRealtimeIdleFollowup(); } catch {}
+      try { clearRealtimeResponseTimeout(); } catch {}
+      try { rtcPcRef.current?.close?.(); } catch {}
+      try { rtcPcRef.current = null; } catch {}
+      try { rtcDcRef.current = null; } catch {}
+      try {
+        if (rtcMicStreamRef.current) {
+          rtcMicStreamRef.current.getTracks?.().forEach((track) => {
+            try { track.stop(); } catch {}
+          });
+        }
+      } catch {}
+      try { rtcMicStreamRef.current = null; } catch {}
+
       setTimeout(() => setUploadStatus(""), 3500);
-      await stopRealtime('start_error_diagnostic_cleanup');
-      hardResetRealtimeClientState("start_error_after_stop");
     } finally {
       rtcConnectingRef.current = false;
     }
