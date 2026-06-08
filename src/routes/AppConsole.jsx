@@ -2252,15 +2252,6 @@ const messagesEndRef = useRef(null);
   const rtcLastResponseCreatedAtRef = useRef(0);
   const rtcActivationProbeTimerRef = useRef(null);
   const rtcActivationProbeSentRef = useRef(false);
-  // AO-01 REALTIME ACTIVATION GATE:
-  // /api/realtime/start 200 only means "session row + client_secret minted".
-  // It does NOT prove that WebRTC/DataChannel/audio actually activated.
-  // These refs let the frontend emit explicit activation telemetry so the backend
-  // can distinguish failed warmup from a real consumed voice session.
-  const rtcRealtimeActivatedRef = useRef(false);
-  const rtcRealtimeActivationSourceRef = useRef("");
-  const rtcRealtimeDataChannelOpenAtRef = useRef(0);
-  const rtcRealtimeAssistantAudioStartedRef = useRef(false);
   // AO66A-HF2: prevent premature auto-end while Realtime is still stabilizing.
   const rtcSessionStartedAtRef = useRef(0);
   const rtcPendingAutoStopTimerRef = useRef(null);
@@ -5643,10 +5634,6 @@ function scheduleRealtimeIdleFollowup() {
     try { clearRealtimeStartupWatchdog(); } catch {}
     try { clearRealtimeActivationProbe(); } catch {}
     try { clearRealtimeTimeboxTimer(); } catch {}
-    try { rtcRealtimeActivatedRef.current = false; } catch {}
-    try { rtcRealtimeActivationSourceRef.current = ""; } catch {}
-    try { rtcRealtimeDataChannelOpenAtRef.current = 0; } catch {}
-    try { rtcRealtimeAssistantAudioStartedRef.current = false; } catch {}
     try { rtcConversationStartedRef.current = false; } catch {}
     try { rtcPendingTimeboxSecondsRef.current = null; } catch {}
     try { clearRealtimeLivePoll(); } catch {}
@@ -6096,26 +6083,6 @@ function scheduleRealtimeIdleFollowup() {
 
     if (ok) {
       try {
-        const isGreeting = String(reason || "").includes("start_announcement") || String(reason || "").includes("activation_probe");
-        queueRealtimeEvent({
-          event_type: isGreeting ? "client.greeting_sent" : "client.response_create_sent",
-          role: "system",
-          content: null,
-          is_final: false,
-          meta: {
-            reason,
-            activation_state: isGreeting ? "greeting_sent" : "response_create_sent",
-            conversation_item: Boolean(conversationItem),
-            has_input_text: Boolean(cleanInput),
-            has_instructions: Boolean(cleanInstructions),
-            session_age_ms: getRealtimeSessionAgeMs(),
-            marker: "AO01_REALTIME_ACTIVATION_GATE",
-          },
-        });
-        void flushRealtimeEvents();
-      } catch {}
-
-      try {
         console.log("REALTIME_RESPONSE_CREATE_SENT", {
           reason,
           hasInstructions: Boolean(cleanInstructions),
@@ -6431,10 +6398,6 @@ function scheduleRealtimeIdleFollowup() {
 
       rtcSessionIdRef.current = start?.session_id || null;
       rtcSessionStartedAtRef.current = Date.now();
-      rtcRealtimeActivatedRef.current = false;
-      rtcRealtimeActivationSourceRef.current = "";
-      rtcRealtimeDataChannelOpenAtRef.current = 0;
-      rtcRealtimeAssistantAudioStartedRef.current = false;
       clearRealtimePendingAutoStop();
       try { console.log("REALTIME_SESSION_STARTED", { sessionId: start?.session_id || null, threadId: start?.thread_id || threadId || null, marker: ORKIO_AO66R_HF4_BUILD_MARKER }); } catch {}
       setLastRealtimeSessionId(start?.session_id || null);
@@ -6682,22 +6645,6 @@ function scheduleRealtimeIdleFollowup() {
           setRtcTimeboxRemaining(null);
         }
 
-        rtcRealtimeDataChannelOpenAtRef.current = Date.now();
-        queueRealtimeEvent({
-          event_type: "client.datachannel_open",
-          role: "system",
-          content: null,
-          is_final: false,
-          meta: {
-            source: "dc.open",
-            activation_state: "datachannel_open",
-            session_age_ms: getRealtimeSessionAgeMs(),
-            ready_state: dc?.readyState || null,
-            marker: "AO01_REALTIME_ACTIVATION_GATE",
-          },
-        });
-        try { void flushRealtimeEvents(); } catch {}
-
         startRealtimeAudioWatchdog();
         clearRealtimeStartupWatchdog();
         startRealtimeWakeLockGuard("data_channel_open");
@@ -6886,10 +6833,6 @@ function scheduleRealtimeIdleFollowup() {
             rtcTextBufRef.current += ev.delta;
           }
           if (ev?.type === 'response.created') {
-            markRealtimeActivationState("response.created", {
-              response_id: ev?.response?.id || ev?.response_id || null,
-              event_type: ev?.type || null,
-            });
             try {
               console.log("REALTIME_ASSISTANT_RESPONSE_RECEIVED", {
                 type: ev?.type,
@@ -6935,18 +6878,10 @@ function scheduleRealtimeIdleFollowup() {
           // Audio transcript (when model outputs audio without text)
           if (ev?.type === 'response.audio.delta' || ev?.type === 'response.output_audio.delta') {
             clearRealtimeResponseTimeout();
-            markRealtimeAssistantAudioStarted(ev?.type || "response.audio.delta", {
-              response_id: ev?.response?.id || ev?.response_id || null,
-              item_id: ev?.item?.id || ev?.item_id || null,
-            });
             try { ensureRealtimeAudioOutput("response_audio_delta"); } catch {}
           }
           if ((ev?.type === 'response.audio_transcript.delta' || ev?.type === 'response.output_audio_transcript.delta') && ev?.delta) {
             clearRealtimeResponseTimeout();
-            markRealtimeActivationState(ev?.type || "response.audio_transcript.delta", {
-              response_id: ev?.response?.id || ev?.response_id || null,
-              has_audio_transcript_delta: true,
-            });
             rtcAudioTranscriptBufRef.current = (rtcAudioTranscriptBufRef.current || '') + ev.delta;
             try {
               const preview = (rtcAudioTranscriptBufRef.current || "").trim();
@@ -6974,10 +6909,6 @@ function scheduleRealtimeIdleFollowup() {
           }
 
           if (ev?.type === 'response.done') {
-            markRealtimeActivationState("response.done", {
-              response_id: ev?.response?.id || ev?.response_id || null,
-              event_type: ev?.type || null,
-            });
             clearRealtimeResponseTimeout();
             clearRealtimeActivationProbe();
             clearRealtimeAutoResponseFallback();
@@ -7244,86 +7175,6 @@ function scheduleRealtimeIdleFollowup() {
       // On failure, put events back to try later (best-effort)
       rtcEventQueueRef.current = q.concat(rtcEventQueueRef.current || []);
       console.warn('[Realtime] events batch failed', err);
-    }
-  }
-
-  function markRealtimeActivationState(source = "unknown", meta = {}) {
-    try {
-      const sid = rtcSessionIdRef.current;
-      if (!sid) return false;
-
-      const firstActivation = !rtcRealtimeActivatedRef.current;
-      rtcRealtimeActivatedRef.current = true;
-      rtcRealtimeActivationSourceRef.current = String(source || "unknown");
-
-      if (firstActivation) {
-        queueRealtimeEvent({
-          event_type: "client.session_activated",
-          role: "system",
-          content: null,
-          is_final: false,
-          meta: {
-            source,
-            activation_state: "activated",
-            activated_at: Math.floor(Date.now() / 1000),
-            session_age_ms: getRealtimeSessionAgeMs(),
-            datachannel_open_at_ms: rtcRealtimeDataChannelOpenAtRef.current || 0,
-            ...((meta && typeof meta === "object") ? meta : {}),
-            marker: "AO01_REALTIME_ACTIVATION_GATE",
-          },
-        });
-        try { void flushRealtimeEvents(); } catch {}
-        logRealtimeStep("ao01:realtime_session_activated", {
-          source,
-          sessionId: sid,
-          sessionAgeMs: getRealtimeSessionAgeMs(),
-          marker: "AO01_REALTIME_ACTIVATION_GATE",
-        });
-      }
-
-      return firstActivation;
-    } catch (err) {
-      logRealtimeStep("ao01:realtime_activation_mark_failed", {
-        source,
-        message: err?.message || null,
-      });
-      return false;
-    }
-  }
-
-  function markRealtimeAssistantAudioStarted(source = "response.audio.delta", meta = {}) {
-    try {
-      if (rtcRealtimeAssistantAudioStartedRef.current) {
-        markRealtimeActivationState(source, meta);
-        return false;
-      }
-
-      rtcRealtimeAssistantAudioStartedRef.current = true;
-      queueRealtimeEvent({
-        event_type: "client.assistant_audio_started",
-        role: "system",
-        content: null,
-        is_final: false,
-        meta: {
-          source,
-          activation_state: "assistant_audio_started",
-          session_age_ms: getRealtimeSessionAgeMs(),
-          ...((meta && typeof meta === "object") ? meta : {}),
-          marker: "AO01_REALTIME_ACTIVATION_GATE",
-        },
-      });
-      markRealtimeActivationState(source, {
-        assistant_audio_started: true,
-        ...((meta && typeof meta === "object") ? meta : {}),
-      });
-      try { void flushRealtimeEvents(); } catch {}
-      return true;
-    } catch (err) {
-      logRealtimeStep("ao01:assistant_audio_started_mark_failed", {
-        source,
-        message: err?.message || null,
-      });
-      return false;
     }
   }
 
@@ -7686,7 +7537,43 @@ async function stopRealtime(reason = 'client_stop') {
     const reasonTextEarly = String(reason || "client_stop");
     const sessionAgeMs = getRealtimeSessionAgeMs();
 
-    const allowBackendEnd = isExplicitRealtimeEndReason(reasonTextEarly);
+    let allowBackendEnd = isExplicitRealtimeEndReason(reasonTextEarly);
+
+    // AO01-HF6R11_REALTIME_WARMUP_BACKEND_END_GATE:
+    // A backend realtime session must NOT be ended/consumed while the WebRTC
+    // activation is still warming up. Logs showed /api/realtime/start 200 followed
+    // by /api/realtime/end 200 in ~0-2s, before any DataChannel/server event/audio.
+    // That turns a failed activation into public cooldown.
+    //
+    // Session creation is not activation. Only a real conversation/audio event should
+    // allow backend finalization. While rtcConversationStartedRef is still false,
+    // suppress /api/realtime/end for early explicit UI toggles, page/app races,
+    // hydration double-clicks, and mobile/PWA lifecycle glitches.
+    const realtimeWarmupEndSuppressed = Boolean(
+      sid &&
+      allowBackendEnd &&
+      !rtcConversationStartedRef.current &&
+      Number.isFinite(Number(sessionAgeMs)) &&
+      Number(sessionAgeMs) >= 0 &&
+      Number(sessionAgeMs) < 180000
+    );
+
+    if (realtimeWarmupEndSuppressed) {
+      allowBackendEnd = false;
+      try {
+        console.warn("AO01_HF6R11_REALTIME_BACKEND_END_SUPPRESSED_WARMUP", {
+          reason: reasonTextEarly,
+          sessionId: sid,
+          sessionAgeMs,
+          conversationStarted: Boolean(rtcConversationStartedRef.current),
+        });
+      } catch {}
+      logRealtimeStep("ao01_hf6r11:backend_end_suppressed_warmup", {
+        reason: reasonTextEarly,
+        sessionId: sid,
+        sessionAgeMs,
+      });
+    }
 
     // AO66R-HF3: UI must never remain hostage to network/WebRTC cleanup.
     // For manual stop, close overlay immediately and open summary shell even if transcript is empty.
@@ -7791,21 +7678,7 @@ async function stopRealtime(reason = 'client_stop') {
           await flushRealtimeEvents();
 
           if (allowBackendEnd) {
-            await endRealtimeSession({
-              session_id: sid,
-              ended_at: Math.floor(Date.now() / 1000),
-              meta: {
-                reason,
-                mode: summitRuntimeModeRef.current,
-                hf6r10_explicit_end: true,
-                ao01_activation_gate: true,
-                activated: Boolean(rtcRealtimeActivatedRef.current),
-                activation_source: rtcRealtimeActivationSourceRef.current || null,
-                datachannel_open_at_ms: rtcRealtimeDataChannelOpenAtRef.current || 0,
-                assistant_audio_started: Boolean(rtcRealtimeAssistantAudioStartedRef.current),
-                session_age_ms: getRealtimeSessionAgeMs(),
-              },
-            });
+            await endRealtimeSession({ session_id: sid, ended_at: Math.floor(Date.now() / 1000), meta: { reason, mode: summitRuntimeModeRef.current, hf6r10_explicit_end: true } });
           } else {
             logRealtimeStep("ao68a_hf6r10:backend_end_suppressed", {
               reason: reasonTextEarly,
