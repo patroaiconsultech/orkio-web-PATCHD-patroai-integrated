@@ -13,7 +13,7 @@ import MessageBubble from "../components/chat/MessageBubble.jsx";
 import RealtimeTimeboxOverlay from "../components/realtime/RealtimeTimeboxOverlay.jsx";
 import RealtimeTranscriptSummary from "../components/realtime/RealtimeTranscriptSummary.jsx";
 
-// AO68A-HF6R8_REALTIME_RESPONSE_CREATE_AUDIO_ARMING — safe AppConsole patch applied
+// AO68A-HF6R9_REALTIME_NO_COOLDOWN_ON_RETRY — safe AppConsole patch applied
 
 // ORKIO_AO60D_REALTIME_MOBILE_HARDENING
 function buildRealtimeDiagnosticError(code, message, diagnostic = {}) {
@@ -7014,13 +7014,18 @@ function scheduleRealtimeIdleFollowup() {
       });
       setV2vPhase('error');
       if (isRealtimeCooldownOrRateLimitError(e)) {
-        // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
+        // AO68A-HF6R9:
+        // /start cooldown must not trigger stopRealtime(), because stopRealtime() calls
+        // /api/realtime/end and can close/recount an already warming session.
         const waitSeconds = applyRealtimeCooldownFromError(e, "start_blocked_by_cooldown");
-        await stopRealtime("start_blocked_by_cooldown");
-        hardResetRealtimeClientState("start_blocked_by_cooldown_after_stop");
-        // AO61A: stop/hardReset can clear visual state; re-apply cooldown as the final UX state.
-        startRealtimeCooldown(waitSeconds, "start_blocked_by_cooldown_after_cleanup");
+        clearRealtimeResponseTimeout();
+        clearRealtimeActivationProbe();
+        clearRealtimeAutoResponseFallback();
+        clearRealtimeStartupWatchdog();
+        rtcConnectingRef.current = false;
         const label = formatRealtimeCountdown(waitSeconds);
+        setRealtimeMode(false);
+        realtimeModeRef.current = false;
         setV2vPhase("cooldown");
         setV2vError(`A voz em tempo real estará disponível novamente em ${label}. O chat por texto continua disponível.`);
         updateRealtimePremiumStatus("cooldown", `O chat por texto continua disponível. Liberação em ${label}.`);
@@ -7770,9 +7775,103 @@ async function stopRealtime(reason = 'client_stop') {
     }
   }
 
+
+  function nudgeRealtimeActivation(source = "voice_button_retry") {
+    try {
+      const sid = rtcSessionIdRef.current || null;
+      const dc = rtcDcRef.current || null;
+      const dcState = dc?.readyState || null;
+      const ageMs = getRealtimeSessionAgeMs();
+
+      logRealtimeStep("ao68a_hf6r9:activation_nudge", {
+        source,
+        sessionId: sid,
+        dcState,
+        ageMs,
+        connecting: Boolean(rtcConnectingRef.current),
+        conversationStarted: Boolean(rtcConversationStartedRef.current),
+      });
+
+      if (!sid) return false;
+
+      setRealtimeMode(true);
+      realtimeModeRef.current = true;
+      setV2vError(null);
+
+      if (dc && dc.readyState === "open") {
+        if (
+          rtcResponseInFlightRef.current &&
+          !rtcLastResponseCreatedAtRef.current &&
+          ageMs > 8000
+        ) {
+          rtcResponseInFlightRef.current = false;
+          clearRealtimeResponseTimeout();
+        }
+
+        setV2vPhase("listening");
+        updateRealtimePremiumStatus("listening", "Realtime ativo. Reenviando saudação de voz.");
+        ensureRealtimeAudioOutput(`hf6r9_${source}`);
+        announceRealtimeTimeboxStart(
+          dc,
+          isRealtimeTimeboxLimitedUser()
+            ? resolveRealtimeStartTimeboxSeconds({ timebox: rtcTimeboxPolicyRef.current })
+            : 3600
+        );
+        scheduleRealtimeActivationProbe(dc, `hf6r9_${source}`);
+        setUploadStatus("⚡ Realtime ativo. Reenviei a ativação de voz sem reiniciar a sessão.");
+        setTimeout(() => setUploadStatus(""), 2500);
+        return true;
+      }
+
+      updateRealtimePremiumStatus("connecting", "Realtime abrindo. Mantive a sessão viva e não reiniciei o cooldown.");
+      setV2vPhase("connecting");
+      setUploadStatus("⚡ Realtime ainda abrindo. Não clique novamente para reiniciar; estou mantendo a sessão viva.");
+      setTimeout(() => setUploadStatus(""), 3500);
+
+      if (sid) {
+        startRealtimeStartupWatchdog(sid, `hf6r9_${source}`);
+      }
+
+      return true;
+    } catch (err) {
+      logRealtimeStep("ao68a_hf6r9:activation_nudge_failed", {
+        source,
+        message: err?.message || null,
+      });
+      return false;
+    }
+  }
+
   function toggleRealtimeMode() {
     if (SUMMIT_VOICE_MODE !== "realtime") return;
     const next = !realtimeMode;
+
+    // AO68A-HF6R9:
+    // During warmup, a second tap on the lightning/voice button must NOT be
+    // interpreted as "stop". It was ending the just-created backend session,
+    // and the next tap fell into public cooldown. Treat it as activation retry.
+    if (!next && realtimeMode) {
+      const ageMs = getRealtimeSessionAgeMs();
+      const warmupActive = Boolean(
+        rtcConnectingRef.current ||
+        (
+          rtcSessionIdRef.current &&
+          !rtcConversationStartedRef.current &&
+          ageMs >= 0 &&
+          ageMs < 45000
+        )
+      );
+
+      if (warmupActive) {
+        const nudged = nudgeRealtimeActivation("second_tap_during_warmup");
+        if (nudged) return;
+      }
+    }
+
+    if (next && rtcSessionIdRef.current && !rtcConversationStartedRef.current) {
+      const nudged = nudgeRealtimeActivation("start_tap_existing_session");
+      if (nudged) return;
+    }
 
     if (next && isRealtimeTimeboxLimitedUser() && rtcCooldownRemaining > 0) {
       const label = formatRealtimeCountdown(rtcCooldownRemaining);
@@ -7799,7 +7898,10 @@ async function stopRealtime(reason = 'client_stop') {
         console.warn("[Realtime] startRealtime rejected outside internal catch", err);
         if (isRealtimeCooldownOrRateLimitError(err)) {
           applyRealtimeCooldownFromError(err, "toggle_start_rejected_cooldown");
-          void stopRealtime("toggle_start_rejected_cooldown");
+          // AO68A-HF6R9: never call /api/realtime/end only because /start returned cooldown.
+          // There may be a still-warming session in the browser or backend.
+          setRealtimeMode(false);
+          realtimeModeRef.current = false;
           return;
         }
         const friendlyRealtimeError = normalizeUserFacingRuntimeMessage(
