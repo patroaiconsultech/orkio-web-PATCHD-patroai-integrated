@@ -1649,6 +1649,80 @@ function suggestOnboardingLanguage(country) {
   return DEFAULT_LANGUAGE_BY_COUNTRY[code] || "en-US";
 }
 
+// AO68A-HF5 — Realtime language propagation from onboarding.
+// Keeps AMCHAM/PT-EN demos bilingual without forcing a global STT language.
+function normalizeRealtimeLanguageProfile(raw) {
+  const value = String(raw || "").trim();
+  if (!value || value.toLowerCase() === "auto") return "auto";
+
+  const normalized = value.toLowerCase().replace("_", "-");
+
+  if (normalized === "pt" || normalized.startsWith("pt-")) return "pt";
+  if (normalized === "en" || normalized.startsWith("en-")) return "en";
+  if (normalized === "es" || normalized.startsWith("es-")) return "es";
+
+  return "auto";
+}
+
+function getUserOnboardingLanguage(userObj, formObj) {
+  const candidates = [
+    formObj?.language,
+    userObj?.language,
+    userObj?.preferred_language,
+    userObj?.language_profile,
+    userObj?.profile?.language,
+    userObj?.profile?.preferred_language,
+    userObj?.onboarding?.language,
+    userObj?.onboarding_context?.language,
+  ];
+
+  for (const candidate of candidates) {
+    const value = String(candidate || "").trim();
+    if (value) return value;
+  }
+
+  return "auto";
+}
+
+function buildRealtimeVoiceInstruction(languageProfile, messageText = "") {
+  const lang = normalizeRealtimeLanguageProfile(languageProfile);
+  const msg = String(messageText || "").trim();
+
+  const base =
+    lang === "en"
+      ? "Answer the user by voice in English, briefly, naturally and helpfully."
+      : lang === "es"
+        ? "Responde al usuario por voz en español, de forma breve, natural y útil."
+        : lang === "pt"
+          ? "Responda ao usuário por voz em português, de forma curta, natural, útil e humana."
+          : "Answer in the same language the user is using. Be brief, natural, useful and human.";
+
+  return msg ? `${base} Mensagem do usuário: ${msg}` : base;
+}
+
+function buildRealtimeActivationProbeInstruction(languageProfile) {
+  const lang = normalizeRealtimeLanguageProfile(languageProfile);
+
+  if (lang === "en") {
+    return {
+      inputText: "Say only: Hello, I am Orkio in real time.",
+      instructions: "Answer by audio in English, saying only: Hello, I am Orkio in real time.",
+    };
+  }
+
+  if (lang === "es") {
+    return {
+      inputText: "Di solamente: Hola, soy Orkio en tiempo real.",
+      instructions: "Responde en audio en español, diciendo solamente: Hola, soy Orkio en tiempo real.",
+    };
+  }
+
+  return {
+    inputText: "Diga apenas: Olá, eu sou o Orkio em tempo real.",
+    instructions: "Responda em áudio em português, dizendo apenas: Olá, eu sou o Orkio em tempo real.",
+  };
+}
+
 function normalizeWhatsapp(value) {
   return String(value || "").replace(/[^\d+]/g, "").trim();
 }
@@ -2195,6 +2269,7 @@ const rtcLastUserActivityAtRef = useRef(0);
   const realtimeTranscriptTurnsRef = useRef([]);
   const summitRuntimeModeRef = useRef((((window.__ORKIO_ENV__?.VITE_ORKIO_RUNTIME_MODE || import.meta.env.VITE_ORKIO_RUNTIME_MODE || "summit")).trim().toLowerCase() === "summit") ? "summit" : "platform");
   const summitLanguageProfileRef = useRef((((window.__ORKIO_ENV__?.VITE_SUMMIT_LANGUAGE_PROFILE || import.meta.env.VITE_SUMMIT_LANGUAGE_PROFILE || "pt-BR")).trim() || "auto"));
+  const rtcLanguageProfileRef = useRef("auto");
 
 
 
@@ -5904,7 +5979,7 @@ function scheduleRealtimeIdleFollowup() {
     conversationItem = false,
   } = {}) {
     const cleanInstructions = String(instructions || "").trim();
-    const responseInstructions = cleanInstructions || "Responda em áudio e texto, em português do Brasil, de forma curta, útil e humana.";
+    const responseInstructions = cleanInstructions || buildRealtimeVoiceInstruction(rtcLanguageProfileRef.current);
     const cleanInput = String(inputText || "").trim();
     const voice = coerceVoiceId(rtcVoiceRef.current || ORKIO_CANONICAL_VOICE_ID || ORKIO_DEFAULT_VOICE_ID);
 
@@ -5984,11 +6059,12 @@ function scheduleRealtimeIdleFollowup() {
           marker: ORKIO_AO66R_HF4_BUILD_MARKER,
         });
 
+        const probe = buildRealtimeActivationProbeInstruction(rtcLanguageProfileRef.current);
         requestRealtimeSpokenResponse(currentDc, {
           reason: "activation_probe",
           conversationItem: true,
-          inputText: "Diga apenas: Olá, eu sou o Orkio em tempo real.",
-          instructions: "Responda em áudio, em português do Brasil, dizendo apenas: Olá, eu sou o Orkio em tempo real.",
+          inputText: probe.inputText,
+          instructions: probe.instructions,
         });
       } catch (err) {
         logRealtimeStep("ao66r:activation_probe_failed", {
@@ -6120,21 +6196,44 @@ function scheduleRealtimeIdleFollowup() {
       const rtVoice = coerceVoiceId(agentVoice || envVoice || ORKIO_DEFAULT_VOICE_ID);
       rtcVoiceRef.current = rtVoice;
 
-      // PATCH stage-quality: explicit Summit mode without hardcoding contracts in-component
+      // AO68A-HF5: explicit Summit/platform mode + onboarding language propagation.
+      // Before HF5, language_profile was only sent in Summit mode. Normal Realtime stayed on env/auto.
       const runtimeMode = summitRuntimeModeRef.current === "summit" ? "summit" : "platform";
-      const languageProfile = (summitLanguageProfileRef.current || "auto").trim() || "auto";
+      const onboardingLanguage = getUserOnboardingLanguage(user, onboardingForm);
+      const languageProfile = normalizeRealtimeLanguageProfile(
+        runtimeMode === "summit"
+          ? (summitLanguageProfileRef.current || onboardingLanguage || "auto")
+          : (onboardingLanguage || summitLanguageProfileRef.current || "auto")
+      );
+      rtcLanguageProfileRef.current = languageProfile;
+
+      const realtimeStartPayload = {
+        agent_id: agentIdToSend,
+        thread_id: threadId || null,
+        voice: rtVoice,
+        model: rtModel,
+        ttl_seconds: effectiveRealtimeTtlSeconds,
+        language_profile: languageProfile,
+        language: languageProfile,
+      };
+
       const start = runtimeMode === "summit"
         ? await startSummitSession({
-            agent_id: agentIdToSend,
-            thread_id: threadId || null,
-            voice: rtVoice,
-            model: rtModel,
-            ttl_seconds: effectiveRealtimeTtlSeconds,
+            ...realtimeStartPayload,
             mode: "summit",
             response_profile: "stage",
-            language_profile: languageProfile,
           })
-        : await startRealtimeSession({ agent_id: agentIdToSend, thread_id: threadId || null, voice: rtVoice, model: rtModel, ttl_seconds: effectiveRealtimeTtlSeconds });
+        : await startRealtimeSession({
+            ...realtimeStartPayload,
+            mode: "platform",
+            response_profile: "natural",
+          });
+
+      logRealtimeStep("start:language_profile_resolved", {
+        runtimeMode,
+        onboardingLanguage,
+        languageProfile,
+      });
       logRealtimeStep('start:session_ok', start);
       // ORKIO_AO60K_HF5B_FRONTEND_ENDED_AT_SECONDS_TIMEBOX_VERIFY
       // Runtime proof: confirms the active bundle received backend timebox policy.
@@ -6839,9 +6938,9 @@ function scheduleRealtimeIdleFollowup() {
         reason,
         conversationItem: true,
         inputText: lastTranscript,
-        instructions: (
-          "Responda ao usuário em português do Brasil, por voz, de forma curta, útil e humana. " +
-          `Mensagem do usuário: ${lastTranscript}`
+        instructions: buildRealtimeVoiceInstruction(
+          rtcLanguageProfileRef.current,
+          lastTranscript
         ),
       });
       setRtcReadyToRespond(false);
