@@ -163,6 +163,20 @@ function normalizeUserFacingRuntimeMessage(value, context = "") {
     context === "voice" || context === "realtime"
   ) {
     if (
+      lower.includes("insufficient_quota") ||
+      lower.includes("current quota") ||
+      lower.includes("billing") ||
+      lower.includes("billing_hard_limit") ||
+      lower.includes("exceeded your current quota")
+    ) {
+      return (
+        "Realtime indisponível por quota/billing da OpenAI. " +
+        "A recarga ou ajuste de billing precisa ser feito antes de novo teste. " +
+        "O chat por texto continua disponível."
+      );
+    }
+
+    if (
       lower.includes("rate_limited") ||
       lower.includes("status_429") ||
       lower.includes("http 429") ||
@@ -2305,6 +2319,9 @@ const rtcLastUserActivityAtRef = useRef(0);
   // correctly treats the session as public beta/non-admin.
   const rtcBackendTimeboxLimitedRef = useRef(false);
   const [rtcBackendTimeboxLimited, setRtcBackendTimeboxLimited] = useState(false);
+  // AO01-HF6R16: backend-declared admin bypass is sovereign for frontend timebox/cooldown UI.
+  const rtcAdminTimeboxBypassRef = useRef(false);
+  const [rtcAdminTimeboxBypass, setRtcAdminTimeboxBypass] = useState(false);
   // PATCH0100_27_2B: UI log + punct status
   const [rtcAuditEvents, setRtcAuditEvents] = useState([]);
   const [rtcPunctStatus, setRtcPunctStatus] = useState(null); // null | 'pending' | 'done' | 'timeout'
@@ -5557,9 +5574,9 @@ function scheduleRealtimeIdleFollowup() {
   }
 
   function isRealtimeTimeboxLimitedUser() {
-    // AO68A-HF6R8 — Admin/superadmin bypasses public beta timebox.
-    if (canAccessAdmin) return false;
-    return rtcBackendTimeboxLimitedRef.current === true || rtcBackendTimeboxLimited === true || !canAccessAdmin;
+    // AO01-HF6R16 — Admin/superadmin and backend-declared bypass never use public beta timebox/cooldown.
+    if (canAccessAdmin || rtcAdminTimeboxBypassRef.current === true || rtcAdminTimeboxBypass === true) return false;
+    return rtcBackendTimeboxLimitedRef.current === true || rtcBackendTimeboxLimited === true;
   }
 
   function clearRealtimeTimeboxTimer(options = {}) {
@@ -5844,6 +5861,36 @@ function scheduleRealtimeIdleFollowup() {
   }
 
   function applyRealtimeCooldownFromError(err, reason = "backend_cooldown_or_rate_limit") {
+    // AO01-HF6R16: admin/billing errors must not be converted into public beta cooldown.
+    const rawCooldownMessage = String(err?.message || err?.userMessage || err?.payload?.message || err?.payload?.detail || err?.detail || "").toLowerCase();
+    if (
+      rawCooldownMessage.includes("insufficient_quota") ||
+      rawCooldownMessage.includes("current quota") ||
+      rawCooldownMessage.includes("billing") ||
+      rawCooldownMessage.includes("exceeded your current quota")
+    ) {
+      try { clearRealtimeTimeboxTimer(); } catch {}
+      try { setRtcCooldownRemaining(0); } catch {}
+      try { rtcCooldownUntilRef.current = 0; } catch {}
+      try { setV2vPhase("error"); } catch {}
+      const billingMessage = "Realtime indisponível por quota/billing da OpenAI. Faça recarga ou ajuste de billing antes de novo teste. O chat por texto continua disponível.";
+      try { updateRealtimePremiumStatus("error", billingMessage); } catch {}
+      try { setV2vError(billingMessage); } catch {}
+      try { setUploadStatus(`⚠️ ${billingMessage}`); setTimeout(() => setUploadStatus(""), 6000); } catch {}
+      return 0;
+    }
+    if (canAccessAdmin || rtcAdminTimeboxBypassRef.current === true) {
+      try { clearRealtimeTimeboxTimer(); } catch {}
+      try { setRtcCooldownRemaining(0); } catch {}
+      try { rtcCooldownUntilRef.current = 0; } catch {}
+      try { setV2vPhase("error"); } catch {}
+      const msg = normalizeUserFacingRuntimeMessage(err, "realtime");
+      try { updateRealtimePremiumStatus("error", msg); } catch {}
+      try { setV2vError(msg); } catch {}
+      try { setUploadStatus(`⚠️ ${msg}`); setTimeout(() => setUploadStatus(""), 4500); } catch {}
+      return 0;
+    }
+
     // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
     const waitSeconds = Math.max(
       1,
@@ -6364,6 +6411,13 @@ function scheduleRealtimeIdleFollowup() {
         const maxSeconds = Number(timebox?.max_seconds);
         const remainingSeconds = Number(timebox?.remaining_seconds);
         const cooldownSeconds = Number(timebox?.cooldown_seconds);
+        const backendBypass = String(
+          timebox?.bypass ||
+          start?.bypass ||
+          start?.timebox_bypass ||
+          ""
+        ).trim().toLowerCase();
+        const adminBypassByBackend = backendBypass === "admin" || timebox?.admin_bypass === true;
         const limitedByBackend = (
           timebox?.limited === true ||
           String(timebox?.limited || "").trim().toLowerCase() === "true" ||
@@ -6371,7 +6425,10 @@ function scheduleRealtimeIdleFollowup() {
           (Number.isFinite(maxSeconds) && maxSeconds > 0) ||
           (Number.isFinite(cooldownSeconds) && cooldownSeconds > 0)
         );
-        const effectiveLimitedByBackend = canAccessAdmin ? false : Boolean(limitedByBackend);
+        const effectiveAdminBypass = Boolean(canAccessAdmin || adminBypassByBackend);
+        const effectiveLimitedByBackend = effectiveAdminBypass ? false : Boolean(limitedByBackend);
+        rtcAdminTimeboxBypassRef.current = effectiveAdminBypass;
+        setRtcAdminTimeboxBypass(effectiveAdminBypass);
         rtcBackendTimeboxLimitedRef.current = effectiveLimitedByBackend;
         setRtcBackendTimeboxLimited(effectiveLimitedByBackend);
         if (effectiveLimitedByBackend || isRealtimeTimeboxLimitedUser()) {
@@ -6391,8 +6448,13 @@ function scheduleRealtimeIdleFollowup() {
         } else {
           rtcTimeboxPolicyRef.current = null;
           setRtcTimeboxRemaining(null);
+          clearRealtimeTimeboxTimer();
+          try { setRtcCooldownRemaining(0); } catch {}
+          try { rtcCooldownUntilRef.current = 0; } catch {}
           logRealtimeStep("timebox:admin_bypass_synced", {
             canAccessAdmin: Boolean(canAccessAdmin),
+            adminBypassByBackend: Boolean(adminBypassByBackend),
+            effectiveAdminBypass: Boolean(effectiveAdminBypass),
             limitedByBackend: Boolean(limitedByBackend),
             ttlSeconds: effectiveRealtimeTtlSeconds,
           });
@@ -8999,7 +9061,7 @@ async function stopRealtime(reason = 'client_stop') {
     <>
     <PWAInstallPrompt />
     <RealtimeTimeboxOverlay
-      active={realtimeOverlayActive}
+      active={realtimeOverlayActive && !(canAccessAdmin || rtcAdminTimeboxBypass)}
       remainingSeconds={realtimeOverlayRemainingSeconds}
       maxSeconds={realtimeOverlayMaxSeconds}
       status={rtcPremiumStatus || (realtimeMode ? "listening" : null)}
@@ -9015,6 +9077,22 @@ async function stopRealtime(reason = 'client_stop') {
         // Guard early warmup from destructive stop. Real manual stop still works after activation
         // or after the first warmup seconds.
         const sessionAgeMs = getRealtimeSessionAgeMs();
+
+        if (canAccessAdmin || rtcAdminTimeboxBypassRef.current === true || rtcAdminTimeboxBypass === true) {
+          try {
+            logRealtimeStep("ao01_hf6r16:overlay_stop_ignored_admin_bypass", {
+              sessionId: rtcSessionIdRef.current || null,
+              sessionAgeMs,
+              reason: "client_stop_fullscreen_clock",
+            });
+          } catch {}
+          try { setRtcOverlayForceClosed(true); } catch {}
+          try { setRtcTimeboxRemaining(null); } catch {}
+          try { clearRealtimeTimeboxTimer(); } catch {}
+          try { updateRealtimePremiumStatus("listening", "Realtime admin ativo, sem timebox público."); } catch {}
+          return;
+        }
+
         const earlyWarmupOverlayStop = Boolean(
           rtcSessionIdRef.current &&
           !rtcConversationStartedRef.current &&
