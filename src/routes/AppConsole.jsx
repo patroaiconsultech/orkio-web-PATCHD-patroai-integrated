@@ -15,6 +15,7 @@ import RealtimeTranscriptSummary from "../components/realtime/RealtimeTranscript
 import { useRealtimeTranscriptSummary } from "../hooks/realtime/useRealtimeTranscriptSummary.js";
 
 // AO64D-HF6C_PUBLIC_BETA_GUARDRAILS_EFATAH777 — public beta copy, rewards narrative and internal-agent sanitation
+// AO64D-HF6E_PUBLIC_BETA_SANITIZER_SAFE_AND_TECH_BLOCK — full file generated for AppConsole + MessageBubble
 // AO68A-HF6R10_NO_BACKEND_END_ON_WARMUP — suppress fake quota/cooldown on failed realtime warmup
 
 // AO68A-HF6R9_REALTIME_NO_COOLDOWN_ON_RETRY — safe AppConsole patch applied
@@ -857,10 +858,18 @@ function normalizeAgentVoiceId(raw, fallback = ORKIO_DEFAULT_VOICE_ID) {
 // - Internal agent names/roles must not be offered to AMCHAM / Efatah777 users.
 // - Future capability unlocks may be described generically through usage, needs and rewards.
 const ORKIO_PUBLIC_BETA_AGENT_EVOLUTION_NOTICE =
-  "Neste beta público, o Orkio conduz a experiência principal. Conforme a evolução das conversas, o uso correto da ferramenta e a identificação de necessidades específicas, novas funcionalidades e agentes especializados poderão ser liberados futuramente para apoiar análises mais profundas. Por enquanto, posso organizar o tema diretamente pelo chat.";
+  "Neste beta público, o Orkio conduz a experiência principal. " +
+  "Conforme a evolução das conversas, o uso correto da ferramenta e a identificação de necessidades específicas, " +
+  "novas funcionalidades e agentes especializados poderão ser liberados futuramente para apoiar análises mais profundas. " +
+  "Por enquanto, posso organizar o tema diretamente pelo chat.";
 
 const ORKIO_PUBLIC_BETA_SHORT_EVOLUTION_NOTICE =
   "Novos agentes especializados poderão ser liberados futuramente conforme a evolução da conversa, o uso correto da ferramenta e as necessidades identificadas.";
+
+const ORKIO_PUBLIC_BETA_TECH_GOVERNANCE_NOTICE =
+  "Neste beta público, o Orkio conduz a experiência principal pelo chat por texto. " +
+  "Posso organizar sua necessidade em diagnóstico, riscos e próximos passos, sem expor fluxos técnicos internos. " +
+  "Conforme a evolução das conversas e o uso correto da ferramenta, novas funcionalidades e agentes especializados poderão ser liberados futuramente.";
 
 const ORKIO_PUBLIC_INTERNAL_AGENT_NAMES = [
   "Chris",
@@ -880,7 +889,6 @@ const ORKIO_PUBLIC_INTERNAL_AGENT_NAMES = [
 const ORKIO_PUBLIC_INTERNAL_ROLE_WORDS = [
   "CFO",
   "CTO",
-  "CIO",
   "COO",
   "backend engineer",
   "frontend engineer",
@@ -889,6 +897,52 @@ const ORKIO_PUBLIC_INTERNAL_ROLE_WORDS = [
   "agente interno",
 ];
 
+// AO64D-HF6E_PUBLIC_BETA_SANITIZER_SAFE_AND_TECH_BLOCK
+// Unicode-safe exact-token replacement.
+// Do NOT use plain \b here. In JS, \b is ASCII-oriented and can match inside
+// words with accents; this caused "negócio" to become "negóagentes..."
+// when the role token "CIO" was present.
+function replacePublicBetaToken(text, token, replacement) {
+  const escaped = String(token || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!escaped) return text;
+  const re = new RegExp(`(^|[^\\p{L}\\p{N}_])(${escaped})(?=$|[^\\p{L}\\p{N}_])`, "giu");
+  return String(text || "").replace(re, `$1${replacement}`);
+}
+
+function isPublicBetaTechnicalGovernanceLeak(text) {
+  const raw = String(text || "");
+  const lower = raw.toLowerCase();
+
+  return (
+    lower.includes("orkio — autoevolução controlada readonly") ||
+    lower.includes("orkio - autoevolução controlada readonly") ||
+    lower.includes("orkio — auto evolução controlada readonly") ||
+    lower.includes("autoevolução controlada readonly") ||
+    lower.includes("auto evolução controlada readonly") ||
+    lower.includes("write_executed=false") ||
+    lower.includes("branch_created=false") ||
+    lower.includes("pr_created=false") ||
+    lower.includes("deploy_executed=false") ||
+    lower.includes("approval_required=true") ||
+    lower.includes("pipeline correto") ||
+    lower.includes("patch mínimo recomendado") ||
+    lower.includes("issue map inicial") ||
+    lower.includes("governed patch execution response") ||
+    lower.includes("patch governance response")
+  );
+}
+
+function isPublicBetaInternalAgentInvocationLeak(text) {
+  const raw = String(text || "");
+  if (!raw.trim()) return false;
+
+  return (
+    /(?:claro[,.\s]*|ok[,.\s]*|perfeito[,.\s]*|vou\s+|irei\s+|posso\s+|podemos\s+|vamos\s+).{0,120}(?:envolver|acionar|chamar|consultar|ativar|convidar).{0,120}(?:Chris|Orion|Warren|CFO|CTO)/isu.test(raw) ||
+    /(?:Chris|Orion|Warren).{0,100}(?:est[aá]\s+dispon[ií]vel|pode\s+trazer|traga\s+sua\s+vis[aã]o|fa[zç]a\s+a\s+an[aá]lise|analisar\s+isso)/isu.test(raw) ||
+    /(?:chamando|acionando|consultando)\s+(?:Chris|Orion|Warren|CFO|CTO)/isu.test(raw)
+  );
+}
+
 function sanitizePublicBetaAssistantText(value) {
   if (value === null || value === undefined) return value;
   if (typeof value !== "string") return value;
@@ -896,9 +950,17 @@ function sanitizePublicBetaAssistantText(value) {
   let text = value;
   if (!text.trim()) return text;
 
+  if (isPublicBetaTechnicalGovernanceLeak(text)) {
+    return ORKIO_PUBLIC_BETA_TECH_GOVERNANCE_NOTICE;
+  }
+
+  if (isPublicBetaInternalAgentInvocationLeak(text)) {
+    return ORKIO_PUBLIC_BETA_AGENT_EVOLUTION_NOTICE;
+  }
+
   const evolutionNotice = ORKIO_PUBLIC_BETA_AGENT_EVOLUTION_NOTICE;
 
-  // Replace full “call/engage internal agents” invitations before replacing names.
+  // Replace complete invitations to call internal agents before replacing names.
   text = text.replace(
     /(?:Se\s+precisar|Caso\s+precise|Se\s+quiser|Caso\s+queira|Posso|Podemos)[^.\n]*(?:Chris|Orion|Warren|CFO|CTO)[^.\n]*(?:\.|!|\?)?/giu,
     evolutionNotice
@@ -910,14 +972,13 @@ function sanitizePublicBetaAssistantText(value) {
   );
 
   for (const name of ORKIO_PUBLIC_INTERNAL_AGENT_NAMES) {
-    const escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    text = text.replace(new RegExp(`\\b${escaped}\\b\\s*\\([^)]*\\)`, "giu"), "novos agentes especializados");
-    text = text.replace(new RegExp(`\\b${escaped}\\b`, "giu"), "novos agentes especializados");
+    text = replacePublicBetaToken(text, `${name} (CFO)`, "novos agentes especializados");
+    text = replacePublicBetaToken(text, `${name} (CTO)`, "novos agentes especializados");
+    text = replacePublicBetaToken(text, `${name}`, "novos agentes especializados");
   }
 
   for (const role of ORKIO_PUBLIC_INTERNAL_ROLE_WORDS) {
-    const escaped = String(role).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    text = text.replace(new RegExp(`\\b${escaped}\\b`, "giu"), "agentes especializados futuros");
+    text = replacePublicBetaToken(text, role, "agentes especializados futuros");
   }
 
   // Clean up duplicated generic replacements.
@@ -929,26 +990,34 @@ function sanitizePublicBetaAssistantText(value) {
     /agentes especializados futuros(?:\s*(?:,|e|ou|\/)\s*agentes especializados futuros)+/giu,
     "agentes especializados futuros"
   );
-  text = text.replace(/especialistas\s+como\s+novos agentes especializados/giu, "novos agentes especializados");
-  text = text.replace(/novos agentes especializados\s+para\s+uma\s+análise\s+mais\s+aprofundada/giu, ORKIO_PUBLIC_BETA_SHORT_EVOLUTION_NOTICE);
+  text = text.replace(
+    /especialistas\s+como\s+novos agentes especializados/giu,
+    "novos agentes especializados"
+  );
+  text = text.replace(
+    /novos agentes especializados\s+para\s+uma\s+análise\s+mais\s+aprofundada/giu,
+    ORKIO_PUBLIC_BETA_SHORT_EVOLUTION_NOTICE
+  );
 
   return text;
 }
 
 function sanitizePublicBetaAssistantMessage(messageLike) {
   if (!messageLike || typeof messageLike !== "object") return messageLike;
+
   const role = String(messageLike?.role || "").toLowerCase();
   if (role && role !== "assistant" && role !== "agent") return messageLike;
 
   const next = { ...messageLike };
+
   for (const key of ["content", "text", "message", "answer", "final_text", "finalText"]) {
     if (typeof next[key] === "string") {
       next[key] = sanitizePublicBetaAssistantText(next[key]);
     }
   }
+
   return next;
 }
-
 
 function extractPatchGovernanceMeta(content) {
   const text = String(content || "");
