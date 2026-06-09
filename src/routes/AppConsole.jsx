@@ -6919,18 +6919,37 @@ function scheduleRealtimeIdleFollowup() {
                   console.warn('[Realtime] magic trigger failed', err);
                 }
               } else if (raw.trim()) {
-                // AO66A-HF2:
-                // Keep manual response available and schedule a safe fallback.
-                // The server VAD create_response=true remains primary, but if no
-                // response.created arrives shortly after the final transcript,
-                // the client triggers exactly one response.create instead of
-                // leaving the UI stuck in "Aguardando a fala terminar".
+                // AO01-HF6R18:
+                // Public-beta/timeboxed users do not run the backend multi-agent turn
+                // (see AO60G_REALTIME_MULTI_AGENT_SUPPRESSED), so they must not depend
+                // only on server_vad.create_response. In production evidence, Remshire
+                // users reached input_audio_transcription.completed but no response.*
+                // audio events followed, while Admin worked through the unrestricted
+                // agent/backend path. For limited sessions, force exactly one client
+                // response.create immediately after the final transcript.
                 setRtcReadyToRespond(true);
-                scheduleRealtimeAutoResponseFallback(raw, "input_audio_transcription.completed_force_audio");
-                logRealtimeStep('ao01_hf6r17:forcing_audio_response_after_final_transcript', {
-                  transcript: raw,
+                const shouldForceLimitedAudio = isRealtimeTimeboxLimitedUser();
+                logRealtimeStep('ao01_hf6r18:final_transcript_response_policy', {
+                  limited: Boolean(shouldForceLimitedAudio),
+                  transcriptLen: raw.length,
+                  responseInFlight: Boolean(rtcResponseInFlightRef.current),
                   marker: ORKIO_AO66R_HF4_BUILD_MARKER,
                 });
+                if (shouldForceLimitedAudio) {
+                  try {
+                    triggerRealtimeResponse("public_beta_force_audio_after_final_transcript");
+                  } catch (err) {
+                    logRealtimeStep('ao01_hf6r18:public_beta_force_audio_failed', {
+                      message: err?.message || null,
+                      marker: ORKIO_AO66R_HF4_BUILD_MARKER,
+                    });
+                    scheduleRealtimeAutoResponseFallback(raw, "public_beta_force_audio_retry");
+                  }
+                } else {
+                  // Admin/unlimited sessions preserve the existing behavior to avoid
+                  // duplicating backend multi-agent responses such as Chris/Orion.
+                  scheduleRealtimeAutoResponseFallback(raw, "input_audio_transcription.completed_force_audio");
+                }
               }
             });
           }
