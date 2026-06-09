@@ -1819,7 +1819,7 @@ export default function AppConsole() {
   const REALTIME_ENTRYPOINT_ENABLED = false;
   const FOUNDER_HANDOFF_ENTRYPOINT_ENABLED = false;
   const DISABLED_FEATURE_NOTICE =
-    "Esta função ainda não está habilitada. Por enquanto, continue usando o chat por texto.";
+    "Esta funcionalidade está em construção e será liberada futuramente. Por enquanto, o chat por texto está à disposição para continuar o atendimento.";
 
   // ORKIO_AO60I_REALTIME_TIMEBOX_COOLDOWN_COUNTER
   // ORKIO_AO60J_HF1_PREMIUM_2MIN_10MIN_WAKE_COUNTER
@@ -2023,6 +2023,7 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const [uploadStatus, setUploadStatus] = useState("");
   const [handoffBusy, setHandoffBusy] = useState(false);
   const [handoffNotice, setHandoffNotice] = useState("");
+  const [disabledFeatureNotice, setDisabledFeatureNotice] = useState(null);
   const [showHandoffModal, setShowHandoffModal] = useState(false);
   const [handoffDraft, setHandoffDraft] = useState("");
   const [handoffInterestType, setHandoffInterestType] = useState("general");
@@ -2030,21 +2031,40 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
 
   function notifyDisabledFeature(kind = "feature") {
     const icon = kind === "founder_handoff" ? "🤝" : kind === "realtime" ? "⚡" : "ℹ️";
-    const label = kind === "founder_handoff" ? "Founder handoff" : kind === "realtime" ? "Realtime" : "Função";
-    const message = `${icon} ${label}: ${DISABLED_FEATURE_NOTICE}`;
-    try { setUploadStatus(message); } catch {}
-    try { setHandoffNotice(DISABLED_FEATURE_NOTICE); } catch {}
+    const title =
+      kind === "founder_handoff"
+        ? "Falar com o founder"
+        : kind === "realtime"
+          ? "Voz em tempo real"
+          : "Funcionalidade em construção";
+    const message = DISABLED_FEATURE_NOTICE;
+    const composedStatus = `${icon} ${title}: ${message}`;
+
+    try {
+      setDisabledFeatureNotice({
+        kind,
+        icon,
+        title,
+        message,
+      });
+    } catch {}
+
+    try { setUploadStatus(composedStatus); } catch {}
+    try { setHandoffNotice(message); } catch {}
+
     try {
       window.clearTimeout?.(notifyDisabledFeature._timer);
       notifyDisabledFeature._timer = window.setTimeout(() => {
         try { setUploadStatus(""); } catch {}
         try { setHandoffNotice(""); } catch {}
-      }, 4500);
+        try { setDisabledFeatureNotice(null); } catch {}
+      }, 6500);
     } catch {
       setTimeout(() => {
         try { setUploadStatus(""); } catch {}
         try { setHandoffNotice(""); } catch {}
-      }, 4500);
+        try { setDisabledFeatureNotice(null); } catch {}
+      }, 6500);
     }
   }
 
@@ -10364,7 +10384,28 @@ async function stopRealtime(reason = 'client_stop') {
               <IconSend />
             </button>
           </div>
-          {handoffNotice ? (
+          {disabledFeatureNotice ? (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                marginTop: 10,
+                padding: "10px 12px",
+                borderRadius: 14,
+                border: "1px solid rgba(125,211,252,0.26)",
+                background: "rgba(14,165,233,0.10)",
+                color: "rgba(240,249,255,0.94)",
+                boxShadow: "0 14px 34px rgba(0,0,0,0.18)",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: "0.02em", marginBottom: 3 }}>
+                {disabledFeatureNotice.icon} {disabledFeatureNotice.title}
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.45, color: "rgba(226,232,240,0.88)" }}>
+                {disabledFeatureNotice.message}
+              </div>
+            </div>
+          ) : handoffNotice ? (
             <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.78)" }}>{handoffNotice}</div>
           ) : null}
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
