@@ -1015,6 +1015,11 @@ function canonicalizeSpeakerLabel(raw) {
     security_guardian: "Security Guardian",
     data_db_architect: "Data DB Architect",
     realtime_voice_engineer: "Realtime Voice Engineer",
+    longest: "Orkio",
+    response_done_longest: "Orkio",
+    response_done: "Orkio",
+    realtime: "Orkio",
+    realtime_assistant: "Orkio",
     orkio: "Orkio",
     chris: "Chris",
     orion: "Orion",
@@ -1808,6 +1813,14 @@ export default function AppConsole() {
 
   const SHOW_REALTIME_AUDIT = false;
 
+  // AO64D-HF6_CHAT_ONLY_DISABLE_PENDING_FEATURES
+  // Realtime voice and founder handoff stay visible as premium entry points,
+  // but are temporarily disabled while the chat text experience is stabilized.
+  const REALTIME_ENTRYPOINT_ENABLED = false;
+  const FOUNDER_HANDOFF_ENTRYPOINT_ENABLED = false;
+  const DISABLED_FEATURE_NOTICE =
+    "Esta função ainda não está habilitada. Por enquanto, continue usando o chat por texto.";
+
   // ORKIO_AO60I_REALTIME_TIMEBOX_COOLDOWN_COUNTER
   // ORKIO_AO60J_HF1_PREMIUM_2MIN_10MIN_WAKE_COUNTER
   // Unified web/PWA default = 2min session + 10min cooldown; backend remains source of truth.
@@ -2014,6 +2027,26 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const [handoffDraft, setHandoffDraft] = useState("");
   const [handoffInterestType, setHandoffInterestType] = useState("general");
   const [uploadProgress, setUploadProgress] = useState(false);
+
+  function notifyDisabledFeature(kind = "feature") {
+    const icon = kind === "founder_handoff" ? "🤝" : kind === "realtime" ? "⚡" : "ℹ️";
+    const label = kind === "founder_handoff" ? "Founder handoff" : kind === "realtime" ? "Realtime" : "Função";
+    const message = `${icon} ${label}: ${DISABLED_FEATURE_NOTICE}`;
+    try { setUploadStatus(message); } catch {}
+    try { setHandoffNotice(DISABLED_FEATURE_NOTICE); } catch {}
+    try {
+      window.clearTimeout?.(notifyDisabledFeature._timer);
+      notifyDisabledFeature._timer = window.setTimeout(() => {
+        try { setUploadStatus(""); } catch {}
+        try { setHandoffNotice(""); } catch {}
+      }, 4500);
+    } catch {
+      setTimeout(() => {
+        try { setUploadStatus(""); } catch {}
+        try { setHandoffNotice(""); } catch {}
+      }, 4500);
+    }
+  }
 
 const fileInputRef = useRef(null);
 const executionTraceRef = useRef([]);
@@ -4878,6 +4911,11 @@ function buildFounderHandoffMessage() {
 }
 
 function handleFounderHandoff() {
+  if (!FOUNDER_HANDOFF_ENTRYPOINT_ENABLED) {
+    notifyDisabledFeature("founder_handoff");
+    return;
+  }
+
   const message = buildFounderHandoffMessage();
   if (!message || handoffBusy) return;
   setHandoffDraft(message);
@@ -6077,8 +6115,7 @@ function scheduleRealtimeIdleFollowup() {
       type: "response.create",
       response: {
         // AO64D-HF5_RESPONSE_CREATE_GA_SAFE:
-        // Do not send response.modalities. Provider rejects it with:
-        // "Unknown parameter: 'response.modalities'".
+        // Provider-safe response.create payload.
         output_modalities: ["audio"],
         audio: {
           output: {
@@ -8056,6 +8093,24 @@ async function stopRealtime(reason = 'client_stop') {
   }
 
   function toggleRealtimeMode() {
+    if (!REALTIME_ENTRYPOINT_ENABLED) {
+      try {
+        if (realtimeModeRef.current || rtcSessionIdRef.current) {
+          void stopRealtime("realtime_entrypoint_disabled");
+        }
+      } catch {}
+      try { setRealtimeMode(false); } catch {}
+      try { realtimeModeRef.current = false; } catch {}
+      try { setRtcReadyToRespond(false); } catch {}
+      try { setRtcTimeboxRemaining(null); } catch {}
+      try { setRtcCooldownRemaining(0); } catch {}
+      try { setRtcOverlayForceClosed(true); } catch {}
+      try { setV2vPhase(null); } catch {}
+      try { updateRealtimePremiumStatus(null, ""); } catch {}
+      notifyDisabledFeature("realtime");
+      return;
+    }
+
     if (SUMMIT_VOICE_MODE !== "realtime") return;
     const next = !realtimeMode;
 
@@ -10209,24 +10264,20 @@ async function stopRealtime(reason = 'client_stop') {
                   type="button"
                   style={{
                     ...styles.micBtn,
-                    background: realtimeMode ? "rgba(80,160,255,0.25)" : "rgba(255,255,255,0.05)",
-                    border: realtimeMode ? "1px solid rgba(80,160,255,0.5)" : "1px solid rgba(255,255,255,0.1)",
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.1)",
                     position: "relative",
-                    opacity: (!realtimeMode && rtcCooldownRemaining > 0) ? 0.45 : 1,
-                    cursor: (!realtimeMode && rtcCooldownRemaining > 0) ? "not-allowed" : "pointer",
+                    opacity: 1,
+                    cursor: "pointer",
                   }}
                   onClick={toggleRealtimeMode}
-                  disabled={!realtimeMode && rtcCooldownRemaining > 0}
-                  title={
-                    (!realtimeMode && rtcCooldownRemaining > 0)
-                      ? `Voz disponível novamente em ${formatRealtimeCountdown(rtcCooldownRemaining)}`
-                      : realtimeMode ? "Desativar voz em tempo real" : "Ativar voz em tempo real"
-                  }
+                  disabled={false}
+                  title={DISABLED_FEATURE_NOTICE}
                 >
                   <span style={{ fontSize: "16px" }}>⚡</span>
-                  {realtimeMode && <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "8px", height: "8px", borderRadius: "50%", background: "#50a0ff", animation: "pulse 1.5s infinite" }} />}
+                  {false && realtimeMode && <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "8px", height: "8px", borderRadius: "50%", background: "#50a0ff", animation: "pulse 1.5s infinite" }} />}
                 </button>
-                {SUMMIT_VOICE_MODE === "realtime" && (isRealtimeTimeboxLimitedUser() || rtcBackendTimeboxLimited || rtcCooldownRemaining > 0) && (realtimeMode || rtcCooldownRemaining > 0) ? (
+                {REALTIME_ENTRYPOINT_ENABLED && SUMMIT_VOICE_MODE === "realtime" && (isRealtimeTimeboxLimitedUser() || rtcBackendTimeboxLimited || rtcCooldownRemaining > 0) && (realtimeMode || rtcCooldownRemaining > 0) ? (
                   <span
                     style={{
                       display: "inline-flex",
@@ -10283,7 +10334,7 @@ async function stopRealtime(reason = 'client_stop') {
               </>
             )}
 
-            {!isMobile && realtimeMode && SUMMIT_VOICE_MODE === "realtime" ? (
+            {REALTIME_ENTRYPOINT_ENABLED && !isMobile && realtimeMode && SUMMIT_VOICE_MODE === "realtime" ? (
               <button
                 type="button"
                 style={{
@@ -10301,10 +10352,10 @@ async function stopRealtime(reason = 'client_stop') {
 
             <button
               type="button"
-              style={{ ...styles.micBtn, opacity: handoffBusy ? 0.7 : 1 }}
+              style={{ ...styles.micBtn, opacity: 1, cursor: "pointer" }}
               onClick={handleFounderHandoff}
-              disabled={handoffBusy}
-              title="Falar com fundador"
+              disabled={false}
+              title={DISABLED_FEATURE_NOTICE}
             >
               🤝
             </button>
