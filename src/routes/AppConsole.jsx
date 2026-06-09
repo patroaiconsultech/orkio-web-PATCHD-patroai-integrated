@@ -12,6 +12,7 @@ import ExecutionTimeline from "../components/ExecutionTimeline.jsx";
 import MessageBubble from "../components/chat/MessageBubble.jsx";
 import RealtimeTimeboxOverlay from "../components/realtime/RealtimeTimeboxOverlay.jsx";
 import RealtimeTranscriptSummary from "../components/realtime/RealtimeTranscriptSummary.jsx";
+import { useRealtimeTranscriptSummary } from "../hooks/realtime/useRealtimeTranscriptSummary.js";
 
 // AO68A-HF6R10_NO_BACKEND_END_ON_WARMUP — suppress fake quota/cooldown on failed realtime warmup
 
@@ -2328,9 +2329,22 @@ const rtcLastUserActivityAtRef = useRef(0);
   const [lastRealtimeSessionId, setLastRealtimeSessionId] = useState(null);
   const [summitSessionScore, setSummitSessionScore] = useState(null);
   const [summitReviewPending, setSummitReviewPending] = useState(false);
-  const [realtimeTranscriptSummary, setRealtimeTranscriptSummary] = useState(null);
-  const [realtimeTranscriptSummaryOpen, setRealtimeTranscriptSummaryOpen] = useState(false);
-  const realtimeTranscriptTurnsRef = useRef([]);
+  // AO64D-HF1: Realtime transcript summary state/lifecycle extracted to a focused hook.
+  const realtimeSummary = useRealtimeTranscriptSummary({
+    logRealtimeStep,
+    getSessionId: () => rtcSessionIdRef.current || lastRealtimeSessionId || null,
+    getUserTextFallback: () => rtcLastFinalTranscriptRef.current,
+    getAssistantTextFallback: () => rtcAssistantFinalTextRef.current,
+    // AO64D-HF1A: keep PATCH 1 as summary-only. Do not inline to chat here.
+    // Inline chat insertion needs a separate audited helper to avoid duplicate turns.
+    appendSummaryToChat: null,
+    inlineToChat: false,
+    modalSuppressed: false,
+  });
+  const realtimeTranscriptSummary = realtimeSummary.summary;
+  const realtimeTranscriptSummaryOpen = realtimeSummary.summaryOpen;
+  const setRealtimeTranscriptSummaryOpen = realtimeSummary.setSummaryOpen;
+  const realtimeTranscriptTurnsRef = realtimeSummary.turnsRef;
   const summitRuntimeModeRef = useRef((((window.__ORKIO_ENV__?.VITE_ORKIO_RUNTIME_MODE || import.meta.env.VITE_ORKIO_RUNTIME_MODE || "summit")).trim().toLowerCase() === "summit") ? "summit" : "platform");
   const summitLanguageProfileRef = useRef((((window.__ORKIO_ENV__?.VITE_SUMMIT_LANGUAGE_PROFILE || import.meta.env.VITE_SUMMIT_LANGUAGE_PROFILE || "pt-BR")).trim() || "auto"));
   const rtcLanguageProfileRef = useRef("auto");
@@ -5447,276 +5461,26 @@ function scheduleRealtimeIdleFollowup() {
   }
 
   // AO66A_REALTIME_FULLSCREEN_CLOCK_TRANSCRIPT_SUMMARY
+  // AO64D-HF1: Summary lifecycle moved to useRealtimeTranscriptSummary.
+  // Keep these thin wrappers so the existing Realtime/WebRTC flow remains untouched.
   function normalizeRealtimeTranscriptText(value) {
-    return String(value || "").replace(/\s+/g, " ").trim();
+    return realtimeSummary.normalizeText(value);
   }
 
   function resetRealtimeTranscriptSession(reason = "reset") {
-    try { realtimeTranscriptTurnsRef.current = []; } catch {}
-    try { setRealtimeTranscriptSummary(null); } catch {}
-    try { setRealtimeTranscriptSummaryOpen(false); } catch {}
-    try { logRealtimeStep("ao66a:transcript_summary_reset", { reason }); } catch {}
+    return realtimeSummary.reset(reason);
   }
 
   function appendRealtimeTranscriptTurn(role, content, meta = {}) {
-    const text = normalizeRealtimeTranscriptText(content);
-    if (!text) return;
-    const safeRole = role === "assistant" ? "assistant" : "user";
-    const now = Math.floor(Date.now() / 1000);
-    const nextTurn = {
-      id: `rt_${safeRole}_${now}_${Math.random().toString(16).slice(2)}`,
-      role: safeRole,
-      label: safeRole === "assistant" ? "Orkio respondeu" : "Você disse",
-      content: text,
-      created_at: now,
-      meta: meta && typeof meta === "object" ? meta : {},
-    };
-
-    try {
-      const prev = Array.isArray(realtimeTranscriptTurnsRef.current)
-        ? realtimeTranscriptTurnsRef.current.slice()
-        : [];
-
-      const last = prev[prev.length - 1];
-      const shouldUpgradeAssistant = Boolean(
-        safeRole === "assistant"
-        && last
-        && last.role === "assistant"
-        && text.length >= String(last.content || "").length
-      );
-
-      if (shouldUpgradeAssistant) {
-        prev[prev.length - 1] = { ...last, ...nextTurn, id: last.id, meta: { ...(last.meta || {}), ...(nextTurn.meta || {}), upgraded: true } };
-      } else if (!last || last.role !== safeRole || String(last.content || "").trim() !== text) {
-        prev.push(nextTurn);
-      }
-
-      realtimeTranscriptTurnsRef.current = prev.slice(-12);
-    } catch {}
+    return realtimeSummary.appendTurn(role, content, meta);
   }
-
-
-  // AO01-HF6R19 — Realtime transcript must land in the chat timeline, not in a separate copy/paste modal.
-  function appendRealtimeTurnToChat(role, content, meta = {}) {
-    const text = normalizeRealtimeTranscriptText(content);
-    if (!text) return false;
-
-    const safeRole = role === "assistant" ? "assistant" : "user";
-    const sessionId = meta?.sessionId || rtcSessionIdRef.current || lastRealtimeSessionId || null;
-    const createdAt = Number(meta?.created_at || meta?.createdAt || Math.floor(Date.now() / 1000));
-    const normalizedKey = text
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-
-    const dedupeKey = [
-      "realtime_inline_chat",
-      safeRole,
-      sessionId || "no_session",
-      normalizedKey,
-    ].join("|");
-
-    try {
-      setMessages((prev) => {
-        const list = Array.isArray(prev) ? prev : [];
-        const exists = list.some((m) => {
-          const mText = normalizeRealtimeTranscriptText(m?.content);
-          const mKey = mText
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .toLowerCase()
-            .trim();
-
-          return (
-            String(m?.meta?.realtime_inline_dedupe || "") === dedupeKey
-            || (
-              String(m?.role || "") === safeRole
-              && mKey === normalizedKey
-              && (
-                Boolean(m?.meta?.realtime_voice_inline)
-                || Boolean(m?.meta?.realtime_assistant_transcript)
-                || Boolean(m?.meta?.realtime_summary_inline)
-              )
-            )
-          );
-        });
-
-        if (exists) return list;
-
-        const selectedAgentObj = (agents || []).find(a => String(a.id) === String(destSingle || ""));
-        const agentName = safeRole === "assistant"
-          ? (meta?.agent_name || meta?.agentName || selectedAgentObj?.name || "Orkio")
-          : null;
-        const agentId = safeRole === "assistant"
-          ? (meta?.agent_id || meta?.agentId || selectedAgentObj?.id || destSingle || null)
-          : null;
-
-        return list.concat([{
-          id: `rt_chat_${safeRole}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          role: safeRole,
-          content: text,
-          user_id: safeRole === "user" ? (user?.id || user?.sub || null) : null,
-          user_name: safeRole === "user" ? (user?.name || user?.email || "Você") : null,
-          agent_id: agentId ? String(agentId) : null,
-          agent_name: safeRole === "assistant" ? String(agentName || "Orkio") : null,
-          created_at: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Math.floor(Date.now() / 1000),
-          meta: {
-            ...(meta && typeof meta === "object" ? meta : {}),
-            realtime_voice_inline: true,
-            realtime_summary_inline: Boolean(meta?.realtime_summary_inline),
-            realtime_inline_dedupe: dedupeKey,
-            realtime_session_id: sessionId,
-            ao01_hf6r19: true,
-          },
-        }]);
-      });
-
-      logRealtimeStep("ao01_hf6r19:transcript_turn_inlined_to_chat", {
-        role: safeRole,
-        sessionId,
-        length: text.length,
-        source: meta?.source || null,
-      });
-      return true;
-    } catch (err) {
-      try {
-        logRealtimeStep("ao01_hf6r19:transcript_turn_inline_failed", {
-          role: safeRole,
-          sessionId,
-          message: err?.message || null,
-        });
-      } catch {}
-      return false;
-    }
-  }
-
-  function appendRealtimeSummaryToChat(summary, reason = "ended") {
-    try {
-      if (!summary || typeof summary !== "object") return false;
-      const sessionId = summary.sessionId || rtcSessionIdRef.current || lastRealtimeSessionId || null;
-      const turns = Array.isArray(summary.turns)
-        ? summary.turns.filter((turn) => normalizeRealtimeTranscriptText(turn?.content))
-        : [];
-
-      let appended = false;
-
-      if (turns.length) {
-        for (const turn of turns) {
-          appended = appendRealtimeTurnToChat(turn.role, turn.content, {
-            ...(turn.meta || {}),
-            sessionId,
-            source: `summary:${reason}`,
-            created_at: turn.created_at || summary.endedAt,
-            realtime_summary_inline: true,
-          }) || appended;
-        }
-      } else {
-        if (normalizeRealtimeTranscriptText(summary.userText)) {
-          appended = appendRealtimeTurnToChat("user", summary.userText, {
-            sessionId,
-            source: `summary:${reason}:userText`,
-            created_at: summary.endedAt,
-            realtime_summary_inline: true,
-          }) || appended;
-        }
-        if (normalizeRealtimeTranscriptText(summary.assistantText)) {
-          appended = appendRealtimeTurnToChat("assistant", summary.assistantText, {
-            sessionId,
-            source: `summary:${reason}:assistantText`,
-            created_at: summary.endedAt,
-            realtime_summary_inline: true,
-          }) || appended;
-        }
-      }
-
-      logRealtimeStep("ao01_hf6r19:transcript_summary_inlined_to_chat", {
-        reason,
-        sessionId,
-        turns: turns.length,
-        appended,
-      });
-
-      return appended;
-    } catch (err) {
-      try {
-        logRealtimeStep("ao01_hf6r19:transcript_summary_inline_failed", {
-          reason,
-          message: err?.message || null,
-        });
-      } catch {}
-      return false;
-    }
-  }
-
 
   function buildRealtimeTranscriptSummary(reason = "ended", extra = {}) {
-    const turns = Array.isArray(realtimeTranscriptTurnsRef.current)
-      ? realtimeTranscriptTurnsRef.current.filter((turn) => normalizeRealtimeTranscriptText(turn?.content))
-      : [];
-
-    const userTurns = turns.filter((turn) => turn.role === "user");
-    const assistantTurns = turns.filter((turn) => turn.role === "assistant");
-
-    const userText = normalizeRealtimeTranscriptText(
-      userTurns.length
-        ? userTurns.map((turn) => turn.content).join("\n\n")
-        : rtcLastFinalTranscriptRef.current
-    );
-    const assistantText = normalizeRealtimeTranscriptText(
-      assistantTurns.length
-        ? assistantTurns.map((turn) => turn.content).join("\n\n")
-        : rtcAssistantFinalTextRef.current
-    );
-
-    return {
-      id: `rt_summary_${Date.now()}`,
-      reason,
-      sessionId: extra?.sessionId || rtcSessionIdRef.current || lastRealtimeSessionId || null,
-      endedAt: Math.floor(Date.now() / 1000),
-      userText,
-      assistantText,
-      turns,
-      source: extra?.source || "frontend_realtime_events",
-    };
+    return realtimeSummary.build(reason, extra);
   }
 
   function publishRealtimeTranscriptSummary(reason = "ended", extra = {}) {
-    try {
-      const summary = buildRealtimeTranscriptSummary(reason, extra);
-      const hasContent = Boolean(
-        normalizeRealtimeTranscriptText(summary.userText)
-        || normalizeRealtimeTranscriptText(summary.assistantText)
-        || (Array.isArray(summary.turns) && summary.turns.length > 0)
-      );
-      if (!hasContent && !extra?.forceOpen) {
-        logRealtimeStep("ao66r_hf4:transcript_summary_empty", { reason, sessionId: summary.sessionId || null });
-        return false;
-      }
-      if (!hasContent && extra?.forceOpen) {
-        logRealtimeStep("ao66r_hf4:transcript_summary_forced_empty", { reason, sessionId: summary.sessionId || null });
-      }
-      // AO01-HF6R19:
-      // The public beta Realtime experience must behave like Admin: transcript and answer
-      // go back to the chat timeline. Do not open the copy/paste transcript modal.
-      appendRealtimeSummaryToChat(summary, reason);
-      setRealtimeTranscriptSummary(summary);
-      setRealtimeTranscriptSummaryOpen(false);
-      logRealtimeStep("ao66a:transcript_summary_published", {
-        reason,
-        sessionId: summary.sessionId || null,
-        turns: summary.turns?.length || 0,
-        hasUser: Boolean(summary.userText),
-        hasAssistant: Boolean(summary.assistantText),
-        inlinedToChat: true,
-        modalSuppressed: true,
-        marker: "AO01_HF6R19_INLINE_REALTIME_TRANSCRIPT_TO_CHAT",
-      });
-      return true;
-    } catch (err) {
-      try { logRealtimeStep("ao66a:transcript_summary_failed", { reason, message: err?.message || null }); } catch {}
-      return false;
-    }
+    return realtimeSummary.publish(reason, extra);
   }
 
   function getRealtimePremiumStatusLabel() {
@@ -7063,10 +6827,6 @@ function scheduleRealtimeIdleFollowup() {
             try {} catch {}
             rtcLastFinalTranscriptRef.current = raw;
             appendRealtimeTranscriptTurn("user", raw, { source: "input_audio_transcription.completed" });
-            appendRealtimeTurnToChat("user", raw, {
-              source: "input_audio_transcription.completed",
-              sessionId: rtcSessionIdRef.current || null,
-            });
             markRealtimeUserActivity();
 
             Promise.resolve(guardAndMaybeBlockRealtimeTranscript(raw)).then((blocked) => {
@@ -9362,7 +9122,7 @@ async function stopRealtime(reason = 'client_stop') {
       }}
     />
     <RealtimeTranscriptSummary
-      open={false}
+      open={realtimeTranscriptSummaryOpen}
       summary={realtimeTranscriptSummary}
       onClose={() => setRealtimeTranscriptSummaryOpen(false)}
     />
