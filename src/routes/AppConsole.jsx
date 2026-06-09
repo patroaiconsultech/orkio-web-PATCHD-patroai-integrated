@@ -14,6 +14,7 @@ import RealtimeTimeboxOverlay from "../components/realtime/RealtimeTimeboxOverla
 import RealtimeTranscriptSummary from "../components/realtime/RealtimeTranscriptSummary.jsx";
 import { useRealtimeTranscriptSummary } from "../hooks/realtime/useRealtimeTranscriptSummary.js";
 
+// AO64D-HF6C_PUBLIC_BETA_GUARDRAILS_EFATAH777 — public beta copy, rewards narrative and internal-agent sanitation
 // AO68A-HF6R10_NO_BACKEND_END_ON_WARMUP — suppress fake quota/cooldown on failed realtime warmup
 
 // AO68A-HF6R9_REALTIME_NO_COOLDOWN_ON_RETRY — safe AppConsole patch applied
@@ -850,6 +851,105 @@ function normalizeAgentVoiceId(raw, fallback = ORKIO_DEFAULT_VOICE_ID) {
 }
 
 
+// AO64D-HF6C_PUBLIC_BETA_GUARDRAILS_EFATAH777
+// Public beta rule:
+// - Orkio is the only visible public agent in the current beta.
+// - Internal agent names/roles must not be offered to AMCHAM / Efatah777 users.
+// - Future capability unlocks may be described generically through usage, needs and rewards.
+const ORKIO_PUBLIC_BETA_AGENT_EVOLUTION_NOTICE =
+  "Neste beta público, o Orkio conduz a experiência principal. Conforme a evolução das conversas, o uso correto da ferramenta e a identificação de necessidades específicas, novas funcionalidades e agentes especializados poderão ser liberados futuramente para apoiar análises mais profundas. Por enquanto, posso organizar o tema diretamente pelo chat.";
+
+const ORKIO_PUBLIC_BETA_SHORT_EVOLUTION_NOTICE =
+  "Novos agentes especializados poderão ser liberados futuramente conforme a evolução da conversa, o uso correto da ferramenta e as necessidades identificadas.";
+
+const ORKIO_PUBLIC_INTERNAL_AGENT_NAMES = [
+  "Chris",
+  "Orion",
+  "Warren",
+  "Auditor",
+  "Systems Architect",
+  "Backend Engineer",
+  "Frontend Engineer",
+  "QA Release Engineer",
+  "DevOps SRE",
+  "Security Guardian",
+  "Data DB Architect",
+  "Realtime Voice Engineer",
+];
+
+const ORKIO_PUBLIC_INTERNAL_ROLE_WORDS = [
+  "CFO",
+  "CTO",
+  "CIO",
+  "COO",
+  "backend engineer",
+  "frontend engineer",
+  "systems architect",
+  "auditor interno",
+  "agente interno",
+];
+
+function sanitizePublicBetaAssistantText(value) {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== "string") return value;
+
+  let text = value;
+  if (!text.trim()) return text;
+
+  const evolutionNotice = ORKIO_PUBLIC_BETA_AGENT_EVOLUTION_NOTICE;
+
+  // Replace full “call/engage internal agents” invitations before replacing names.
+  text = text.replace(
+    /(?:Se\s+precisar|Caso\s+precise|Se\s+quiser|Caso\s+queira|Posso|Podemos)[^.\n]*(?:Chris|Orion|Warren|CFO|CTO)[^.\n]*(?:\.|!|\?)?/giu,
+    evolutionNotice
+  );
+
+  text = text.replace(
+    /(?:envolver|acionar|chamar|consultar|ativar|convidar)\s+(?:especialistas\s+como\s+)?[^.\n]*(?:Chris|Orion|Warren|CFO|CTO)[^.\n]*(?:\.|!|\?)?/giu,
+    evolutionNotice
+  );
+
+  for (const name of ORKIO_PUBLIC_INTERNAL_AGENT_NAMES) {
+    const escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    text = text.replace(new RegExp(`\\b${escaped}\\b\\s*\\([^)]*\\)`, "giu"), "novos agentes especializados");
+    text = text.replace(new RegExp(`\\b${escaped}\\b`, "giu"), "novos agentes especializados");
+  }
+
+  for (const role of ORKIO_PUBLIC_INTERNAL_ROLE_WORDS) {
+    const escaped = String(role).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    text = text.replace(new RegExp(`\\b${escaped}\\b`, "giu"), "agentes especializados futuros");
+  }
+
+  // Clean up duplicated generic replacements.
+  text = text.replace(
+    /novos agentes especializados(?:\s*(?:,|e|ou|\/)\s*novos agentes especializados)+/giu,
+    "novos agentes especializados"
+  );
+  text = text.replace(
+    /agentes especializados futuros(?:\s*(?:,|e|ou|\/)\s*agentes especializados futuros)+/giu,
+    "agentes especializados futuros"
+  );
+  text = text.replace(/especialistas\s+como\s+novos agentes especializados/giu, "novos agentes especializados");
+  text = text.replace(/novos agentes especializados\s+para\s+uma\s+análise\s+mais\s+aprofundada/giu, ORKIO_PUBLIC_BETA_SHORT_EVOLUTION_NOTICE);
+
+  return text;
+}
+
+function sanitizePublicBetaAssistantMessage(messageLike) {
+  if (!messageLike || typeof messageLike !== "object") return messageLike;
+  const role = String(messageLike?.role || "").toLowerCase();
+  if (role && role !== "assistant" && role !== "agent") return messageLike;
+
+  const next = { ...messageLike };
+  for (const key of ["content", "text", "message", "answer", "final_text", "finalText"]) {
+    if (typeof next[key] === "string") {
+      next[key] = sanitizePublicBetaAssistantText(next[key]);
+    }
+  }
+  return next;
+}
+
+
 function extractPatchGovernanceMeta(content) {
   const text = String(content || "");
   if (!/PATCH GOVERNANCE RESPONSE/i.test(text)) return null;
@@ -1023,6 +1123,12 @@ function canonicalizeSpeakerLabel(raw) {
     orkio: "Orkio",
     chris: "Chris",
     orion: "Orion",
+    chris: "Chris",
+    warren: "Warren",
+    longest: "Orkio",
+    response_done_longest: "Orkio",
+    response_done: "Orkio",
+    realtime: "Orkio",
     agent: "Agent",
     agente: "Agent",
     assistant: "Agent",
@@ -1115,7 +1221,23 @@ function sanitizePublicAssistantSpeaker(messageLike, proposedName = "Orkio") {
     return "Orkio";
   }
 
-  if (proposedKey === "orion" && !canSeeInternalOrionSpeaker()) {
+  const publicHiddenSpeakerKeys = new Set([
+    "orion",
+    "chris",
+    "warren",
+    "auditor",
+    "systems architect",
+    "backend engineer",
+    "frontend engineer",
+    "qa release engineer",
+    "devops sre",
+    "security guardian",
+    "data db architect",
+    "realtime voice engineer",
+    "longest",
+  ]);
+
+  if (publicHiddenSpeakerKeys.has(proposedKey) && !canSeeInternalOrionSpeaker()) {
     return "Orkio";
   }
 
@@ -1180,10 +1302,11 @@ function normalizeMessageSpeaker(messageLike) {
     return messageLike;
   }
 
-  const displayName = resolveAssistantDisplayName(messageLike, "Orkio");
+  const sanitizedMessage = sanitizePublicBetaAssistantMessage(messageLike);
+  const displayName = resolveAssistantDisplayName(sanitizedMessage, "Orkio");
 
   return {
-    ...messageLike,
+    ...sanitizedMessage,
     agent_name: displayName,
     final_speaker: displayName,
     visible_agent: displayName,
@@ -1819,7 +1942,7 @@ export default function AppConsole() {
   const REALTIME_ENTRYPOINT_ENABLED = false;
   const FOUNDER_HANDOFF_ENTRYPOINT_ENABLED = false;
   const DISABLED_FEATURE_NOTICE =
-    "Esta funcionalidade está em construção e será liberada futuramente. Por enquanto, o chat por texto está à disposição para continuar o atendimento.";
+    "Esta funcionalidade está em construção e será liberada futuramente. Por enquanto, o chat por texto está à disposição. Conforme a evolução das conversas e o uso correto da ferramenta, novas funcionalidades e agentes especializados poderão ser liberados.";
 
   // ORKIO_AO60I_REALTIME_TIMEBOX_COOLDOWN_COUNTER
   // ORKIO_AO60J_HF1_PREMIUM_2MIN_10MIN_WAKE_COUNTER
@@ -2920,7 +3043,7 @@ useEffect(() => {
     turnStartedAt = 0,
   } = {}) {
     const tid = String(turnThreadId || "").trim();
-    const finalText = String(finalTextCandidate || "").trim();
+    const finalText = sanitizePublicBetaAssistantText(String(finalTextCandidate || "").trim());
     const safeFinalText =
       finalText ||
       "Resposta concluída no backend. Atualizando histórico...";
@@ -3437,7 +3560,7 @@ function formatAgentOptionLabel(agent) {
       ""
     ).trim();
 
-    if (finalText) return finalText;
+    if (finalText) return sanitizePublicBetaAssistantText(finalText);
     if (payload?.assistant_persisted) {
       return "Resposta concluída no backend. Sincronizando histórico...";
     }
@@ -3852,7 +3975,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
                 m.id === draftAssistantId
                   ? {
                       ...m,
-                      content: draftText || "⌛ Preparando resposta...",
+                      content: sanitizePublicBetaAssistantText(draftText || "⌛ Preparando resposta..."),
                       agent_name: resolveAssistantDisplayName(
                         { ...(m || {}), ...(payload || {}), content: draftText || payload?.content || m?.content || "" },
                         m?.agent_name || "Agent"
@@ -3866,18 +3989,18 @@ async function sendMessage(presetMsg = null, opts = {}) {
             },
             onAgentDone: (payload) => {
               if (isStale()) return;
-              if (payload?.agent_name || payload?.final_speaker || payload?.visible_agent) setActiveRuntimeAgent(resolveAssistantDisplayName(payload, activeRuntimeAgent || "Agent"));
+              if (payload?.agent_name || payload?.final_speaker || payload?.visible_agent) setActiveRuntimeAgent(resolveAssistantDisplayName(payload, activeRuntimeAgent || "Orkio"));
               appendExecutionTrace({
                 kind: "agent",
-                label: `${resolveAssistantDisplayName(payload, payload?.agent_id || "Agent")} concluiu uma etapa`,
-                detail: payload?.message || payload?.status || "Resposta parcial pronta.",
-                agentName: payload?.agent_name || "",
+                label: `${resolveAssistantDisplayName(payload, payload?.agent_id || "Orkio")} concluiu uma etapa`,
+                detail: sanitizePublicBetaAssistantText(payload?.message || payload?.status || "Resposta parcial pronta."),
+                agentName: resolveAssistantDisplayName(payload, "Orkio"),
               });
               setMessages((prev) => prev.map((m) => (
                 m.id === draftAssistantId
                   ? {
                       ...m,
-                      content: (m.content || "").replace(/^⌛\s*/, "") || "Resposta concluída.",
+                      content: sanitizePublicBetaAssistantText((m.content || "").replace(/^⌛\s*/, "") || "Resposta concluída."),
                       agent_name: resolveAssistantDisplayName(
                         { ...(m || {}), ...(payload || {}), content: m?.content || payload?.content || "" },
                         m?.agent_name || "Agent"
@@ -3912,7 +4035,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
                   m.id === draftAssistantId
                     ? {
                         ...m,
-                        content: doneFinalText || String(m?.content || "").replace(/^⌛\s*/, "") || "Resposta concluída.",
+                        content: sanitizePublicBetaAssistantText(doneFinalText || String(m?.content || "").replace(/^⌛\s*/, "") || "Resposta concluída."),
                         agent_name: resolveAssistantDisplayName(
                           { ...(m || {}), ...(payload || {}), content: doneFinalText || m?.content || "" },
                           m?.agent_name || "Agent"
@@ -3965,9 +4088,10 @@ async function sendMessage(presetMsg = null, opts = {}) {
                 m.id === draftAssistantId
                   ? {
                       ...m,
-                      content:
+                      content: sanitizePublicBetaAssistantText(
                         streamErr?.draftText ||
-                        "Não consegui concluir a resposta pelo stream nesta tentativa. A tentativa foi encerrada com segurança; tente novamente.",
+                        "Não consegui concluir a resposta pelo stream nesta tentativa. A tentativa foi encerrada com segurança; tente novamente."
+                      ),
                       agent_name: m.agent_name || "Orkio",
                     }
                   : m
@@ -4205,7 +4329,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
       // Se a conversa foi criada durante o SSE stream, threadId ainda aponta para a thread antiga
       const effectiveTidForLoad = String(newThreadId || threadId || "");
 
-      const finalTextCandidate = String(
+      const finalTextCandidate = sanitizePublicBetaAssistantText(String(
         streamDonePayload?.final_text ||
         streamDonePayload?.message ||
         streamDonePayload?.content ||
@@ -4214,7 +4338,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
         streamMeta?.done_payload?.content ||
         streamMeta?.draft_text ||
         ""
-      ).trim();
+      ).trim());
 
       const finalAgentName = resolveAssistantDisplayName(
         {
@@ -4357,7 +4481,7 @@ async function sendMessage(presetMsg = null, opts = {}) {
       if (resp?.data) {
         const ai = { agent_id: resp.data.agent_id, agent_name: resp.data.agent_name, voice_id: resolveAgentVoice({ agent_name: resp.data.agent_name, voice_id: resp.data.voice_id }), avatar_url: resp.data.avatar_url };
         setLastAgentInfo(ai);
-        if (resp.data.agent_name) setActiveRuntimeAgent(resp.data.agent_name);
+        if (resp.data.agent_name) setActiveRuntimeAgent(resolveAssistantDisplayName(resp.data, "Orkio"));
         if (resp.data.runtime_hints) {
           setRuntimeHints(resp.data.runtime_hints || null);
           if (resp.data.runtime_hints?.capabilities) {
