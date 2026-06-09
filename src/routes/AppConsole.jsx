@@ -1813,6 +1813,10 @@ export default function AppConsole() {
   // Unified web/PWA default = 2min session + 10min cooldown; backend remains source of truth.
   const REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS = 2 * 60;
   const REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS = 10 * 60;
+  // AO64D-HF5_NO_HARD_TIMEBOX_ESG_FRONTEND
+  // Time limits are now advisory-only. Backend HF4 removed hard cooldown/timebox,
+  // and the frontend must not render a blocking clock nor auto-stop Realtime.
+  const REALTIME_FRONTEND_HARD_TIMEBOX_ENABLED = false;
   // ORKIO_AO60K_HF5B_FRONTEND_ENDED_AT_SECONDS_TIMEBOX_VERIFY
   // Build marker used only for audit/debug so we can prove the active bundle contains HF5B.
   const ORKIO_AO60K_HF5B_BUILD_MARKER = "AO60K-HF5B_FRONTEND_ENDED_AT_SECONDS_TIMEBOX_VERIFY";
@@ -5500,6 +5504,10 @@ function scheduleRealtimeIdleFollowup() {
   }
 
   function isRealtimeTimeboxLimitedUser() {
+    // AO64D-HF5: hard timebox/cooldown removed for all users.
+    // Usage duration may still be shown as advisory elsewhere, but it must not block or stop Realtime.
+    if (REALTIME_FRONTEND_HARD_TIMEBOX_ENABLED !== true) return false;
+
     // AO01-HF6R16 — Admin/superadmin and backend-declared bypass never use public beta timebox/cooldown.
     if (canAccessAdmin || rtcAdminTimeboxBypassRef.current === true || rtcAdminTimeboxBypass === true) return false;
     return rtcBackendTimeboxLimitedRef.current === true || rtcBackendTimeboxLimited === true;
@@ -5526,6 +5534,17 @@ function scheduleRealtimeIdleFollowup() {
   }
 
   function startRealtimeCooldown(seconds = REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS, reason = "cooldown") {
+    // AO64D-HF5_NO_HARD_TIMEBOX_ESG_FRONTEND
+    // Cooldown is no longer a hard client-side state. Keep cleanup only.
+    if (REALTIME_FRONTEND_HARD_TIMEBOX_ENABLED !== true) {
+      try { clearRealtimeCooldownTimer(); } catch {}
+      try { rtcCooldownUntilRef.current = 0; } catch {}
+      try { setRtcCooldownRemaining(0); } catch {}
+      try { updateRealtimePremiumStatus(null, ""); } catch {}
+      logRealtimeStep("ao64d_hf5:cooldown_suppressed_advisory_only", { reason, seconds });
+      return 0;
+    }
+
     // ORKIO_AO60K_HF2_429_COOLDOWN_HARDENING
     // If the backend returns 429/Retry-After, the UI must enter cooldown even when
     // the local cached user object is stale or incorrectly looks like admin.
@@ -5845,6 +5864,17 @@ function scheduleRealtimeIdleFollowup() {
   function startRealtimeTimebox(seconds = REALTIME_PUBLIC_BETA_TIMEBOX_SECONDS, options = {}) {
     const force = Boolean(options?.force);
     const source = String(options?.source || "unknown");
+
+    // AO64D-HF5_NO_HARD_TIMEBOX_ESG_FRONTEND
+    // The clock/timebox is advisory-only now. Do not start timers, warnings, cooldowns or hard-stop.
+    if (REALTIME_FRONTEND_HARD_TIMEBOX_ENABLED !== true) {
+      clearRealtimeTimeboxTimer();
+      try { setRtcTimeboxRemaining(null); } catch {}
+      try { rtcTimeboxDeadlineRef.current = 0; } catch {}
+      logRealtimeStep("ao64d_hf5:timebox_suppressed_advisory_only", { seconds, force, source });
+      return;
+    }
+
     if (!force && !isRealtimeTimeboxLimitedUser() && rtcBackendTimeboxLimitedRef.current !== true) return;
     clearRealtimeTimeboxTimer();
 
@@ -6046,9 +6076,10 @@ function scheduleRealtimeIdleFollowup() {
     const ok = sendRealtimeClientEvent(dc, {
       type: "response.create",
       response: {
-        // AO68A-HF6R8 — arm audio explicitly for both Realtime payload variants.
-        modalities: ["audio", "text"],
-        output_modalities: ["audio", "text"],
+        // AO64D-HF5_RESPONSE_CREATE_GA_SAFE:
+        // Do not send response.modalities. Provider rejects it with:
+        // "Unknown parameter: 'response.modalities'".
+        output_modalities: ["audio"],
         audio: {
           output: {
             voice,
@@ -6058,7 +6089,7 @@ function scheduleRealtimeIdleFollowup() {
         metadata: {
           source: "orkio_web",
           reason,
-          marker: "AO68A-HF6R8_REALTIME_RESPONSE_CREATE_AUDIO_ARMING",
+          marker: "AO64D-HF5_RESPONSE_CREATE_GA_SAFE",
         },
       },
     }, `${reason}:response_create`);
@@ -6352,7 +6383,11 @@ function scheduleRealtimeIdleFollowup() {
           (Number.isFinite(cooldownSeconds) && cooldownSeconds > 0)
         );
         const effectiveAdminBypass = Boolean(canAccessAdmin || adminBypassByBackend);
-        const effectiveLimitedByBackend = effectiveAdminBypass ? false : Boolean(limitedByBackend);
+        const effectiveLimitedByBackend = (
+          REALTIME_FRONTEND_HARD_TIMEBOX_ENABLED === true
+            ? (effectiveAdminBypass ? false : Boolean(limitedByBackend))
+            : false
+        );
         rtcAdminTimeboxBypassRef.current = effectiveAdminBypass;
         setRtcAdminTimeboxBypass(effectiveAdminBypass);
         rtcBackendTimeboxLimitedRef.current = effectiveLimitedByBackend;
@@ -6733,8 +6768,9 @@ function scheduleRealtimeIdleFollowup() {
             type: "session.update",
             session: {
               type: "realtime",
-              output_modalities: ["audio", "text"],
-              modalities: ["audio", "text"],
+              // AO64D-HF5_RESPONSE_CREATE_GA_SAFE:
+              // Do not send session.modalities. Use output_modalities only.
+              output_modalities: ["audio"],
               audio: {
                 input: {
                   transcription,
@@ -7538,8 +7574,9 @@ function scheduleRealtimeIdleFollowup() {
 
     try {
       const selectedAgentObj2 = (agents || []).find(a => String(a.id) === String(destSingle || ""));
-      const metaAgentName = source && String(source).includes(":") ? String(source).split(":")[1].trim() : "";
-      const agentName2 = metaAgentName || selectedAgentObj2?.name || "Orkio";
+      // AO64D-HF5_PUBLIC_REALTIME_SPEAKER_ORKIO
+      // Runtime source labels like "response.done:longest" are telemetry, not public speaker names.
+      const agentName2 = "Orkio";
       const agentId2 = selectedAgentObj2?.id || (destSingle || null);
 
       if (isMeaningfulUpgrade && existingMessageId) {
@@ -9036,7 +9073,7 @@ async function stopRealtime(reason = 'client_stop') {
     <>
     <PWAInstallPrompt />
     <RealtimeTimeboxOverlay
-      active={realtimeOverlayActive && !(canAccessAdmin || rtcAdminTimeboxBypass)}
+      active={false}
       remainingSeconds={realtimeOverlayRemainingSeconds}
       maxSeconds={realtimeOverlayMaxSeconds}
       status={rtcPremiumStatus || (realtimeMode ? "listening" : null)}
